@@ -1,19 +1,14 @@
-CONTROLE OPERACIONAL LOCAL GRATUITO
+CONTROLE OPERACIONAL ONLINE EDITÁVEL
 
-Este programa NÃO usa API paga.
+Atualização:
+- Busca com edição de registros
+- Exclusão de registro escolhido
+- Exclusão apenas de linhas incompletas de uma delivery
+- Bloqueio para evitar salvar manualmente registros incompletos
+- Backup automático antes de editar/excluir/importar
 
-Como usar:
-1. Extraia a pasta.
-2. Dê dois cliques em abrir_programa.bat.
-3. No navegador, importe o Excel atualizado que você recebeu do ChatGPT.
-4. O programa guarda no banco local, separa por dia e permite busca.
-
-Fluxo recomendado:
-- Você manda as fotos no ChatGPT.
-- O ChatGPT interpreta e gera o Excel atualizado.
-- Você baixa o Excel e importa aqui.
-- Este sistema guarda todo o histórico.
-
-Arquivos:
-- dados/excel_mestre_operacional.xlsx = banco mestre local
-- dados/backups = backups automáticos antes de cada importação
+Para atualizar no Streamlit:
+1. No GitHub, substitua o app.py antigo por este app.py.
+2. Mantenha requirements.txt.
+3. Commit changes.
+4. O Streamlit atualiza sozinho.
