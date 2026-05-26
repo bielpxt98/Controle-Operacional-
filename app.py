@@ -1,117 +1,265 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
-from supabase import create_client
 from datetime import datetime
+from supabase import create_client
+
+st.set_page_config(page_title="Controle Operacional", layout="wide")
 
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://zkqzejnflpzknuuirlav.supabase.co")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "sb_publishable_8pSOHjRSllI9wWVYPkmYFA_AfzxV-QS")
+
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-st.set_page_config(page_title="Controle Operacional", layout="wide")
-st.title("Controle Operacional - Nuvem de Deliveries")
+st.title("Controle Operacional — Supabase + Excel Mestre")
+
+def numero(v):
+    if v is None or str(v).strip() == "" or str(v).lower() == "nan":
+        return None
+    try:
+        return float(str(v).replace("R$", "").replace(" ", "").replace(".", "").replace(",", "."))
+    except Exception:
+        return None
+
+def texto(v):
+    if v is None or str(v).lower() == "nan":
+        return ""
+    return str(v).strip()
+
+def normalizar_colunas(df):
+    mapa = {}
+    for c in df.columns:
+        k = str(c).strip().lower()
+        if k in ["data", "date"]:
+            mapa[c] = "data"
+        elif k in ["motorista", "driver"]:
+            mapa[c] = "motorista"
+        elif k in ["delivery", "documento", "doc", "remessa"]:
+            mapa[c] = "delivery"
+        elif k in ["cliente", "client"]:
+            mapa[c] = "cliente"
+        elif k in ["unidade", "local", "região", "regiao"]:
+            mapa[c] = "unidade"
+        elif k in ["paletes", "pallets", "pallet"]:
+            mapa[c] = "paletes"
+        elif k in ["valor", "frete", "valor_frete", "valor frete"]:
+            mapa[c] = "valor_frete"
+        elif k in ["l", "l_horario", "chegada"]:
+            mapa[c] = "l_horario"
+        elif k in ["c", "c_horario", "coleta"]:
+            mapa[c] = "c_horario"
+        elif k in ["f", "f_horario", "final"]:
+            mapa[c] = "f_horario"
+        elif k in ["tipo", "tipo_operacao", "tipo operação"]:
+            mapa[c] = "tipo"
+        elif k in ["status"]:
+            mapa[c] = "status"
+        elif k in ["observação", "observacao", "observações", "observacoes", "obs"]:
+            mapa[c] = "observacoes"
+        elif k in ["inconsistência", "inconsistencia", "inconsistências", "inconsistencias"]:
+            mapa[c] = "inconsistencias"
+        elif k in ["confiança", "confianca"]:
+            mapa[c] = "confianca"
+    return df.rename(columns=mapa)
 
 def listar():
     res = supabase.table("deliveries").select("*").order("data").execute()
     return pd.DataFrame(res.data or [])
 
-def numero(v):
-    if v in ["", None]:
-        return None
-    try:
-        return float(str(v).replace(".", "").replace(",", "."))
-    except Exception:
+def montar_linha(r):
+    delivery = texto(r.get("delivery", ""))
+    if not delivery:
         return None
 
-def upsert(row):
-    row["atualizado_em"] = datetime.now().isoformat()
-    supabase.table("deliveries").upsert(row, on_conflict="delivery").execute()
+    return {
+        "data": texto(r.get("data", "")),
+        "motorista": texto(r.get("motorista", "")),
+        "delivery": delivery,
+        "cliente": texto(r.get("cliente", "")),
+        "unidade": texto(r.get("unidade", "")),
+        "paletes": numero(r.get("paletes", "")),
+        "valor_frete": numero(r.get("valor_frete", "")),
+        "l_horario": texto(r.get("l_horario", "")),
+        "c_horario": texto(r.get("c_horario", "")),
+        "f_horario": texto(r.get("f_horario", "")),
+        "tipo": texto(r.get("tipo", "")),
+        "status": texto(r.get("status", "")),
+        "observacoes": texto(r.get("observacoes", "")),
+        "inconsistencias": texto(r.get("inconsistencias", "")),
+        "confianca": texto(r.get("confianca", "")),
+        "atualizado_em": datetime.now().isoformat(),
+    }
 
-def excluir(delivery):
-    supabase.table("deliveries").delete().eq("delivery", delivery).execute()
+def upsert_linhas(df):
+    df = normalizar_colunas(df)
+    linhas = []
+    for _, row in df.iterrows():
+        item = montar_linha(row)
+        if item:
+            linhas.append(item)
+
+    if not linhas:
+        return 0
+
+    # envia em lotes
+    for i in range(0, len(linhas), 500):
+        supabase.table("deliveries").upsert(linhas[i:i+500], on_conflict="delivery").execute()
+
+    return len(linhas)
 
 def excel_bytes(df):
     out = BytesIO()
     view = df.copy()
+
     rename = {
-        "data": "Data", "motorista": "Motorista", "delivery": "Delivery", "cliente": "Cliente",
-        "unidade": "Unidade", "paletes": "Paletes", "valor_frete": "Valor",
-        "l_horario": "L", "c_horario": "C", "f_horario": "F",
-        "cs_ok": "CS_OK", "l_ok": "L_OK", "c_ok": "C_OK", "f_ok": "F_OK",
-        "tipo": "Tipo", "status": "Status", "observacoes": "Observações",
-        "inconsistencias": "Inconsistências", "confianca": "Confiança"
+        "data": "Data",
+        "motorista": "Motorista",
+        "delivery": "Delivery",
+        "cliente": "Cliente",
+        "unidade": "Unidade",
+        "paletes": "Paletes",
+        "valor_frete": "Valor",
+        "l_horario": "L",
+        "c_horario": "C",
+        "f_horario": "F",
+        "cs_ok": "CS_OK",
+        "l_ok": "L_OK",
+        "c_ok": "C_OK",
+        "f_ok": "F_OK",
+        "tipo": "Tipo",
+        "status": "Status",
+        "observacoes": "Observações",
+        "inconsistencias": "Inconsistências",
+        "confianca": "Confiança",
     }
+
     view = view.rename(columns=rename)
+
     with pd.ExcelWriter(out, engine="xlsxwriter") as writer:
         view.to_excel(writer, index=False, sheet_name="Mestre")
+        workbook = writer.book
+        ws = writer.sheets["Mestre"]
+
+        header = workbook.add_format({"bold": True, "font_color": "white", "bg_color": "#1F4E78"})
+        azul = workbook.add_format({"bg_color": "#BDD7EE"})
+        amarelo = workbook.add_format({"bg_color": "#FFF2CC"})
+        verde = workbook.add_format({"bg_color": "#C6E0B4"})
+
+        for col, name in enumerate(view.columns):
+            ws.write(0, col, name, header)
+            ws.set_column(col, col, min(max(len(str(name)) + 6, 12), 45))
+            if name == "L":
+                ws.set_column(col, col, 12, azul)
+            elif name == "C":
+                ws.set_column(col, col, 12, amarelo)
+            elif name == "F":
+                ws.set_column(col, col, 12, verde)
+
+        if "Data" in view.columns:
+            for data, grupo in view.groupby("Data", dropna=False):
+                sheet_name = str(data).replace("/", "-")[:31] or "Sem data"
+                grupo.to_excel(writer, index=False, sheet_name=sheet_name)
+
     return out.getvalue()
 
-df = listar()
-tab1, tab2, tab3 = st.tabs(["Buscar / Editar", "Novo registro", "Excel mestre"])
+tab_busca, tab_importar, tab_excel = st.tabs([
+    "Buscar / editar",
+    "Importar Excel mestre",
+    "Baixar Excel mestre"
+])
 
-with tab1:
-    q = st.text_input("Buscar delivery, motorista, cliente ou data")
-    result = df
+df = listar()
+
+with tab_busca:
+    st.subheader("Buscar na nuvem")
+    q = st.text_input("Pesquisar por delivery, motorista, cliente, data ou unidade")
+
+    resultado = df
     if q and not df.empty:
         q_upper = q.upper()
-        mask = df.apply(lambda r: q_upper in " ".join([str(x).upper() for x in r.values]), axis=1)
-        result = df[mask]
-    st.dataframe(result, use_container_width=True, hide_index=True)
+        resultado = df[df.apply(lambda r: q_upper in " ".join([str(x).upper() for x in r.values]), axis=1)]
 
-    deliveries = result["delivery"].dropna().astype(str).tolist() if not result.empty and "delivery" in result else []
-    selected = st.selectbox("Selecione para editar/excluir", [""] + deliveries)
+    st.dataframe(resultado, use_container_width=True, hide_index=True)
+
+    st.subheader("Editar / excluir")
+    deliveries = resultado["delivery"].dropna().astype(str).tolist() if not resultado.empty and "delivery" in resultado.columns else []
+    selected = st.selectbox("Selecione uma delivery", [""] + deliveries)
+
     if selected:
         item = df[df["delivery"].astype(str) == selected].iloc[0].to_dict()
         with st.form("editar"):
-            c1,c2,c3 = st.columns(3)
-            data = c1.text_input("Data", item.get("data",""))
-            motorista = c2.text_input("Motorista", item.get("motorista",""))
-            delivery = c3.text_input("Delivery", item.get("delivery",""))
-            c4,c5,c6 = st.columns(3)
-            cliente = c4.text_input("Cliente", item.get("cliente",""))
-            unidade = c5.text_input("Unidade", item.get("unidade",""))
+            c1, c2, c3 = st.columns(3)
+            data = c1.text_input("Data", item.get("data", ""))
+            motorista = c2.text_input("Motorista", item.get("motorista", ""))
+            delivery = c3.text_input("Delivery", item.get("delivery", ""))
+
+            c4, c5, c6 = st.columns(3)
+            cliente = c4.text_input("Cliente", item.get("cliente", ""))
+            unidade = c5.text_input("Unidade", item.get("unidade", ""))
             paletes = c6.text_input("Paletes", str(item.get("paletes") or ""))
-            c7,c8,c9,c10 = st.columns(4)
+
+            c7, c8, c9, c10 = st.columns(4)
             valor = c7.text_input("Valor", str(item.get("valor_frete") or ""))
-            l_h = c8.text_input("L", item.get("l_horario",""))
-            c_h = c9.text_input("C", item.get("c_horario",""))
-            f_h = c10.text_input("F", item.get("f_horario",""))
-            status = st.text_input("Status", item.get("status",""))
-            tipo = st.text_input("Tipo", item.get("tipo",""))
-            obs = st.text_area("Observações", item.get("observacoes",""))
+            l_h = c8.text_input("L", item.get("l_horario", ""))
+            c_h = c9.text_input("C", item.get("c_horario", ""))
+            f_h = c10.text_input("F", item.get("f_horario", ""))
+
+            tipo = st.text_input("Tipo", item.get("tipo", ""))
+            status = st.text_input("Status", item.get("status", ""))
+            obs = st.text_area("Observações", item.get("observacoes", ""))
+
             if st.form_submit_button("Salvar alterações"):
-                upsert({"data":data,"motorista":motorista,"delivery":delivery,"cliente":cliente,"unidade":unidade,
-                        "paletes":numero(paletes),"valor_frete":numero(valor),"l_horario":l_h,"c_horario":c_h,
-                        "f_horario":f_h,"status":status,"tipo":tipo,"observacoes":obs})
-                st.success("Atualizado.")
+                linha = montar_linha({
+                    "data": data,
+                    "motorista": motorista,
+                    "delivery": delivery,
+                    "cliente": cliente,
+                    "unidade": unidade,
+                    "paletes": paletes,
+                    "valor_frete": valor,
+                    "l_horario": l_h,
+                    "c_horario": c_h,
+                    "f_horario": f_h,
+                    "tipo": tipo,
+                    "status": status,
+                    "observacoes": obs,
+                })
+                supabase.table("deliveries").upsert(linha, on_conflict="delivery").execute()
+                st.success("Atualizado com sucesso.")
+
         if st.button("Excluir delivery selecionada"):
-            excluir(selected)
-            st.warning("Excluída.")
+            supabase.table("deliveries").delete().eq("delivery", selected).execute()
+            st.warning("Delivery excluída.")
 
-with tab2:
-    with st.form("novo"):
-        data = st.text_input("Data")
-        motorista = st.text_input("Motorista")
-        delivery = st.text_input("Delivery")
-        cliente = st.text_input("Cliente")
-        unidade = st.text_input("Unidade")
-        paletes = st.text_input("Paletes")
-        valor = st.text_input("Valor")
-        l_h = st.text_input("L")
-        c_h = st.text_input("C")
-        f_h = st.text_input("F")
-        status = st.text_input("Status")
-        tipo = st.text_input("Tipo")
-        obs = st.text_area("Observações")
-        if st.form_submit_button("Salvar"):
-            upsert({"data":data,"motorista":motorista,"delivery":delivery,"cliente":cliente,"unidade":unidade,
-                    "paletes":numero(paletes),"valor_frete":numero(valor),"l_horario":l_h,"c_horario":c_h,
-                    "f_horario":f_h,"status":status,"tipo":tipo,"observacoes":obs})
-            st.success("Salvo.")
+with tab_importar:
+    st.subheader("Importar Excel mestre para a nuvem")
+    st.info("Use esta aba para enviar o Excel mestre atual. Ele vai criar deliveries novas e atualizar as existentes sem duplicar.")
 
-with tab3:
-    st.write(f"Registros na nuvem: {len(df)}")
-    st.download_button("Baixar Excel mestre atualizado", data=excel_bytes(df),
-                       file_name="excel_mestre_operacional.xlsx",
-                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    arquivo = st.file_uploader("Enviar Excel mestre (.xlsx)", type=["xlsx"])
+
+    if arquivo:
+        abas = pd.read_excel(arquivo, sheet_name=None)
+        nomes = list(abas.keys())
+        aba = st.selectbox("Escolha a aba para importar", nomes)
+
+        preview = normalizar_colunas(abas[aba])
+        st.write("Prévia da importação:")
+        st.dataframe(preview.head(50), use_container_width=True)
+
+        if st.button("Confirmar importação para Supabase"):
+            total = upsert_linhas(preview)
+            st.success(f"{total} registros importados/atualizados na nuvem.")
+
+with tab_excel:
+    st.subheader("Baixar Excel mestre atualizado")
+    df_atual = listar()
+    st.write(f"Registros na nuvem: {len(df_atual)}")
+
+    st.download_button(
+        "⬇️ Baixar Excel mestre",
+        data=excel_bytes(df_atual),
+        file_name="excel_mestre_operacional.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    st.dataframe(df_atual, use_container_width=True, hide_index=True)
