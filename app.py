@@ -170,11 +170,37 @@ with tab_busca:
     st.dataframe(resultado, use_container_width=True, hide_index=True)
 
     st.subheader("Editar / excluir")
-    deliveries = resultado["delivery"].dropna().astype(str).tolist() if not resultado.empty and "delivery" in resultado.columns else []
-    selected = st.selectbox("Selecione uma delivery", [""] + deliveries)
+    resultado["delivery"] = resultado["delivery"].fillna("")
+resultado["sr"] = resultado["sr"].fillna("")
+resultado["motorista"] = resultado["motorista"].fillna("")
+resultado["cliente"] = resultado["cliente"].fillna("")
+
+resultado["label_edicao"] = (
+    "ID "
+    + resultado["id"].astype(str)
+    + " | Delivery: "
+    + resultado["delivery"].astype(str)
+    + " | SR: "
+    + resultado["sr"].astype(str)
+    + " | Motorista: "
+    + resultado["motorista"].astype(str)
+    + " | Cliente: "
+    + resultado["cliente"].astype(str)
+)
+
+selected = st.selectbox(
+    "Selecione um registro",
+    [""] + resultado["label_edicao"].tolist()
+)
 
     if selected:
-        item = df[df["delivery"].astype(str) == selected].iloc[0].to_dict()
+        id_selecionado = int(
+    selected.split("|")[0]
+    .replace("ID", "")
+    .strip()
+)
+
+item = df[df["id"] == id_selecionado].iloc[0].to_dict()
         with st.form("editar"):
             c1, c2, c3 = st.columns(3)
             data = c1.text_input("Data", item.get("data", ""))
