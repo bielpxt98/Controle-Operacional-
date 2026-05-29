@@ -188,13 +188,12 @@ resultado["label_edicao"] = (
     + resultado["cliente"].astype(str)
 )
 
-selected = st.selectbox(
-    "Selecione um registro",
+selected = st.selectbox("Selecione um registro",
     [""] + resultado["label_edicao"].tolist()
 )
 
     if selected:
-        id_selecionado = int(
+    id_selecionado = int(
     selected.split("|")[0]
     .replace("ID", "")
     .strip()
