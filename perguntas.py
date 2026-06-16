@@ -347,14 +347,14 @@ def _linhas_resumo(df: pd.DataFrame) -> str:
     return "\n".join(linhas) + sufixo
 
 
-def responder_pergunta(pergunta: str, caminho_dados: str) -> str:
-    """Responde perguntas operacionais por palavras-chave e pandas.
+def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
+    """Responde perguntas operacionais sobre um DataFrame já carregado.
 
-    Exemplos aceitos: coletas de um motorista hoje/no mês, coletas sem FI,
-    sem C, com bloqueio/deslocamento, remessas do mês, valor por motorista e
-    motorista com mais coletas.
+    Use esta função quando os dados vêm do app/Supabase. Ela reaproveita a
+    mesma normalização usada para CSV, Excel e SQLite antes de interpretar a
+    pergunta.
     """
-    df = carregar_dados(caminho_dados)
+    df = _normalizar_colunas(dados.copy())
     pergunta_norm = _sem_acentos(pergunta)
     df_mes = _periodo_mes(df)
     motorista = _extrair_motorista(pergunta, df["motorista"].dropna().astype(str))
@@ -411,10 +411,27 @@ def responder_pergunta(pergunta: str, caminho_dados: str) -> str:
 
     if "MES" in pergunta_norm or "MÊS" in pergunta_norm:
         base = _filtrar_motorista(df_mes, motorista)
+        if motorista and ("QUANT" in pergunta_norm or "FEZ" in pergunta_norm):
+            primeiro_nome = motorista.split()[0]
+            return f"{primeiro_nome} realizou {len(base)} coleta(s) este mês.".upper()
         alvo = f" de {motorista}" if motorista else ""
         return f"Coletas{alvo} no mês atual: {len(base)}."
+
+    if (
+        motorista
+        and "COLETA" in pergunta_norm
+        and ("QUANT" in pergunta_norm or "FEZ" in pergunta_norm)
+    ):
+        base = _filtrar_motorista(df, motorista)
+        primeiro_nome = motorista.split()[0]
+        return f"{primeiro_nome} realizou {len(base)} coleta(s).".upper()
 
     return (
         "Não entendi a pergunta. Tente perguntar sobre: hoje, mês, cada motorista, "
         "sem FI, sem C, bloqueio, deslocamento, remessas, valor por motorista ou motorista com mais coletas."
     )
+
+
+def responder_pergunta(pergunta: str, caminho_dados: str) -> str:
+    """Carrega uma fonte local e responde perguntas operacionais."""
+    return responder_pergunta_df(pergunta, carregar_dados(caminho_dados))

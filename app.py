@@ -9,6 +9,7 @@ from datetime import datetime
 from supabase import create_client
 from google import genai
 from google.genai import types
+from perguntas import responder_pergunta_df
 
 
 ST_CROPPER_DISPONIVEL = importlib.util.find_spec("streamlit_cropper") is not None
@@ -1157,14 +1158,28 @@ with tab_busca:
     resultado = df.copy()
 
     if q and not df.empty:
-        q_upper = q.upper()
+        q_limpo = limpar_busca(q)
+        parece_pergunta = q.strip().endswith("?") or any(
+            termo in q_limpo
+            for termo in [
+                "QUANT", "QUAL", "QUAIS", "QUEM", "COLETAS", "REMESS", "SEM FI", "SEM C"
+            ]
+        )
 
-        resultado = df[
-            df.apply(
-                lambda r: q_upper in " ".join([str(x).upper() for x in r.values]),
-                axis=1,
-            )
-        ]
+        if parece_pergunta:
+            try:
+                resposta_pergunta = responder_pergunta_df(q, df)
+                st.success(resposta_pergunta)
+            except Exception as e:
+                st.error(f"Erro ao interpretar pergunta: {e}")
+        else:
+            q_upper = q.upper()
+            resultado = df[
+                df.apply(
+                    lambda r: q_upper in " ".join([str(x).upper() for x in r.values]),
+                    axis=1,
+                )
+            ]
 
     st.dataframe(resultado, use_container_width=True, hide_index=True)
 
