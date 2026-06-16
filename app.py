@@ -280,6 +280,46 @@ DATA 15/06/2026 M JEAN D 3787805566 P 117 CL ASSAÍ PARIPE V 1021,05 L 08:08 C 0
 """.strip()
 
 
+
+
+def redimensionar_imagem_para_cropper(imagem, largura_maxima=900):
+    largura, altura = imagem.size
+
+    if largura <= largura_maxima:
+        return imagem.copy(), 1.0
+
+    escala = largura_maxima / largura
+    nova_altura = max(1, int(altura * escala))
+    imagem_redimensionada = imagem.resize(
+        (largura_maxima, nova_altura),
+        Image.Resampling.LANCZOS,
+    )
+
+    return imagem_redimensionada, escala
+
+
+def recortar_imagem_original_por_caixa(imagem_original, caixa_cropper, escala):
+    if not caixa_cropper or escala <= 0:
+        return imagem_original
+
+    try:
+        esquerda = int(caixa_cropper.get("left", 0) / escala)
+        superior = int(caixa_cropper.get("top", 0) / escala)
+        largura = int(caixa_cropper.get("width", imagem_original.width * escala) / escala)
+        altura = int(caixa_cropper.get("height", imagem_original.height * escala) / escala)
+    except (AttributeError, TypeError, ValueError):
+        return imagem_original
+
+    direita = esquerda + largura
+    inferior = superior + altura
+
+    esquerda = max(0, min(esquerda, imagem_original.width - 1))
+    superior = max(0, min(superior, imagem_original.height - 1))
+    direita = max(esquerda + 1, min(direita, imagem_original.width))
+    inferior = max(superior + 1, min(inferior, imagem_original.height))
+
+    return imagem_original.crop((esquerda, superior, direita, inferior))
+
 def interpretar_folha_com_gemini(imagem_bytes, mime_type="image/png"):
     api_key = obter_gemini_api_key()
 
@@ -984,47 +1024,65 @@ with tab_ler_folha:
             chave_imagem_usada = f"imagem_cortada_ler_folha_{chave_corte}"
 
             st.caption(
-                "Arraste uma caixa sobre a imagem para selecionar um corte. "
-                "Se você não clicar em Usar imagem cortada, a imagem inteira girada será usada."
+                "Primeiro confira a imagem completa abaixo. Depois, se precisar, "
+                "arraste uma caixa no cropper. A imagem é reduzida apenas para caber "
+                "na tela; o corte enviado ao Gemini é feito na resolução original."
             )
 
-            col_original, col_corte = st.columns(2)
-            with col_original:
-                st.image(imagem_girada, caption="Imagem original/girada", use_container_width=True)
+            st.image(
+                imagem_girada,
+                caption="Imagem original completa",
+                use_container_width=True,
+            )
 
-            with col_corte:
-                if ST_CROPPER_DISPONIVEL:
-                    imagem_cortada_preview = st_cropper(
-                        imagem_girada,
-                        realtime_update=True,
-                        box_color="#1f77b4",
-                        aspect_ratio=None,
-                        return_type="image",
-                        key=f"cropper_ler_folha_{chave_corte}",
-                    )
-                else:
-                    st.warning(
-                        "O streamlit-cropper não está instalado neste ambiente. "
-                        "Instale as dependências do requirements.txt para habilitar o corte por arrastar."
-                    )
-                    largura, altura = imagem_girada.size
-                    x_inicio = st.slider("Corte esquerdo", 0, max(largura - 1, 0), 0)
-                    y_inicio = st.slider("Corte superior", 0, max(altura - 1, 0), 0)
-                    x_fim = st.slider("Corte direito", 1, largura, largura)
-                    y_fim = st.slider("Corte inferior", 1, altura, altura)
-                    imagem_cortada_preview = imagem_girada.crop((x_inicio, y_inicio, x_fim, y_fim))
+            imagem_cropper, escala_cropper = redimensionar_imagem_para_cropper(
+                imagem_girada,
+                largura_maxima=900,
+            )
 
-                st.image(
-                    imagem_cortada_preview,
-                    caption="Imagem cortada (prévia)",
-                    use_container_width=True,
+            st.markdown("**Cropper (imagem completa visível, sem zoom automático)**")
+            st.caption(
+                f"Imagem no cropper: {imagem_cropper.width} × {imagem_cropper.height} px. "
+                f"Imagem original: {imagem_girada.width} × {imagem_girada.height} px."
+            )
+
+            if ST_CROPPER_DISPONIVEL:
+                caixa_cropper = st_cropper(
+                    imagem_cropper,
+                    realtime_update=True,
+                    box_color="#1f77b4",
+                    aspect_ratio=None,
+                    return_type="box",
+                    key=f"cropper_ler_folha_{chave_corte}",
                 )
+                imagem_cortada_preview = recortar_imagem_original_por_caixa(
+                    imagem_girada,
+                    caixa_cropper,
+                    escala_cropper,
+                )
+            else:
+                st.warning(
+                    "O streamlit-cropper não está instalado neste ambiente. "
+                    "Instale as dependências do requirements.txt para habilitar o corte por arrastar."
+                )
+                largura, altura = imagem_girada.size
+                x_inicio = st.slider("Corte esquerdo", 0, max(largura - 1, 0), 0)
+                y_inicio = st.slider("Corte superior", 0, max(altura - 1, 0), 0)
+                x_fim = st.slider("Corte direito", 1, largura, largura)
+                y_fim = st.slider("Corte inferior", 1, altura, altura)
+                imagem_cortada_preview = imagem_girada.crop((x_inicio, y_inicio, x_fim, y_fim))
 
-                if st.button("Usar imagem cortada", key=f"usar_imagem_cortada_{chave_corte}"):
-                    buffer_corte = BytesIO()
-                    imagem_cortada_preview.convert("RGB").save(buffer_corte, format="PNG")
-                    st.session_state[chave_imagem_usada] = buffer_corte.getvalue()
-                    st.success("Imagem cortada selecionada para a leitura.")
+            st.image(
+                imagem_cortada_preview,
+                caption="Imagem cortada (prévia em boa resolução)",
+                use_container_width=True,
+            )
+
+            if st.button("Usar imagem cortada", key=f"usar_imagem_cortada_{chave_corte}"):
+                buffer_corte = BytesIO()
+                imagem_cortada_preview.convert("RGB").save(buffer_corte, format="PNG")
+                st.session_state[chave_imagem_usada] = buffer_corte.getvalue()
+                st.success("Imagem cortada selecionada para a leitura.")
 
             if chave_imagem_usada in st.session_state:
                 imagem_final_bytes = st.session_state[chave_imagem_usada]
