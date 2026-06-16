@@ -355,6 +355,23 @@ def recortar_imagem_original_por_caixa(imagem_original, caixa_cropper, escala):
 
 
 
+def recortar_imagem_por_percentuais(imagem, topo=0, baixo=0, esquerda=0, direita=0):
+    """Recorta a imagem usando percentuais de 0 a 50% em cada borda."""
+    largura, altura = imagem.size
+
+    corte_topo = int(altura * (topo / 100))
+    corte_baixo = int(altura * (baixo / 100))
+    corte_esquerda = int(largura * (esquerda / 100))
+    corte_direita = int(largura * (direita / 100))
+
+    x_inicio = max(0, min(corte_esquerda, largura - 1))
+    y_inicio = max(0, min(corte_topo, altura - 1))
+    x_fim = max(x_inicio + 1, min(largura - corte_direita, largura))
+    y_fim = max(y_inicio + 1, min(altura - corte_baixo, altura))
+
+    return imagem.crop((x_inicio, y_inicio, x_fim, y_fim))
+
+
 def detectar_modo_celular_ler_folha():
     """Retorna preferências de layout para a aba Ler folha.
 
@@ -1420,71 +1437,121 @@ with tab_ler_folha:
             if modo_celular and chave_usar_inteira not in st.session_state and chave_imagem_usada not in st.session_state:
                 st.session_state[chave_usar_inteira] = True
 
-            st.caption(
-                "Confira a imagem completa. Se precisar, use o cropper abaixo. "
-                "A prévia é reduzida apenas para caber na tela; o arquivo enviado ao Gemini "
-                "mantém a proporção e usa o corte na resolução original."
-            )
-
-            st.image(
-                imagem_girada,
-                caption="Imagem completa",
-                use_container_width=True,
-            )
-
-            if st.button("✅ Usar imagem inteira", key=f"usar_imagem_inteira_{chave_corte}"):
-                st.session_state[chave_usar_inteira] = True
-                st.session_state.pop(chave_imagem_usada, None)
-                st.success("Imagem inteira selecionada para a leitura.")
-
-            imagem_cropper, escala_cropper = redimensionar_imagem_para_cropper(
-                imagem_girada,
-                largura_maxima=largura_cropper,
-            )
-
-            with st.expander("✂️ Cortar imagem", expanded=not modo_celular):
-                st.markdown("**Cropper (imagem completa visível, sem zoom automático)**")
+            if modo_celular:
                 st.caption(
-                    f"Imagem no cropper: {imagem_cropper.width} × {imagem_cropper.height} px. "
-                    f"Imagem original: {imagem_girada.width} × {imagem_girada.height} px."
+                    "Ajuste o corte por porcentagem. A prévia abaixo atualiza em tempo real "
+                    "e o Gemini receberá a imagem selecionada pelos botões."
                 )
 
-                if ST_CROPPER_DISPONIVEL:
-                    caixa_cropper = st_cropper(
-                        imagem_cropper,
-                        realtime_update=True,
-                        box_color="#1f77b4",
-                        aspect_ratio=None,
-                        return_type="box",
-                        key=f"cropper_ler_folha_{chave_corte}",
-                    )
-                    imagem_cortada_preview = recortar_imagem_original_por_caixa(
-                        imagem_girada,
-                        caixa_cropper,
-                        escala_cropper,
-                    )
-                else:
-                    st.warning(
-                        "O streamlit-cropper não está instalado neste ambiente. "
-                        "Instale as dependências do requirements.txt para habilitar o corte por arrastar."
-                    )
-                    largura, altura = imagem_girada.size
-                    x_inicio = st.slider("Corte esquerdo", 0, max(largura - 1, 0), 0)
-                    y_inicio = st.slider("Corte superior", 0, max(altura - 1, 0), 0)
-                    x_fim = st.slider("Corte direito", 1, largura, largura)
-                    y_fim = st.slider("Corte inferior", 1, altura, altura)
-                    imagem_cortada_preview = imagem_girada.crop((x_inicio, y_inicio, x_fim, y_fim))
+                chaves_sliders = {
+                    "topo": f"corte_topo_ler_folha_{chave_corte}",
+                    "baixo": f"corte_baixo_ler_folha_{chave_corte}",
+                    "esquerda": f"corte_esquerda_ler_folha_{chave_corte}",
+                    "direita": f"corte_direita_ler_folha_{chave_corte}",
+                }
+
+                if st.button("Resetar corte", key=f"resetar_corte_{chave_corte}"):
+                    for chave_slider in chaves_sliders.values():
+                        st.session_state[chave_slider] = 0
+                    st.session_state.pop(chave_imagem_usada, None)
+                    st.session_state[chave_usar_inteira] = True
+                    st.success("Corte resetado. A imagem inteira está selecionada para a leitura.")
+                    st.rerun()
+
+                corte_topo = st.slider("Cortar topo", 0, 50, 0, 1, format="%d%%", key=chaves_sliders["topo"])
+                corte_baixo = st.slider("Cortar baixo", 0, 50, 0, 1, format="%d%%", key=chaves_sliders["baixo"])
+                corte_esquerda = st.slider("Cortar esquerda", 0, 50, 0, 1, format="%d%%", key=chaves_sliders["esquerda"])
+                corte_direita = st.slider("Cortar direita", 0, 50, 0, 1, format="%d%%", key=chaves_sliders["direita"])
+
+                imagem_cortada_preview = recortar_imagem_por_percentuais(
+                    imagem_girada,
+                    topo=corte_topo,
+                    baixo=corte_baixo,
+                    esquerda=corte_esquerda,
+                    direita=corte_direita,
+                )
 
                 st.image(
                     imagem_cortada_preview,
-                    caption="Imagem cortada (prévia abaixo da imagem)",
+                    caption="Prévia da imagem cortada",
                     use_container_width=True,
                 )
 
-                if st.button("✂️ Cortar imagem", key=f"usar_imagem_cortada_{chave_corte}"):
+                if st.button("Usar imagem cortada", key=f"usar_imagem_cortada_{chave_corte}"):
                     st.session_state[chave_imagem_usada] = imagem_para_png_bytes(imagem_cortada_preview)
                     st.session_state[chave_usar_inteira] = False
                     st.success("Imagem cortada selecionada para a leitura.")
+
+                if st.button("Usar imagem inteira", key=f"usar_imagem_inteira_{chave_corte}"):
+                    st.session_state[chave_usar_inteira] = True
+                    st.session_state.pop(chave_imagem_usada, None)
+                    st.success("Imagem inteira selecionada para a leitura.")
+            else:
+                st.caption(
+                    "Confira a imagem completa. Se precisar, use o cropper abaixo. "
+                    "A prévia é reduzida apenas para caber na tela; o arquivo enviado ao Gemini "
+                    "mantém a proporção e usa o corte na resolução original."
+                )
+
+                st.image(
+                    imagem_girada,
+                    caption="Imagem completa",
+                    use_container_width=True,
+                )
+
+                if st.button("✅ Usar imagem inteira", key=f"usar_imagem_inteira_{chave_corte}"):
+                    st.session_state[chave_usar_inteira] = True
+                    st.session_state.pop(chave_imagem_usada, None)
+                    st.success("Imagem inteira selecionada para a leitura.")
+
+                imagem_cropper, escala_cropper = redimensionar_imagem_para_cropper(
+                    imagem_girada,
+                    largura_maxima=largura_cropper,
+                )
+
+                with st.expander("✂️ Cortar imagem", expanded=True):
+                    st.markdown("**Cropper (imagem completa visível, sem zoom automático)**")
+                    st.caption(
+                        f"Imagem no cropper: {imagem_cropper.width} × {imagem_cropper.height} px. "
+                        f"Imagem original: {imagem_girada.width} × {imagem_girada.height} px."
+                    )
+
+                    if ST_CROPPER_DISPONIVEL:
+                        caixa_cropper = st_cropper(
+                            imagem_cropper,
+                            realtime_update=True,
+                            box_color="#1f77b4",
+                            aspect_ratio=None,
+                            return_type="box",
+                            key=f"cropper_ler_folha_{chave_corte}",
+                        )
+                        imagem_cortada_preview = recortar_imagem_original_por_caixa(
+                            imagem_girada,
+                            caixa_cropper,
+                            escala_cropper,
+                        )
+                    else:
+                        st.warning(
+                            "O streamlit-cropper não está instalado neste ambiente. "
+                            "Instale as dependências do requirements.txt para habilitar o corte por arrastar."
+                        )
+                        largura, altura = imagem_girada.size
+                        x_inicio = st.slider("Corte esquerdo", 0, max(largura - 1, 0), 0)
+                        y_inicio = st.slider("Corte superior", 0, max(altura - 1, 0), 0)
+                        x_fim = st.slider("Corte direito", 1, largura, largura)
+                        y_fim = st.slider("Corte inferior", 1, altura, altura)
+                        imagem_cortada_preview = imagem_girada.crop((x_inicio, y_inicio, x_fim, y_fim))
+
+                    st.image(
+                        imagem_cortada_preview,
+                        caption="Imagem cortada (prévia abaixo da imagem)",
+                        use_container_width=True,
+                    )
+
+                    if st.button("✂️ Cortar imagem", key=f"usar_imagem_cortada_{chave_corte}"):
+                        st.session_state[chave_imagem_usada] = imagem_para_png_bytes(imagem_cortada_preview)
+                        st.session_state[chave_usar_inteira] = False
+                        st.success("Imagem cortada selecionada para a leitura.")
 
             if chave_imagem_usada in st.session_state and not st.session_state.get(chave_usar_inteira, False):
                 imagem_final_bytes = st.session_state[chave_imagem_usada]
