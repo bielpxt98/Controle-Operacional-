@@ -3,6 +3,6 @@ pandas
 openpyxl
 supabase
 xlsxwriter
-
 google-genai
 Pillow
+streamlit-cropper
