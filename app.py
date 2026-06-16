@@ -801,6 +801,150 @@ def atualizar_rapido_no_supabase(parsed):
     return "criado"
 
 
+
+
+ACOES_CONVERSA = {
+    "FINALIZACAO": ["FINALIZOU", "FINALIZADO", "FINAL", "FI", "F"],
+    "BLOQUEIO": ["BLOQUEIO", "BLOQUEADO", "B"],
+    "DESLOCAMENTO": ["DESLOCAMENTO", "DESLOCOU", "D"],
+}
+
+
+def parse_atualizacao_conversa(frase):
+    original = texto(frase)
+    if not original:
+        return None, "Digite uma frase para interpretar."
+
+    horario_match = re.search(r"\b([0-2]?\d[:hH][0-5]\d)\b", original)
+    horario = normalizar_horario(horario_match.group(1)) if horario_match else ""
+    if not horario:
+        return None, "Não encontrei horário no formato HH:MM."
+
+    motorista = ""
+    for nome in MOTORISTAS_FIXOS:
+        primeiro_nome = nome.split()[0]
+        if re.search(rf"\b{re.escape(primeiro_nome)}\b", limpar_busca(original)):
+            motorista = nome
+            break
+
+    if not motorista:
+        motorista_normalizado = normalizar_motorista(original)
+        if motorista_normalizado in MOTORISTAS_FIXOS:
+            motorista = motorista_normalizado
+
+    if not motorista:
+        return None, "Não encontrei o motorista na frase."
+
+    acao = ""
+    texto_limpo = limpar_busca(original)
+    for acao_candidata, aliases in ACOES_CONVERSA.items():
+        if any(re.search(rf"\b{re.escape(alias)}\b", texto_limpo) for alias in aliases):
+            acao = acao_candidata
+            break
+
+    if not acao:
+        return None, "Não encontrei ação válida: finalizou, bloqueio ou deslocamento."
+
+    numeros = re.findall(r"\b\d{4,}\b", original)
+    final_delivery = numeros[-1] if numeros else ""
+    if not final_delivery:
+        return None, "Não encontrei final do delivery com 4 ou mais números."
+
+    texto_cliente = re.sub(r"\b[0-2]?\d[:hH][0-5]\d\b", " ", original)
+    texto_cliente = re.sub(r"\b\d{4,}\b", " ", texto_cliente)
+
+    palavras_remover = {
+        "A", "AS", "ÀS", "O", "OS", "DE", "DO", "DA", "DOS", "DAS", "EM", "NO", "NA",
+        "NOS", "NAS", "AO", "AOS", "ATE", "ATÉ",
+    }
+    palavras_remover.update(limpar_busca(motorista).split())
+    for aliases in ACOES_CONVERSA.values():
+        palavras_remover.update(aliases)
+
+    palavras_cliente = [
+        palavra
+        for palavra in re.findall(r"[\wÀ-ÿ.]+", texto_cliente, flags=re.UNICODE)
+        if limpar_busca(palavra) not in palavras_remover
+    ]
+    cliente = normalizar_cliente_rapido(" ".join(palavras_cliente))
+
+    if not cliente:
+        return None, "Não encontrei cliente na frase."
+
+    observacoes = None
+    if acao == "BLOQUEIO":
+        observacoes = f"BLOQUEIO {horario}"
+    elif acao == "DESLOCAMENTO":
+        observacoes = f"DESLOCAMENTO {horario}"
+
+    return {
+        "motorista": motorista,
+        "horario": horario,
+        "final_delivery": final_delivery,
+        "cliente": cliente,
+        "acao": acao,
+        "observacoes": observacoes,
+    }, None
+
+
+def cliente_combina(cliente_registro, cliente_busca):
+    registro = limpar_busca(cliente_registro)
+    busca = limpar_busca(cliente_busca)
+
+    if not busca:
+        return True
+    if busca in registro or registro in busca:
+        return True
+
+    palavras = [p for p in busca.split() if len(p) > 1]
+    if not palavras:
+        return False
+
+    return all(p in registro for p in palavras)
+
+
+def buscar_coletas_por_conversa(df_base, parsed):
+    if df_base.empty:
+        return pd.DataFrame()
+
+    resultado = df_base.copy()
+    for coluna in ["motorista", "delivery", "cliente", "f_horario"]:
+        if coluna not in resultado.columns:
+            resultado[coluna] = ""
+
+    resultado = resultado[
+        resultado["motorista"].apply(lambda v: normalizar_motorista(v) == parsed["motorista"])
+        & resultado["delivery"].apply(
+            lambda v: re.sub(r"\D", "", texto(v)).endswith(parsed["final_delivery"])
+        )
+        & resultado["cliente"].apply(lambda v: cliente_combina(v, parsed["cliente"]))
+    ].copy()
+
+    if resultado.empty:
+        return resultado
+
+    resultado["_sem_fi"] = resultado["f_horario"].apply(lambda v: not bool(texto(v)))
+    resultado = resultado.sort_values("_sem_fi", ascending=False, kind="mergesort")
+    return resultado.drop(columns=["_sem_fi"])
+
+
+def campos_atualizacao_conversa(parsed):
+    campos = {
+        "f_horario": parsed["horario"],
+        "atualizado_em": datetime.now().isoformat(),
+    }
+    if parsed.get("observacoes"):
+        campos["observacoes"] = parsed["observacoes"]
+    return campos
+
+
+def atualizar_conversa_no_supabase(id_registro, parsed):
+    supabase.table("deliveries").update(campos_atualizacao_conversa(parsed)).eq(
+        "id",
+        int(id_registro),
+    ).execute()
+
+
 def excel_bytes(df):
     out = BytesIO()
 
@@ -812,10 +956,11 @@ def excel_bytes(df):
 
 admin = autenticar_admin()
 
-tab_busca, tab_rapida, tab_ler_folha, tab_importar, tab_admin = st.tabs(
+tab_busca, tab_rapida, tab_conversa, tab_ler_folha, tab_importar, tab_admin = st.tabs(
     [
         "Buscar / visualizar",
         "Atualização rápida",
+        "Atualização por conversa",
         "Ler folha",
         "Importar Excel mestre",
         "Administração",
@@ -1050,6 +1195,87 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                         st.write(f"- {erro}")
 
                 st.caption("Atualize a página ou volte na aba Buscar / editar para conferir os dados.")
+
+
+with tab_conversa:
+    st.subheader("Atualização por conversa")
+
+    if not admin:
+        st.warning("Apenas administradores podem usar a atualização por conversa.")
+    else:
+        st.info(
+            "Digite uma frase natural. A interpretação usa somente regras locais "
+            "e a atualização só acontece depois da confirmação."
+        )
+        frase_conversa = st.text_input(
+            "Frase da atualização",
+            placeholder="Jean finalizou 5422 mercantil às 19:49",
+        )
+
+        if st.button("Buscar coleta", type="primary"):
+            parsed, erro = parse_atualizacao_conversa(frase_conversa)
+            st.session_state.pop("conversa_parsed", None)
+            st.session_state.pop("conversa_resultados", None)
+
+            if erro:
+                st.error(erro)
+            else:
+                resultados = buscar_coletas_por_conversa(df, parsed)
+                if resultados.empty:
+                    st.warning(
+                        "Nenhuma coleta encontrada. Informe mais detalhes, como final do delivery, cliente ou data."
+                    )
+                else:
+                    st.session_state["conversa_parsed"] = parsed
+                    st.session_state["conversa_resultados"] = resultados.to_dict("records")
+
+        parsed_conversa = st.session_state.get("conversa_parsed")
+        resultados_conversa = st.session_state.get("conversa_resultados") or []
+
+        if parsed_conversa and resultados_conversa:
+            st.write(
+                f"**Interpretação:** motorista {parsed_conversa['motorista']}, "
+                f"delivery final {parsed_conversa['final_delivery']}, "
+                f"cliente {parsed_conversa['cliente']}, FI {parsed_conversa['horario']}."
+            )
+
+            if len(resultados_conversa) == 1:
+                item = resultados_conversa[0]
+                st.code(f"D {texto(item.get('delivery'))} FI {parsed_conversa['horario']}")
+                if parsed_conversa.get("observacoes"):
+                    st.caption(f"Observações: {parsed_conversa['observacoes']}")
+
+                if st.button("Confirmar atualização", key="confirmar_conversa_unica"):
+                    atualizar_conversa_no_supabase(item["id"], parsed_conversa)
+                    st.success("Coleta atualizada.")
+                    st.session_state.pop("conversa_parsed", None)
+                    st.session_state.pop("conversa_resultados", None)
+                    st.rerun()
+            else:
+                opcoes = {
+                    f"ID {texto(item.get('id'))} | {texto(item.get('data'))} | {texto(item.get('motorista'))} | "
+                    f"D {texto(item.get('delivery'))} | {texto(item.get('cliente'))} | "
+                    f"L {texto(item.get('l_horario'))} | C {texto(item.get('c_horario'))} | FI {texto(item.get('f_horario'))}": item["id"]
+                    for item in resultados_conversa
+                }
+                st.dataframe(
+                    pd.DataFrame(resultados_conversa)[
+                        [col for col in ["id", "data", "motorista", "delivery", "cliente", "l_horario", "c_horario", "f_horario"] if col in pd.DataFrame(resultados_conversa).columns]
+                    ],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                escolha = st.selectbox("Selecione a coleta para atualizar", list(opcoes.keys()))
+                st.code(f"FI {parsed_conversa['horario']}")
+                if parsed_conversa.get("observacoes"):
+                    st.caption(f"Observações: {parsed_conversa['observacoes']}")
+
+                if st.button("Confirmar atualização", key="confirmar_conversa_multipla"):
+                    atualizar_conversa_no_supabase(opcoes[escolha], parsed_conversa)
+                    st.success("Coleta atualizada.")
+                    st.session_state.pop("conversa_parsed", None)
+                    st.session_state.pop("conversa_resultados", None)
+                    st.rerun()
 
 
 with tab_ler_folha:
