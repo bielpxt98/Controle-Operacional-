@@ -353,6 +353,77 @@ def recortar_imagem_original_por_caixa(imagem_original, caixa_cropper, escala):
 
     return imagem_original.crop((esquerda, superior, direita, inferior))
 
+
+
+def detectar_modo_celular_ler_folha():
+    """Retorna preferências de layout para a aba Ler folha.
+
+    Streamlit não expõe uma largura de viewport confiável no backend em todas as
+    versões. Por isso, combinamos CSS responsivo para telas pequenas com um
+    controle explícito de modo celular para garantir uma experiência previsível.
+    """
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stVerticalBlock"]:has(.ler-folha-mobile-css) .stButton > button {
+            width: 100%;
+            min-height: 3.2rem;
+            font-size: 1.05rem;
+            font-weight: 700;
+            border-radius: 0.8rem;
+            margin: 0.15rem 0;
+        }
+        div[data-testid="stVerticalBlock"]:has(.ler-folha-mobile-css) img {
+            max-width: 100%;
+            height: auto;
+            object-fit: contain;
+        }
+        @media (max-width: 760px) {
+            div[data-testid="stVerticalBlock"]:has(.ler-folha-mobile-css) {
+                gap: 0.55rem;
+            }
+            div[data-testid="stVerticalBlock"]:has(.ler-folha-mobile-css) .stButton > button {
+                min-height: 3.6rem;
+                font-size: 1.1rem;
+            }
+            div[data-testid="stVerticalBlock"]:has(.ler-folha-mobile-css) [data-testid="column"] {
+                width: 100% !important;
+                flex: 1 1 100% !important;
+            }
+        }
+        </style>
+        <span class="ler-folha-mobile-css"></span>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    modo_celular = st.toggle(
+        "Modo Celular",
+        value=st.session_state.get("modo_celular_ler_folha", False),
+        key="modo_celular_ler_folha",
+        help=(
+            "Ative no celular ou quando a tela estiver estreita. O layout fica em "
+            "coluna única, com botões grandes e a imagem inteira como padrão."
+        ),
+    )
+
+    if modo_celular:
+        largura_cropper = 360
+        st.caption(
+            "Modo Celular ativo: uma imagem por vez, corte abaixo da foto e "
+            "imagem inteira priorizada para leitura."
+        )
+    else:
+        largura_cropper = 900
+
+    return modo_celular, largura_cropper
+
+
+def imagem_para_png_bytes(imagem):
+    buffer = BytesIO()
+    imagem.convert("RGB").save(buffer, format="PNG")
+    return buffer.getvalue()
+
 def interpretar_folha_com_gemini(imagem_bytes, mime_type="image/png"):
     api_key = obter_gemini_api_key()
 
@@ -1299,115 +1370,136 @@ with tab_ler_folha:
         if st.button("Testar Gemini"):
             testar_gemini()
 
+        erro_imagem = None
+        imagem_bytes = None
+
         if arquivo_folha:
             imagem_bytes, _, erro_imagem = validar_imagem_gemini(arquivo_folha)
 
             if erro_imagem:
                 st.error(erro_imagem)
-            else:
-                st.image(imagem_bytes, caption="Imagem enviada", use_container_width=True)
 
         imagem_final_bytes = None
         imagem_final_mime = "image/png"
 
         if arquivo_folha and not erro_imagem:
+            modo_celular, largura_cropper = detectar_modo_celular_ler_folha()
             imagem_original = ImageOps.exif_transpose(Image.open(BytesIO(imagem_bytes))).convert("RGB")
 
             st.markdown("**Preparar imagem antes da leitura**")
-            rotacao = st.radio(
-                "Girar imagem",
-                options=[0, 90, -90, 180],
-                format_func=lambda valor: {
-                    0: "Não girar",
-                    90: "90° para esquerda",
-                    -90: "90° para direita",
-                    180: "180°",
-                }[valor],
-                horizontal=True,
-                key="rotacao_ler_folha",
-            )
+            if modo_celular:
+                rotacao_atual = st.session_state.get("rotacao_ler_folha_mobile", 0)
+                if st.button("↶ Girar esquerda", key="girar_esquerda_ler_folha"):
+                    rotacao_atual = (rotacao_atual + 90) % 360
+                    st.session_state["rotacao_ler_folha_mobile"] = rotacao_atual
+                    st.rerun()
+                if st.button("↷ Girar direita", key="girar_direita_ler_folha"):
+                    rotacao_atual = (rotacao_atual - 90) % 360
+                    st.session_state["rotacao_ler_folha_mobile"] = rotacao_atual
+                    st.rerun()
+                rotacao = rotacao_atual
+            else:
+                rotacao = st.radio(
+                    "Girar imagem",
+                    options=[0, 90, -90, 180],
+                    format_func=lambda valor: {
+                        0: "Não girar",
+                        90: "90° para esquerda",
+                        -90: "90° para direita",
+                        180: "180°",
+                    }[valor],
+                    horizontal=True,
+                    key="rotacao_ler_folha",
+                )
 
             imagem_girada = imagem_original.rotate(rotacao, expand=True) if rotacao else imagem_original
-            chave_corte = f"{arquivo_folha.name}_{arquivo_folha.size}_{rotacao}"
+            chave_corte = f"{arquivo_folha.name}_{arquivo_folha.size}_{rotacao}_{'mobile' if modo_celular else 'desktop'}"
             chave_imagem_usada = f"imagem_cortada_ler_folha_{chave_corte}"
+            chave_usar_inteira = f"usar_imagem_inteira_ler_folha_{chave_corte}"
+
+            if modo_celular and chave_usar_inteira not in st.session_state and chave_imagem_usada not in st.session_state:
+                st.session_state[chave_usar_inteira] = True
 
             st.caption(
-                "Primeiro confira a imagem completa abaixo. Depois, se precisar, "
-                "arraste uma caixa no cropper. A imagem é reduzida apenas para caber "
-                "na tela; o corte enviado ao Gemini é feito na resolução original."
+                "Confira a imagem completa. Se precisar, use o cropper abaixo. "
+                "A prévia é reduzida apenas para caber na tela; o arquivo enviado ao Gemini "
+                "mantém a proporção e usa o corte na resolução original."
             )
 
             st.image(
                 imagem_girada,
-                caption="Imagem original completa",
+                caption="Imagem completa",
                 use_container_width=True,
             )
+
+            if st.button("✅ Usar imagem inteira", key=f"usar_imagem_inteira_{chave_corte}"):
+                st.session_state[chave_usar_inteira] = True
+                st.session_state.pop(chave_imagem_usada, None)
+                st.success("Imagem inteira selecionada para a leitura.")
 
             imagem_cropper, escala_cropper = redimensionar_imagem_para_cropper(
                 imagem_girada,
-                largura_maxima=900,
+                largura_maxima=largura_cropper,
             )
 
-            st.markdown("**Cropper (imagem completa visível, sem zoom automático)**")
-            st.caption(
-                f"Imagem no cropper: {imagem_cropper.width} × {imagem_cropper.height} px. "
-                f"Imagem original: {imagem_girada.width} × {imagem_girada.height} px."
-            )
-
-            if ST_CROPPER_DISPONIVEL:
-                caixa_cropper = st_cropper(
-                    imagem_cropper,
-                    realtime_update=True,
-                    box_color="#1f77b4",
-                    aspect_ratio=None,
-                    return_type="box",
-                    key=f"cropper_ler_folha_{chave_corte}",
+            with st.expander("✂️ Cortar imagem", expanded=not modo_celular):
+                st.markdown("**Cropper (imagem completa visível, sem zoom automático)**")
+                st.caption(
+                    f"Imagem no cropper: {imagem_cropper.width} × {imagem_cropper.height} px. "
+                    f"Imagem original: {imagem_girada.width} × {imagem_girada.height} px."
                 )
-                imagem_cortada_preview = recortar_imagem_original_por_caixa(
-                    imagem_girada,
-                    caixa_cropper,
-                    escala_cropper,
+
+                if ST_CROPPER_DISPONIVEL:
+                    caixa_cropper = st_cropper(
+                        imagem_cropper,
+                        realtime_update=True,
+                        box_color="#1f77b4",
+                        aspect_ratio=None,
+                        return_type="box",
+                        key=f"cropper_ler_folha_{chave_corte}",
+                    )
+                    imagem_cortada_preview = recortar_imagem_original_por_caixa(
+                        imagem_girada,
+                        caixa_cropper,
+                        escala_cropper,
+                    )
+                else:
+                    st.warning(
+                        "O streamlit-cropper não está instalado neste ambiente. "
+                        "Instale as dependências do requirements.txt para habilitar o corte por arrastar."
+                    )
+                    largura, altura = imagem_girada.size
+                    x_inicio = st.slider("Corte esquerdo", 0, max(largura - 1, 0), 0)
+                    y_inicio = st.slider("Corte superior", 0, max(altura - 1, 0), 0)
+                    x_fim = st.slider("Corte direito", 1, largura, largura)
+                    y_fim = st.slider("Corte inferior", 1, altura, altura)
+                    imagem_cortada_preview = imagem_girada.crop((x_inicio, y_inicio, x_fim, y_fim))
+
+                st.image(
+                    imagem_cortada_preview,
+                    caption="Imagem cortada (prévia abaixo da imagem)",
+                    use_container_width=True,
                 )
-            else:
-                st.warning(
-                    "O streamlit-cropper não está instalado neste ambiente. "
-                    "Instale as dependências do requirements.txt para habilitar o corte por arrastar."
-                )
-                largura, altura = imagem_girada.size
-                x_inicio = st.slider("Corte esquerdo", 0, max(largura - 1, 0), 0)
-                y_inicio = st.slider("Corte superior", 0, max(altura - 1, 0), 0)
-                x_fim = st.slider("Corte direito", 1, largura, largura)
-                y_fim = st.slider("Corte inferior", 1, altura, altura)
-                imagem_cortada_preview = imagem_girada.crop((x_inicio, y_inicio, x_fim, y_fim))
 
-            st.image(
-                imagem_cortada_preview,
-                caption="Imagem cortada (prévia em boa resolução)",
-                use_container_width=True,
-            )
+                if st.button("✂️ Cortar imagem", key=f"usar_imagem_cortada_{chave_corte}"):
+                    st.session_state[chave_imagem_usada] = imagem_para_png_bytes(imagem_cortada_preview)
+                    st.session_state[chave_usar_inteira] = False
+                    st.success("Imagem cortada selecionada para a leitura.")
 
-            if st.button("Usar imagem cortada", key=f"usar_imagem_cortada_{chave_corte}"):
-                buffer_corte = BytesIO()
-                imagem_cortada_preview.convert("RGB").save(buffer_corte, format="PNG")
-                st.session_state[chave_imagem_usada] = buffer_corte.getvalue()
-                st.success("Imagem cortada selecionada para a leitura.")
-
-            if chave_imagem_usada in st.session_state:
+            if chave_imagem_usada in st.session_state and not st.session_state.get(chave_usar_inteira, False):
                 imagem_final_bytes = st.session_state[chave_imagem_usada]
                 imagem_final = Image.open(BytesIO(imagem_final_bytes)).convert("RGB")
                 legenda_final = "Imagem final cortada que será analisada pelo Gemini"
             else:
                 imagem_final = imagem_girada
-                buffer_imagem_final = BytesIO()
-                imagem_final.save(buffer_imagem_final, format="PNG")
-                imagem_final_bytes = buffer_imagem_final.getvalue()
+                imagem_final_bytes = imagem_para_png_bytes(imagem_final)
                 legenda_final = "Imagem final inteira que será analisada pelo Gemini"
 
             st.image(imagem_final, caption=legenda_final, use_container_width=True)
 
         imagem_pronta = imagem_final_bytes is not None
 
-        if st.button("Ler com Gemini", disabled=not imagem_pronta):
+        if st.button("🤖 Ler com Gemini", disabled=not imagem_pronta):
             if not imagem_pronta:
                 st.warning("Envie e prepare uma imagem antes de interpretar.")
             elif not texto(st.secrets.get("GEMINI_API_KEY", "")):
