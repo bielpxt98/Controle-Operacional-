@@ -228,6 +228,44 @@ def ordenar_visualizacao(df):
     return ordenado.drop(columns=["_data_ordem", "_id_ordem"])
 
 
+def ordenar_e_numerar(df):
+    if df.empty:
+        return df.copy()
+
+    ordenado = df.copy()
+
+    if "data" in ordenado.columns:
+        ordenado["_data_ordenacao"] = pd.to_datetime(
+            ordenado["data"],
+            dayfirst=True,
+            errors="coerce",
+        )
+    else:
+        ordenado["_data_ordenacao"] = pd.NaT
+
+    if "id" in ordenado.columns:
+        ordenado["_id_ordenacao"] = pd.to_numeric(
+            ordenado["id"],
+            errors="coerce",
+        )
+    else:
+        ordenado["_id_ordenacao"] = pd.NA
+
+    ordenado = ordenado.sort_values(
+        by=["_data_ordenacao", "_id_ordenacao"],
+        ascending=[True, True],
+        na_position="last",
+        kind="mergesort",
+    ).drop(columns=["_data_ordenacao", "_id_ordenacao"])
+
+    if "Nº" in ordenado.columns:
+        ordenado = ordenado.drop(columns=["Nº"])
+
+    ordenado.insert(0, "Nº", range(1, len(ordenado) + 1))
+
+    return ordenado
+
+
 def normalizar_colunas(df):
     mapa = {}
 
@@ -547,6 +585,8 @@ with tab_busca:
             )
         ]
 
+    resultado = ordenar_e_numerar(resultado)
+
     st.dataframe(resultado, use_container_width=True, hide_index=True)
 
     if not admin:
@@ -793,6 +833,7 @@ with tab_importar:
 with tab_admin:
     st.subheader("Administração")
 
+    df_atual = ordenar_e_numerar(listar())
     if not admin:
         st.warning("Entre como administrador para acessar as funções administrativas.")
     else:
