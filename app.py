@@ -272,6 +272,8 @@ Regras obrigatórias:
 - Não use o campo S.
 - S.F e L.F devem ficar dentro do campo CL, junto do cliente.
 - FI deve conter somente horário.
+- Quando aparecer B(HORÁRIO) ou D(HORÁRIO) na folha manuscrita, converta para FI HORÁRIO e gere a observação correspondente: B significa BLOQUEIO e deve gerar O BLOQUEIO HORÁRIO; D significa DESLOCAMENTO e deve gerar O DESLOCAMENTO HORÁRIO.
+- Se existir FI normal e também B(HORÁRIO) ou D(HORÁRIO), priorize o horário de B ou D no FI.
 - O não deve ser usado para HP, última ocorrência, finalizado ou em andamento.
 - Normalize nomes conhecidos quando possível: Jean, Wilson, Luis, Gabriel, Jones, Fabio, Argemiro ou Valdemir.
 
@@ -297,6 +299,17 @@ M FABIO D 3787807939 P 272 CL C. SEIS IRMÃOS V 1468,13 L 12:23 O SEM ACESSO
 
 Exemplo de saída:
 DATA 15/06/2026 M JEAN D 3787805566 P 117 CL ASSAÍ PARIPE V 1021,05 L 08:08 C 09:31 FI 13:44
+
+Exemplos de B/D manuscrito:
+Entrada na folha:
+3787805422 MERCANTIL L.F L(15:51) B(19:49)
+Saída esperada:
+M JEAN D 3787805422 CL MERCANTIL L.F V 992,17 L 15:51 FI 19:49 O BLOQUEIO 19:49
+
+Entrada na folha:
+3787807939 C SEIS IRMÃOS L(12:23) D(16:04)
+Saída esperada:
+M FABIO D 3787807939 CL C. SEIS IRMÃOS V 1468,13 L 12:23 FI 16:04 O DESLOCAMENTO 16:04
 """.strip()
 
 
@@ -362,6 +375,8 @@ REGRAS OBRIGATÓRIAS PARA A LEITURA DA FOLHA:
 - Se o motorista possui um valor ao lado, por exemplo "JEAN 992,17", aplique esse valor em todas as coletas do bloco desse motorista.
 - Se aparecer "1468,13x2", cada uma das 2 coletas do bloco deve receber o valor 1468,13.
 - Se aparecer "992,17" e existirem 4 coletas abaixo, as 4 coletas devem receber 992,17.
+- Quando aparecer B(HORÁRIO) ou D(HORÁRIO) na folha manuscrita, use esse HORÁRIO no campo FI e preencha O automaticamente: B(HORÁRIO) vira FI HORÁRIO O BLOQUEIO HORÁRIO; D(HORÁRIO) vira FI HORÁRIO O DESLOCAMENTO HORÁRIO.
+- Se a mesma coleta tiver FI normal e também B(HORÁRIO) ou D(HORÁRIO), priorize B ou D para o FI e para a observação.
 - Se alguma informação estiver ilegível, preencha o campo correspondente com REVISAR.
 - Confira a imagem inteira antes de responder e inclua todas as linhas/coletas visíveis.
 
@@ -542,6 +557,30 @@ def normalizar_horario(v):
     return f"{m.group(1).zfill(2)}:{m.group(2)}"
 
 
+def extrair_regra_bloqueio_deslocamento(linha):
+    original = texto(linha)
+    if not original:
+        return original, None, None
+
+    padrao_bd = re.compile(
+        r"(?<!\w)([BD])\s*\(\s*([0-2]?\d[:hH][0-5]\d)\s*\)",
+        re.IGNORECASE,
+    )
+    ocorrencias = list(padrao_bd.finditer(original))
+    if not ocorrencias:
+        return original, None, None
+
+    # Se houver mais de uma ocorrência manuscrita na mesma linha, a última tende a
+    # ser a anotação operacional mais recente da coleta.
+    marcador = ocorrencias[-1].group(1).upper()
+    horario = normalizar_horario(ocorrencias[-1].group(2))
+    tipo_observacao = "BLOQUEIO" if marcador == "B" else "DESLOCAMENTO"
+    observacao = f"{tipo_observacao} {horario}" if horario else None
+
+    linha_sem_marcadores = padrao_bd.sub(" ", original)
+    return linha_sem_marcadores, horario or None, observacao
+
+
 def normalizar_cliente_rapido(v):
     s_original = texto(v)
     s = s_original.upper()
@@ -665,12 +704,14 @@ def parse_atualizacao_rapida(linha):
     if not original:
         return None, "linha vazia"
 
+    original_parse, horario_bd, observacao_bd = extrair_regra_bloqueio_deslocamento(original)
+
     # REGRA NOVA:
     # Aceita FI no lugar de F.
     # Não aceita mais campo S.
     # S.F e L.F devem vir dentro do CL, não no O nem no FI.
     padrao = re.compile(r"\b(DATA|DF|SR|FI|CL|M|D|P|V|L|C|O)\b\s*:?\s*", re.IGNORECASE)
-    matches = list(padrao.finditer(original))
+    matches = list(padrao.finditer(original_parse))
 
     if not matches:
         return None, "nenhuma abreviação encontrada"
@@ -680,8 +721,8 @@ def parse_atualizacao_rapida(linha):
     for i, m in enumerate(matches):
         chave = m.group(1).upper()
         inicio = m.end()
-        fim = matches[i + 1].start() if i + 1 < len(matches) else len(original)
-        valor = original[inicio:fim].strip(" :-")
+        fim = matches[i + 1].start() if i + 1 < len(matches) else len(original_parse)
+        valor = original_parse[inicio:fim].strip(" :-")
 
         if chave and valor:
             dados[chave] = valor
@@ -718,10 +759,14 @@ def parse_atualizacao_rapida(linha):
         campos["c_horario"] = normalizar_horario(dados.get("C")) or None
     if dados.get("FI"):
         campos["f_horario"] = normalizar_horario(dados.get("FI")) or None
+    if horario_bd:
+        campos["f_horario"] = horario_bd
 
     obs = normalizar_observacao(dados.get("O", ""))
     if obs:
         campos["observacoes"] = obs
+    if observacao_bd:
+        campos["observacoes"] = observacao_bd
 
     if campos.get("observacoes"):
         obs_lower = campos["observacoes"].lower()
@@ -943,6 +988,9 @@ Jean, Wilson, Luis, Gabriel, Jones, Fabio, Argemiro ou Valdemir.
 Regras importantes:
 - S.F e L.F ficam no CL, junto do cliente.
 - FI recebe somente horário.
+- B(HORÁRIO) na folha manuscrita vira FI HORÁRIO e O BLOQUEIO HORÁRIO.
+- D(HORÁRIO) na folha manuscrita vira FI HORÁRIO e O DESLOCAMENTO HORÁRIO.
+- Se existir FI normal e também B(HORÁRIO) ou D(HORÁRIO), B/D tem prioridade.
 - Não usar campo S.
 - O só deve ser usado para deslocamento, bloqueio, motivo ou remessa.
 - Não usar O para HP, última ocorrência, finalizado ou em andamento.
@@ -953,6 +1001,8 @@ M Jones D 3787780078 P 272 CL Drogaria São Paulo L.F V 992,17 L 07:33 C 09:59 F
 M Fabio D 3787760662 P 200 CL Assaí Froes da Mota S.F V 1468,13 L 10:34 C 12:22 FI —
 M Luis D 3402132015 P 476 CL JDE CAFÉ V 1276,13 O CS OK C OK L OK
 D 3787762754 FI 11:03
+M Jean D 3787805422 CL Mercantil L.F V 992,17 L 15:51 B(19:49)
+M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
 """
         )
 
