@@ -271,19 +271,12 @@ DATA 15/06/2026 M JEAN D 3787805566 P 117 CL ASSAÍ PARIPE V 1021,05 L 08:08 C 0
 """.strip()
 
 
-def interpretar_folha_com_gemini(arquivo_imagem):
+def interpretar_folha_com_gemini(imagem_bytes, mime_type="image/png"):
     api_key = obter_gemini_api_key()
 
     if not api_key:
         raise ValueError("GEMINI_API_KEY não configurada em st.secrets.")
 
-    imagem_bytes, mime_type, erro_imagem = validar_imagem_gemini(arquivo_imagem)
-
-    if erro_imagem:
-        raise ValueError(erro_imagem)
-
-def interpretar_folha_com_gemini(imagem_bytes, mime_type="image/png"):
-    api_key = st.secrets["GEMINI_API_KEY"]
     regras = carregar_regras_operacionais()
     prompt = f"""
 Leia a imagem da folha operacional e transforme os registros encontrados em texto para a Atualização rápida.
@@ -957,11 +950,6 @@ with tab_ler_folha:
             else:
                 st.image(imagem_bytes, caption="Imagem enviada", use_container_width=True)
 
-        if st.button("Interpretar folha com Gemini", disabled=not arquivo_folha):
-            api_key = obter_gemini_api_key()
-            imagem_bytes, _, erro_imagem = validar_imagem_gemini(arquivo_folha)
-
-            if not api_key:
         imagem_final_bytes = None
         imagem_final_mime = "image/png"
 
@@ -1043,16 +1031,15 @@ with tab_ler_folha:
             else:
                 with st.spinner("Interpretando a folha com Gemini 2.5 Flash..."):
                     try:
-                        texto_interpretado, modelo_usado = interpretar_folha_com_gemini(arquivo_folha)
+                        texto_interpretado, modelo_usado = interpretar_folha_com_gemini(
+                            imagem_final_bytes,
+                            imagem_final_mime,
+                        )
                     except Exception as e:
                         mostrar_erro_gemini(e)
                     else:
                         st.session_state["previa_ler_folha"] = texto_interpretado
                         st.success(f"Folha interpretada com {modelo_usado}.")
-                    st.session_state["previa_ler_folha"] = interpretar_folha_com_gemini(
-                        imagem_final_bytes,
-                        imagem_final_mime,
-                    )
 
         previa_ler_folha = st.text_area(
             "Prévia editável no formato da Atualização rápida",
