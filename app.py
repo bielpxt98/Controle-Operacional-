@@ -275,6 +275,26 @@ Regras obrigatórias:
 - O não deve ser usado para HP, última ocorrência, finalizado ou em andamento.
 - Normalize nomes conhecidos quando possível: Jean, Wilson, Luis, Gabriel, Jones, Fabio, Argemiro ou Valdemir.
 
+Regras para agrupamento por motorista:
+- Quando aparecer "MOTORISTA: NOME VALOR", todas as coletas abaixo pertencem a esse motorista até aparecer outro "MOTORISTA:".
+- Se o valor aparecer no cabeçalho do motorista, aplique esse mesmo valor em todas as coletas daquele bloco.
+- Se o cabeçalho do motorista trouxer "VALOR x2", "VALORx2" ou "VALOR X 2", trate o valor como valor individual de cada coleta daquele bloco, não como valor total ou valor a dividir.
+- Se houver várias coletas uma embaixo da outra sem repetir o motorista, mantenha o mesmo motorista e o mesmo valor do bloco.
+- Para JEAN na imagem, as 4 coletas abaixo dele pertencem a JEAN e usam o valor 992,17.
+- Para FABIO na imagem, as 2 coletas abaixo dele pertencem a FABIO e usam o valor 1468,13.
+- Sempre devolva uma coleta por linha no formato da Atualização rápida.
+- Não omita coletas. Se alguma informação estiver ilegível, coloque REVISAR no campo correspondente em vez de descartar a coleta.
+
+Exemplo de agrupamento:
+Entrada na folha:
+MOTORISTA: FABIO 1468,13x2
+D 3787803355 P 200 CL ASSAÍ TOMBA F.S L 10:50 C 12:40 FI 08:32 DF 16/06
+D 3787807939 P 272 CL C. SEIS IRMÃOS L 12:23 O SEM ACESSO
+
+Saída esperada:
+M FABIO D 3787803355 P 200 CL ASSAÍ TOMBA F.S V 1468,13 L 10:50 C 12:40 FI 08:32 DF 16/06
+M FABIO D 3787807939 P 272 CL C. SEIS IRMÃOS V 1468,13 L 12:23 O SEM ACESSO
+
 Exemplo de saída:
 DATA 15/06/2026 M JEAN D 3787805566 P 117 CL ASSAÍ PARIPE V 1021,05 L 08:08 C 09:31 FI 13:44
 """.strip()
