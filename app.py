@@ -699,14 +699,14 @@ def extrair_regra_bloqueio_deslocamento(linha):
     if not ocorrencias:
         return original, None, None
 
-    # Se houver mais de uma ocorrência manuscrita na mesma linha, a última tende a
-    # ser a anotação operacional mais recente da coleta.
-    marcador = ocorrencias[-1].group(1).upper()
     horario = normalizar_horario(ocorrencias[-1].group(2))
-    tipo_observacao = "BLOQUEIO" if marcador == "B" else "DESLOCAMENTO"
-    observacao = f"{tipo_observacao} {horario}" if horario else None
-
-    linha_sem_marcadores = padrao_bd.sub(" ", original)
+    linha_sem_marcadores = padrao_bd.sub(" ", original).strip(" :-")
+    motivo = normalizar_observacao(linha_sem_marcadores)
+    if motivo and motivo.startswith("O "):
+        motivo = motivo[2:]
+    else:
+        motivo = linha_sem_marcadores.upper().strip()
+    observacao = f"F {horario} O {motivo + ' ' if motivo else ''}BLOQUEIO ÀS {horario}" if horario else None
     return linha_sem_marcadores, horario or None, observacao
 
 
@@ -759,22 +759,46 @@ def normalizar_observacao(v):
         return None
 
     obs_limpo = limpar_busca(obs)
+    motivos_deslocamento = [
+        "SEM CARGA",
+        "CLIENTE FECHADO",
+        "AGUARDANDO AGENDAMENTO",
+        "FALTA DE MERCADORIA",
+        "RECUSA DE RECEBIMENTO",
+    ]
+    motivos_bloqueio = [
+        "CLIENTE FECHADO",
+        "AGUARDANDO AGENDAMENTO",
+        "SEM JANELA DE RECEBIMENTO",
+        "RECUSA DE RECEBIMENTO",
+        "FALTA DE MERCADORIA",
+    ]
+
+    sr_numero = re.search(r"\bSR\s*(\d{3,})\b", obs_limpo)
+    if sr_numero and "REEMB" in obs_limpo:
+        return f"O SR {sr_numero.group(1)} REEMBOLSO"
+    if re.search(r"\bS\.?R\b", obs_limpo) or "REEMB" in obs_limpo or "SOLICITACAO DE REEMBOLSO" in obs_limpo:
+        return "O SR/REEMBOLSO"
+
+    if re.search(r"\bBLOQ(?:UEIO)?\b", obs_limpo) or any(m in obs_limpo for m in motivos_bloqueio):
+        for motivo in motivos_bloqueio:
+            if motivo in obs_limpo:
+                return f"O BLOQUEIO {motivo}"
+        return "O BLOQUEIO"
+
+    if "DESLOC" in obs_limpo or any(m in obs_limpo for m in motivos_deslocamento):
+        for motivo in motivos_deslocamento:
+            if motivo in obs_limpo:
+                return f"O DESLOCAMENTO {motivo}"
+        return "O DESLOCAMENTO"
 
     # Não salvar essas observações inúteis
-    ignorar = [
-        "HP",
-        "ULTIMA OCORRENCIA",
-        "ULTIMA OCORRÊNCIA",
-        "EM ANDAMENTO",
-        "FINALIZADO",
-        "STATUS",
-    ]
+    ignorar = ["HP", "ULTIMA OCORRENCIA", "ULTIMA OCORRÊNCIA", "EM ANDAMENTO", "FINALIZADO", "STATUS"]
     if any(x in obs_limpo for x in ignorar):
-        if not any(x in obs_limpo for x in ["DESLOC", "BLOQ", "CS", "C OK", "L OK", "MOTIVO", "NOK"]):
+        if not any(x in obs_limpo for x in ["CS", "C OK", "L OK", "MOTIVO", "NOK"]):
             return None
 
-    # O só deve ser usado para deslocamento, bloqueio, motivo ou remessa
-    permitido = ["DESLOC", "BLOQ", "CS", "C OK", "L OK", "MOTIVO", "NOK"]
+    permitido = ["CS", "C OK", "L OK", "MOTIVO", "NOK"]
     if not any(x in obs_limpo for x in permitido):
         return None
 
