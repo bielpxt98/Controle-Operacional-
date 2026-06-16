@@ -90,6 +90,90 @@ def completar_dados_motorista(campos):
 st.title("Controle Operacional — Supabase + Excel Mestre")
 
 
+def senha_admin_configurada():
+    try:
+        return bool(st.secrets["ADMIN_PASSWORD"])
+    except Exception:
+        return False
+
+
+def autenticar_admin():
+    if "admin_autenticado" not in st.session_state:
+        st.session_state.admin_autenticado = False
+
+    with st.sidebar:
+        st.header("Acesso")
+
+        if st.session_state.admin_autenticado:
+            st.success("Administrador autenticado")
+            if st.button("Sair do modo administrador"):
+                st.session_state.admin_autenticado = False
+                st.rerun()
+            return True
+
+        st.info("Visitante: acesso somente para buscar e visualizar.")
+
+        if not senha_admin_configurada():
+            st.warning("Configure ADMIN_PASSWORD em st.secrets para liberar o modo administrador.")
+            return False
+
+        senha = st.text_input("Senha administrativa", type="password")
+
+        if st.button("Entrar como administrador"):
+            if senha == st.secrets["ADMIN_PASSWORD"]:
+                st.session_state.admin_autenticado = True
+                st.rerun()
+            else:
+                st.error("Senha administrativa inválida.")
+
+        return False
+
+
+def trocar_ano_data(valor, ano=2026):
+    s = texto(valor)
+    if not s:
+        return None
+
+    data = pd.to_datetime(s, errors="coerce", dayfirst=True)
+    if pd.isna(data):
+        return valor
+
+    try:
+        data = data.replace(year=ano)
+    except ValueError:
+        data = data.replace(month=2, day=28, year=ano)
+
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}.*", s):
+        return data.strftime("%Y-%m-%d")
+
+    return data.strftime("%d/%m/%Y")
+
+
+def atualizar_datas_para_2026():
+    df_datas = listar()
+    total = 0
+
+    if df_datas.empty or "id" not in df_datas.columns:
+        return total
+
+    for _, row in df_datas.iterrows():
+        atualizacao = {"atualizado_em": datetime.now().isoformat()}
+
+        for coluna in ["data", "data_finalizacao"]:
+            if coluna in df_datas.columns:
+                valor_atual = row.get(coluna)
+                novo_valor = trocar_ano_data(valor_atual, 2026)
+
+                if novo_valor != valor_atual:
+                    atualizacao[coluna] = novo_valor
+
+        if len(atualizacao) > 1:
+            supabase.table("deliveries").update(atualizacao).eq("id", row["id"]).execute()
+            total += 1
+
+    return total
+
+
 def numero(v):
     if v is None:
         return None
@@ -110,8 +194,38 @@ def numero(v):
 
 
 def listar():
-    res = supabase.table("deliveries").select("*").order("id").execute()
-    return pd.DataFrame(res.data or [])
+    res = supabase.table("deliveries").select("*").execute()
+    return ordenar_visualizacao(pd.DataFrame(res.data or []))
+
+
+def ordenar_visualizacao(df):
+    if df.empty:
+        return df
+
+    ordenado = df.copy()
+
+    if "data" in ordenado.columns:
+        ordenado["_data_ordem"] = pd.to_datetime(
+            ordenado["data"],
+            errors="coerce",
+            dayfirst=True,
+        )
+    else:
+        ordenado["_data_ordem"] = pd.NaT
+
+    if "id" in ordenado.columns:
+        ordenado["_id_ordem"] = pd.to_numeric(ordenado["id"], errors="coerce")
+    else:
+        ordenado["_id_ordem"] = pd.NA
+
+    ordenado = ordenado.sort_values(
+        by=["_data_ordem", "_id_ordem"],
+        ascending=[False, False],
+        na_position="last",
+        kind="mergesort",
+    )
+
+    return ordenado.drop(columns=["_data_ordem", "_id_ordem"])
 
 
 def ordenar_e_numerar(df):
@@ -438,12 +552,14 @@ def excel_bytes(df):
     return out.getvalue()
 
 
-tab_busca, tab_rapida, tab_importar, tab_excel = st.tabs(
+admin = autenticar_admin()
+
+tab_busca, tab_rapida, tab_importar, tab_admin = st.tabs(
     [
-        "Buscar / editar",
+        "Buscar / visualizar",
         "Atualização rápida",
         "Importar Excel mestre",
-        "Baixar Excel mestre",
+        "Administração",
     ]
 )
 
@@ -473,11 +589,15 @@ with tab_busca:
 
     st.dataframe(resultado, use_container_width=True, hide_index=True)
 
-    st.subheader("Editar / excluir")
+    if not admin:
+        st.info("Entre como administrador para editar ou excluir registros.")
+        id_digitado = ""
+    else:
+        st.subheader("Editar / excluir")
 
-    id_digitado = st.text_input("Digite o ID do registro para editar")
+        id_digitado = st.text_input("Digite o ID do registro para editar")
 
-    if id_digitado:
+    if admin and id_digitado:
         try:
             id_selecionado = int(id_digitado)
 
@@ -584,8 +704,11 @@ with tab_busca:
 with tab_rapida:
     st.subheader("Atualização rápida")
 
-    st.info(
-        """
+    if not admin:
+        st.warning("Apenas administradores podem usar a atualização rápida.")
+    else:
+        st.info(
+            """
 Use uma atualização por linha.
 
 Abreviações:
@@ -619,103 +742,118 @@ M Fabio D 3787760662 P 200 CL Assaí Froes da Mota S.F V 1468,13 L 10:34 C 12:22
 M Luis D 3402132015 P 476 CL JDE CAFÉ V 1276,13 O CS OK C OK L OK
 D 3787762754 FI 11:03
 """
-    )
+        )
 
-    texto_rapido = st.text_area(
-        "Digite uma ou mais atualizações",
-        height=260,
-        placeholder="D 3787762754 FI 11:03",
-    )
+        texto_rapido = st.text_area(
+            "Digite uma ou mais atualizações",
+            height=260,
+            placeholder="D 3787762754 FI 11:03",
+        )
 
-    if st.button("Atualizar registros", type="primary"):
-        linhas = [linha.strip() for linha in texto_rapido.splitlines() if linha.strip()]
+        if st.button("Atualizar registros", type="primary"):
+            linhas = [linha.strip() for linha in texto_rapido.splitlines() if linha.strip()]
 
-        if not linhas:
-            st.warning("Digite pelo menos uma atualização.")
-        else:
-            atualizados = 0
-            criados = 0
-            erros = []
+            if not linhas:
+                st.warning("Digite pelo menos uma atualização.")
+            else:
+                atualizados = 0
+                criados = 0
+                erros = []
 
-            for idx, linha in enumerate(linhas, start=1):
-                try:
-                    parsed, erro = parse_atualizacao_rapida(linha)
+                for idx, linha in enumerate(linhas, start=1):
+                    try:
+                        parsed, erro = parse_atualizacao_rapida(linha)
 
-                    if erro:
-                        erros.append(f"Linha {idx}: {erro} — {linha}")
-                        continue
+                        if erro:
+                            erros.append(f"Linha {idx}: {erro} — {linha}")
+                            continue
 
-                    resultado = atualizar_rapido_no_supabase(parsed)
+                        resultado = atualizar_rapido_no_supabase(parsed)
 
-                    if resultado == "criado":
-                        criados += 1
-                    else:
-                        atualizados += 1
+                        if resultado == "criado":
+                            criados += 1
+                        else:
+                            atualizados += 1
 
-                except Exception as e:
-                    erros.append(f"Linha {idx}: {e} — {linha}")
+                    except Exception as e:
+                        erros.append(f"Linha {idx}: {e} — {linha}")
 
-            if atualizados:
-                st.success(f"{atualizados} registro(s) atualizado(s).")
-            if criados:
-                st.success(f"{criados} registro(s) criado(s).")
-            if erros:
-                st.error("Algumas linhas não foram processadas:")
-                for erro in erros:
-                    st.write(f"- {erro}")
+                if atualizados:
+                    st.success(f"{atualizados} registro(s) atualizado(s).")
+                if criados:
+                    st.success(f"{criados} registro(s) criado(s).")
+                if erros:
+                    st.error("Algumas linhas não foram processadas:")
+                    for erro in erros:
+                        st.write(f"- {erro}")
 
-            st.caption("Atualize a página ou volte na aba Buscar / editar para conferir os dados.")
+                st.caption("Atualize a página ou volte na aba Buscar / editar para conferir os dados.")
 
 
 with tab_importar:
     st.subheader("Importar Excel mestre")
 
-    arquivo = st.file_uploader(
-        "Enviar Excel mestre (.xlsx)",
-        type=["xlsx"]
-    )
+    if not admin:
+        st.warning("Apenas administradores podem importar Excel.")
+    else:
+        arquivo = st.file_uploader(
+            "Enviar Excel mestre (.xlsx)",
+            type=["xlsx"]
+        )
 
-    if arquivo:
-        abas = pd.read_excel(arquivo, sheet_name=None)
+        if arquivo:
+            abas = pd.read_excel(arquivo, sheet_name=None)
 
-        nomes_abas = list(abas.keys())
+            nomes_abas = list(abas.keys())
 
-        aba = st.selectbox("Escolha a aba", nomes_abas)
+            aba = st.selectbox("Escolha a aba", nomes_abas)
 
-        df_excel = normalizar_colunas(abas[aba])
+            df_excel = normalizar_colunas(abas[aba])
 
-        st.dataframe(df_excel.head(50), use_container_width=True)
+            st.dataframe(df_excel.head(50), use_container_width=True)
 
-        if st.button("Importar para Supabase"):
-            total = 0
-            ignorados = 0
+            if st.button("Importar para Supabase"):
+                total = 0
+                ignorados = 0
 
-            for _, row in df_excel.iterrows():
-                registro = montar_registro(row)
+                for _, row in df_excel.iterrows():
+                    registro = montar_registro(row)
 
-                if not registro:
-                    ignorados += 1
-                    continue
+                    if not registro:
+                        ignorados += 1
+                        continue
 
-                salvar_registro(registro)
-                total += 1
+                    salvar_registro(registro)
+                    total += 1
 
-            st.success(f"{total} registros importados/atualizados.")
-            st.info(f"{ignorados} linhas ignoradas sem delivery e sem SR.")
+                st.success(f"{total} registros importados/atualizados.")
+                st.info(f"{ignorados} linhas ignoradas sem delivery e sem SR.")
 
 
-with tab_excel:
-    st.subheader("Baixar Excel mestre atualizado")
+with tab_admin:
+    st.subheader("Administração")
 
     df_atual = ordenar_e_numerar(listar())
+    if not admin:
+        st.warning("Entre como administrador para acessar as funções administrativas.")
+    else:
+        df_atual = listar()
 
-    st.write(f"Registros na nuvem: {len(df_atual)}")
+        st.write(f"Registros na nuvem: {len(df_atual)}")
 
-    st.download_button(
-        "⬇️ Baixar Excel mestre",
-        data=excel_bytes(df_atual),
-        file_name="excel_mestre_operacional.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+        st.download_button(
+            "⬇️ Baixar Excel mestre",
+            data=excel_bytes(df_atual),
+            file_name="excel_mestre_operacional.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 
-    st.dataframe(df_atual, use_container_width=True, hide_index=True)
+        st.divider()
+        st.subheader("Trocar ano das datas para 2026")
+        st.caption("Atualiza somente os campos de data existentes, sem alterar a estrutura do banco e sem reorganizar IDs.")
+
+        if st.button("Trocar ano das datas para 2026", type="primary"):
+            total = atualizar_datas_para_2026()
+            st.success(f"{total} registro(s) com datas ajustadas para 2026.")
+
+        st.dataframe(df_atual, use_container_width=True, hide_index=True)
