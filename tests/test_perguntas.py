@@ -89,6 +89,41 @@ class PerguntasTest(unittest.TestCase):
         self.assertIn("TOTAL DE COLETAS COM TRUCK: 0", resposta)
         self.assertIn("tipo_veiculo", pd.read_csv(caminho).columns)
 
+    def test_observacoes_sr_reembolso_mes(self):
+        df = pd.concat([self.df, pd.DataFrame([{"data": date.today().strftime("%d/%m/%Y"), "motorista": "Luis", "delivery": "1004", "cliente": "D", "observacoes": "SR 12345 reembolso"}])], ignore_index=True)
+        caminho = self.base / "sr.csv"
+        df.to_csv(caminho, index=False)
+        resposta = responder_pergunta("Quantos SR teve este mês?", str(caminho))
+        self.assertIn("TOTAL DE SR/REEMBOLSO: 1", resposta)
+        lista = responder_pergunta("Mostrar SR de 01/01/2000 a 31/12/2099", str(caminho))
+        self.assertIn("DATA", lista)
+        self.assertIn("D 1004", lista)
+        self.assertIn("O SR 12345 REEMBOLSO", lista)
+
+    def test_observacoes_deslocamento_por_motivo(self):
+        df = pd.concat([self.df, pd.DataFrame([{"data": date.today().strftime("%d/%m/%Y"), "motorista": "Jones", "delivery": "1005", "cliente": "E", "observacoes": "desloc sem carga"}])], ignore_index=True)
+        caminho = self.base / "desloc.csv"
+        df.to_csv(caminho, index=False)
+        resposta = responder_pergunta("Quantos deslocamentos por motivo?", str(caminho))
+        self.assertIn("TOTAL DE DESLOCAMENTOS: 2", resposta)
+        self.assertIn("SEM CARGA: 1", resposta)
+
+    def test_observacoes_bloqueio_por_motorista(self):
+        df = pd.concat([self.df, pd.DataFrame([{"data": date.today().strftime("%d/%m/%Y"), "motorista": "Jean", "delivery": "1006", "cliente": "F", "observacoes": "bloq cliente fechado"}])], ignore_index=True)
+        caminho = self.base / "bloqueio.csv"
+        df.to_csv(caminho, index=False)
+        resposta = responder_pergunta("Quantos bloqueios por motorista?", str(caminho))
+        self.assertIn("TOTAL DE BLOQUEIOS: 2", resposta)
+        self.assertIn("JEAN ROBSON: 2", resposta)
+
+    def test_observacao_bloqueio_com_horario(self):
+        df = pd.concat([self.df, pd.DataFrame([{"data": date.today().strftime("%d/%m/%Y"), "motorista": "Gabriel", "delivery": "1007", "cliente": "G", "observacoes": "MOTORISTA TERCEIRIZADO B (16:20)"}])], ignore_index=True)
+        caminho = self.base / "bloqueio_horario.csv"
+        df.to_csv(caminho, index=False)
+        resposta = responder_pergunta("Mostrar bloqueios de 01/01/2000 a 31/12/2099", str(caminho))
+        self.assertIn("D 1007", resposta)
+        self.assertIn("F 16:20 O MOTORISTA TERCEIRIZADO BLOQUEIO ÀS 16:20", resposta)
+
 
 if __name__ == "__main__":
     unittest.main()

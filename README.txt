@@ -54,3 +54,39 @@ Exemplo com Excel mestre:
 Rodar testes:
 
     python -m unittest discover -s tests
+
+OBSERVAÇÕES OPERACIONAIS
+
+O parser salva observações operacionais normalizadas na coluna/aba/tabela OBSERVAÇÕES vinculada ao delivery quando encontrar termos de SR/reembolso, deslocamento ou bloqueio na folha. As regras são locais, em Python puro/pandas, sem API paga, ChatGPT ou Gemini.
+
+Exemplos de normalização:
+- SR, S.R, REEMBOLSO, REEMB ou SOLICITAÇÃO DE REEMBOLSO -> O SR/REEMBOLSO
+- SR 12345 REEMBOLSO -> O SR 12345 REEMBOLSO
+- DESLOCAMENTO SEM CARGA -> O DESLOCAMENTO SEM CARGA
+- DESLOC CLIENTE FECHADO -> O DESLOCAMENTO CLIENTE FECHADO
+- BLOQ AGUARDANDO AGENDAMENTO -> O BLOQUEIO AGUARDANDO AGENDAMENTO
+- BLOQUEIO SEM JANELA DE RECEBIMENTO -> O BLOQUEIO SEM JANELA DE RECEBIMENTO
+- MOTORISTA TERCEIRIZADO B (16:20) -> F 16:20 O MOTORISTA TERCEIRIZADO BLOQUEIO ÀS 16:20
+
+Consultas novas aceitas:
+- Quantos SR teve hoje?
+- Quantos SR teve este mês?
+- Quantos reembolsos teve este mês?
+- Quantos SR teve de DD/MM/AAAA a DD/MM/AAAA?
+- Mostrar SR de DD/MM/AAAA a DD/MM/AAAA
+- Quantos deslocamentos teve hoje?
+- Quantos deslocamentos teve este mês?
+- Quantos deslocamentos teve de DD/MM/AAAA a DD/MM/AAAA?
+- Mostrar deslocamentos de DD/MM/AAAA a DD/MM/AAAA
+- Quantos deslocamentos por motorista?
+- Quantos deslocamentos por motivo?
+- Quantos bloqueios teve hoje?
+- Quantos bloqueios teve este mês?
+- Quantos bloqueios teve de DD/MM/AAAA a DD/MM/AAAA?
+- Mostrar bloqueios de DD/MM/AAAA a DD/MM/AAAA
+- Quantos bloqueios por motorista?
+- Quantos bloqueios por motivo?
+
+Formatos de resposta:
+- Contagem: TOTAL DE SR/REEMBOLSO: X, TOTAL DE DESLOCAMENTOS: X ou TOTAL DE BLOQUEIOS: X
+- Listagem: DATA DD/MM/AAAA M MOTORISTA D DELIVERY CL CLIENTE O OBSERVAÇÃO
