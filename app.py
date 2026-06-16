@@ -108,13 +108,41 @@ FORMATOS_IMAGEM_GEMINI = {
 }
 
 
-def obter_gemini_api_key():
-    try:
-        api_key = texto(st.secrets["GEMINI_API_KEY"])
-    except Exception:
-        return ""
+def obter_gemini_api_keys():
+    chaves = []
 
-    return api_key
+    for nome, rotulo in [
+        ("GEMINI_API_KEY", "API 1 usada"),
+        ("GEMINI_API_KEY_2", "API 2 usada"),
+    ]:
+        try:
+            api_key = texto(st.secrets[nome])
+        except Exception:
+            api_key = ""
+
+        if api_key:
+            chaves.append({"api_key": api_key, "rotulo": rotulo})
+
+    return chaves
+
+
+def obter_gemini_api_key():
+    chaves = obter_gemini_api_keys()
+    return chaves[0]["api_key"] if chaves else ""
+
+
+def erro_limite_gemini(erro):
+    texto_erro = f"{type(erro).__name__} {repr(erro)}".lower()
+    termos_limite = [
+        "limite",
+        "quota",
+        "429",
+        "resource exhausted",
+        "rate limit",
+        "ratelimit",
+        "too many requests",
+    ]
+    return any(termo in texto_erro for termo in termos_limite)
 
 
 def validar_imagem_gemini(arquivo_imagem):
@@ -151,43 +179,62 @@ def validar_imagem_gemini(arquivo_imagem):
 
 
 def consultar_gemini(client, **kwargs):
-    ultimo_erro = None
+    modelo = "gemini-2.5-flash"
+    resposta = client.models.generate_content(model=modelo, **kwargs)
+    return resposta, modelo
 
-    for modelo in ["gemini-2.5-flash", "gemini-1.5-flash"]:
+
+def consultar_gemini_com_fallback(**kwargs):
+    chaves = obter_gemini_api_keys()
+
+    if not chaves:
+        raise ValueError("Configure GEMINI_API_KEY ou GEMINI_API_KEY_2 em st.secrets.")
+
+    erros = []
+
+    for indice, chave in enumerate(chaves):
         try:
-            resposta = client.models.generate_content(model=modelo, **kwargs)
-            return resposta, modelo
+            client = genai.Client(api_key=chave["api_key"])
+            resposta, modelo_usado = consultar_gemini(client, **kwargs)
+            return resposta, modelo_usado, chave["rotulo"]
         except Exception as e:
-            ultimo_erro = e
+            erros.append((chave["rotulo"], e))
+            primeira_chave = indice == 0
+            existe_proxima_chave = indice + 1 < len(chaves)
 
-    raise ultimo_erro
+            if primeira_chave and existe_proxima_chave and erro_limite_gemini(e):
+                continue
+
+            if len(erros) > 1:
+                break
+
+            raise
+
+    detalhes = "; ".join(f"{rotulo}: {repr(erro)}" for rotulo, erro in erros)
+    raise RuntimeError(f"As APIs Gemini configuradas falharam. {detalhes}")
 
 
 def mostrar_erro_gemini(erro):
-    st.error("Erro ao consultar Gemini. Verifique a chave, limite da API ou formato da imagem.")
+    st.error(
+        "Não foi possível consultar o Gemini agora. "
+        "Verifique se as APIs estão configuradas, aguarde se houver limite de uso "
+        "e tente novamente."
+    )
 
     with st.expander("Detalhes do erro"):
         st.code(repr(erro))
 
 
 def testar_gemini():
-    api_key = obter_gemini_api_key()
-
-    if not api_key:
-        st.error("Configure GEMINI_API_KEY em st.secrets para usar a integração Gemini.")
-        return False
-
     try:
-        client = genai.Client(api_key=api_key)
-        resposta = client.models.generate_content(
-            model="gemini-2.5-flash",
+        resposta, _, api_usada = consultar_gemini_com_fallback(
             contents="Responda apenas OK",
         )
     except Exception as e:
         mostrar_erro_gemini(e)
         return False
 
-    st.success("Teste Gemini concluído.")
+    st.success(f"Teste Gemini concluído. {api_usada}.")
     st.write(texto(resposta.text))
     st.session_state["gemini_teste_ok"] = True
     return True
@@ -442,11 +489,6 @@ def imagem_para_png_bytes(imagem):
     return buffer.getvalue()
 
 def interpretar_folha_com_gemini(imagem_bytes, mime_type="image/png"):
-    api_key = obter_gemini_api_key()
-
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY não configurada em st.secrets.")
-
     regras = carregar_regras_operacionais()
     prompt = f"""
 Leia a imagem da folha operacional e transforme TODOS os registros/coletas encontrados em texto para a Atualização rápida.
@@ -472,16 +514,14 @@ SAÍDA OBRIGATÓRIA:
 Devolva somente as linhas no formato da Atualização rápida, sem explicações, cabeçalhos, Markdown ou exemplos.
 """.strip()
 
-    client = genai.Client(api_key=api_key)
-    resposta, modelo_usado = consultar_gemini(
-        client,
+    resposta, modelo_usado, api_usada = consultar_gemini_com_fallback(
         contents=[
             prompt,
             types.Part.from_bytes(data=imagem_bytes, mime_type=mime_type),
         ],
     )
 
-    return resposta.text if resposta.text is not None else "", modelo_usado
+    return resposta.text if resposta.text is not None else "", modelo_usado, api_usada
 
 def trocar_ano_data(valor, ano=2026):
     s = texto(valor)
@@ -1569,8 +1609,11 @@ with tab_ler_folha:
         if st.button("🤖 Ler com Gemini", disabled=not imagem_pronta):
             if not imagem_pronta:
                 st.warning("Envie e prepare uma imagem antes de interpretar.")
-            elif not texto(st.secrets.get("GEMINI_API_KEY", "")):
-                st.error("Configure GEMINI_API_KEY em st.secrets para usar a leitura automática.")
+            elif not obter_gemini_api_keys():
+                st.error(
+                    "Configure GEMINI_API_KEY ou GEMINI_API_KEY_2 em st.secrets "
+                    "para usar a leitura automática."
+                )
             elif erro_imagem:
                 st.error(erro_imagem)
             elif not st.session_state.get("gemini_teste_ok", False):
@@ -1578,7 +1621,7 @@ with tab_ler_folha:
             else:
                 with st.spinner("Interpretando a folha com Gemini 2.5 Flash..."):
                     try:
-                        texto_interpretado, modelo_usado = interpretar_folha_com_gemini(
+                        texto_interpretado, modelo_usado, api_usada = interpretar_folha_com_gemini(
                             imagem_final_bytes,
                             imagem_final_mime,
                         )
@@ -1587,7 +1630,7 @@ with tab_ler_folha:
                     else:
                         st.session_state["resposta_original_gemini_ler_folha"] = texto_interpretado
                         st.session_state["previa_ler_folha"] = texto_interpretado
-                        st.success(f"Folha interpretada com {modelo_usado}.")
+                        st.success(f"Folha interpretada com {modelo_usado}. {api_usada}.")
 
         resposta_original_gemini = st.session_state.get("resposta_original_gemini_ler_folha", "")
         if resposta_original_gemini:
