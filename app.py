@@ -938,6 +938,55 @@ ACOES_CONVERSA = {
 }
 
 
+def identificar_acao_conversa(frase):
+    texto_limpo = limpar_busca(frase)
+    for acao_candidata, aliases in ACOES_CONVERSA.items():
+        if any(re.search(rf"\b{re.escape(alias)}\b", texto_limpo) for alias in aliases):
+            return acao_candidata
+    return ""
+
+
+def extrair_motorista_conversa(frase):
+    texto_limpo = limpar_busca(frase)
+
+    for nome in MOTORISTAS_FIXOS:
+        primeiro_nome = nome.split()[0]
+        if re.search(rf"\b{re.escape(primeiro_nome)}\b", texto_limpo):
+            return nome
+
+    padroes = [
+        r"\bM\s+([A-ZÀ-ÿ][\wÀ-ÿ]*(?:\s+[A-ZÀ-ÿ][\wÀ-ÿ]*){0,3})",
+        r"\bMOTORISTA\s*:?\s*([A-ZÀ-ÿ][\wÀ-ÿ]*(?:\s+[A-ZÀ-ÿ][\wÀ-ÿ]*){0,3})",
+    ]
+    for padrao in padroes:
+        match = re.search(padrao, frase, flags=re.IGNORECASE | re.UNICODE)
+        if match:
+            motorista = limpar_busca(match.group(1))
+            motorista = re.split(
+                r"\b(?:FINALIZOU|FINALIZADO|FINAL|FI|BLOQUEIO|BLOQUEADO|DESLOCAMENTO|DESLOCOU)\b",
+                motorista,
+                maxsplit=1,
+            )[0].strip()
+            if motorista:
+                return motorista
+
+    acao_match = re.search(
+        r"\b(?:FINALIZOU|FINALIZADO|FINAL|FI|BLOQUEIO|BLOQUEADO|DESLOCAMENTO|DESLOCOU)\b",
+        texto_limpo,
+    )
+    if acao_match:
+        antes_acao = texto_limpo[: acao_match.start()].strip()
+        palavras = [
+            p
+            for p in re.findall(r"[\wÀ-ÿ]+", antes_acao, flags=re.UNICODE)
+            if p not in {"M", "MOTORISTA"}
+        ]
+        if palavras:
+            return " ".join(palavras[-4:])
+
+    return ""
+
+
 def parse_atualizacao_conversa(frase):
     original = texto(frase)
     if not original:
@@ -948,35 +997,17 @@ def parse_atualizacao_conversa(frase):
     if not horario:
         return None, "Não encontrei horário no formato HH:MM."
 
-    motorista = ""
-    for nome in MOTORISTAS_FIXOS:
-        primeiro_nome = nome.split()[0]
-        if re.search(rf"\b{re.escape(primeiro_nome)}\b", limpar_busca(original)):
-            motorista = nome
-            break
-
-    if not motorista:
-        motorista_normalizado = normalizar_motorista(original)
-        if motorista_normalizado in MOTORISTAS_FIXOS:
-            motorista = motorista_normalizado
+    motorista = extrair_motorista_conversa(original)
 
     if not motorista:
         return None, "Não encontrei o motorista na frase."
 
-    acao = ""
-    texto_limpo = limpar_busca(original)
-    for acao_candidata, aliases in ACOES_CONVERSA.items():
-        if any(re.search(rf"\b{re.escape(alias)}\b", texto_limpo) for alias in aliases):
-            acao = acao_candidata
-            break
-
+    acao = identificar_acao_conversa(original)
     if not acao:
         return None, "Não encontrei ação válida: finalizou, bloqueio ou deslocamento."
 
     numeros = re.findall(r"\b\d{4,}\b", original)
     final_delivery = numeros[-1] if numeros else ""
-    if not final_delivery:
-        return None, "Não encontrei final do delivery com 4 ou mais números."
 
     texto_cliente = re.sub(r"\b[0-2]?\d[:hH][0-5]\d\b", " ", original)
     texto_cliente = re.sub(r"\b\d{4,}\b", " ", texto_cliente)
@@ -1031,6 +1062,22 @@ def cliente_combina(cliente_registro, cliente_busca):
     return all(p in registro for p in palavras)
 
 
+def motorista_combina(motorista_registro, motorista_busca):
+    registro = normalizar_motorista(motorista_registro)
+    busca = normalizar_motorista(motorista_busca)
+
+    if not busca:
+        return True
+    if busca in registro or registro in busca:
+        return True
+
+    palavras = [p for p in limpar_busca(busca).split() if len(p) > 1]
+    if not palavras:
+        return False
+
+    return all(p in limpar_busca(registro) for p in palavras)
+
+
 def buscar_coletas_por_conversa(df_base, parsed):
     if df_base.empty:
         return pd.DataFrame()
@@ -1040,20 +1087,22 @@ def buscar_coletas_por_conversa(df_base, parsed):
         if coluna not in resultado.columns:
             resultado[coluna] = ""
 
-    resultado = resultado[
-        resultado["motorista"].apply(lambda v: normalizar_motorista(v) == parsed["motorista"])
-        & resultado["delivery"].apply(
+    mascara = (
+        resultado["motorista"].apply(lambda v: motorista_combina(v, parsed["motorista"]))
+        & resultado["cliente"].apply(lambda v: cliente_combina(v, parsed["cliente"]))
+        & resultado["f_horario"].apply(lambda v: not bool(texto(v)))
+    )
+    if parsed.get("final_delivery"):
+        mascara = mascara & resultado["delivery"].apply(
             lambda v: re.sub(r"\D", "", texto(v)).endswith(parsed["final_delivery"])
         )
-        & resultado["cliente"].apply(lambda v: cliente_combina(v, parsed["cliente"]))
-    ].copy()
+
+    resultado = resultado[mascara].copy()
 
     if resultado.empty:
         return resultado
 
-    resultado["_sem_fi"] = resultado["f_horario"].apply(lambda v: not bool(texto(v)))
-    resultado = resultado.sort_values("_sem_fi", ascending=False, kind="mergesort")
-    return resultado.drop(columns=["_sem_fi"])
+    return resultado
 
 
 def campos_atualizacao_conversa(parsed):
@@ -1361,9 +1410,14 @@ with tab_conversa:
         resultados_conversa = st.session_state.get("conversa_resultados") or []
 
         if parsed_conversa and resultados_conversa:
+            delivery_interpretado = (
+                f"delivery final {parsed_conversa['final_delivery']}, "
+                if parsed_conversa.get("final_delivery")
+                else "sem delivery informado, "
+            )
             st.write(
                 f"**Interpretação:** motorista {parsed_conversa['motorista']}, "
-                f"delivery final {parsed_conversa['final_delivery']}, "
+                f"{delivery_interpretado}"
                 f"cliente {parsed_conversa['cliente']}, FI {parsed_conversa['horario']}."
             )
 
