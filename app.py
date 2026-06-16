@@ -2,11 +2,13 @@ import re
 import streamlit as st
 import pandas as pd
 from io import BytesIO
+from PIL import Image, UnidentifiedImageError
 from PIL import Image, ImageOps
 from datetime import datetime
 from supabase import create_client
 from google import genai
 from google.genai import types
+from streamlit_cropper import st_cropper
 
 st.set_page_config(page_title="Controle Operacional", layout="wide")
 
@@ -178,6 +180,79 @@ DATA 15/06/2026 M JEAN D 3787805566 P 117 CL ASSAÍ PARIPE V 1021,05 L 08:08 C 0
 """.strip()
 
 
+def obter_gemini_api_key():
+    try:
+        return texto(st.secrets["GEMINI_API_KEY"])
+    except Exception:
+        return ""
+
+
+def validar_imagem_folha(arquivo_imagem):
+    if not arquivo_imagem:
+        return None, None, "Envie uma imagem antes de interpretar."
+
+    imagem_bytes = arquivo_imagem.getvalue()
+    if not imagem_bytes:
+        return None, None, "A imagem enviada está vazia ou não foi carregada corretamente."
+
+    try:
+        imagem = Image.open(BytesIO(imagem_bytes))
+        imagem.verify()
+    except (UnidentifiedImageError, OSError, ValueError):
+        return None, None, "Envie uma imagem válida nos formatos JPG, JPEG ou PNG."
+
+    try:
+        imagem = Image.open(BytesIO(imagem_bytes))
+        formato = (imagem.format or "").upper()
+    except (UnidentifiedImageError, OSError, ValueError):
+        return None, None, "Envie uma imagem válida nos formatos JPG, JPEG ou PNG."
+
+    formatos_validos = {"JPEG": "image/jpeg", "JPG": "image/jpeg", "PNG": "image/png"}
+    if formato not in formatos_validos:
+        return None, None, "Formato inválido. Use apenas JPG, JPEG ou PNG."
+
+    return imagem_bytes, formatos_validos[formato], None
+
+
+def mostrar_erro_gemini(erro):
+    st.error("Erro ao consultar Gemini. Verifique a chave, limite da API ou formato da imagem.")
+    with st.expander("Detalhes do erro"):
+        st.code(repr(erro))
+
+
+def gerar_conteudo_gemini(client, contents, tentar_fallback=True):
+    try:
+        return client.models.generate_content(model="gemini-2.5-flash", contents=contents)
+    except Exception:
+        if not tentar_fallback:
+            raise
+        return client.models.generate_content(model="gemini-1.5-flash", contents=contents)
+
+
+def testar_gemini():
+    api_key = obter_gemini_api_key()
+    if not api_key:
+        st.error("Configure GEMINI_API_KEY em st.secrets para usar a leitura automática.")
+        return False
+
+    try:
+        client = genai.Client(api_key=api_key)
+        resposta = gerar_conteudo_gemini(client, "Responda apenas OK")
+    except Exception as erro:
+        mostrar_erro_gemini(erro)
+        return False
+
+    st.success("Teste do Gemini concluído.")
+    st.write(texto(resposta.text))
+    st.session_state["gemini_teste_ok"] = True
+    return True
+
+
+def interpretar_folha_com_gemini(imagem_bytes, mime_type):
+    api_key = obter_gemini_api_key()
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY não configurada em st.secrets.")
+
 def interpretar_folha_com_gemini(imagem_bytes, mime_type="image/png"):
     api_key = st.secrets["GEMINI_API_KEY"]
     regras = carregar_regras_operacionais()
@@ -192,9 +267,9 @@ Devolva somente as linhas no formato da Atualização rápida. Não inclua expli
 """.strip()
 
     client = genai.Client(api_key=api_key)
-    resposta = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[
+    resposta = gerar_conteudo_gemini(
+        client,
+        [
             prompt,
             types.Part.from_bytes(data=imagem_bytes, mime_type=mime_type),
         ],
@@ -842,6 +917,41 @@ with tab_ler_folha:
             key="upload_ler_folha",
         )
 
+        imagem_folha_editada = None
+
+        if arquivo_folha:
+            imagem_bytes, mime_type, erro_imagem = validar_imagem_folha(arquivo_folha)
+
+            if erro_imagem:
+                st.error(erro_imagem)
+            else:
+                imagem_original = Image.open(BytesIO(imagem_bytes))
+                angulo = st.selectbox(
+                    "Girar imagem",
+                    [0, 90, 180, 270],
+                    format_func=lambda valor: f"{valor}°",
+                    key="giro_ler_folha",
+                )
+
+                if angulo:
+                    imagem_original = imagem_original.rotate(-angulo, expand=True)
+
+                imagem_folha_editada = st_cropper(
+                    imagem_original,
+                    realtime_update=False,
+                    box_color="#0066ff",
+                    aspect_ratio=None,
+                    return_type="image",
+                    key="crop_ler_folha",
+                )
+                st.image(imagem_folha_editada, caption="Imagem que será enviada ao Gemini", use_container_width=True)
+
+        if st.button("Testar Gemini"):
+            with st.spinner("Testando Gemini..."):
+                testar_gemini()
+
+        if st.button("Interpretar folha com Gemini", disabled=not arquivo_folha):
+            if not obter_gemini_api_key():
         imagem_final_bytes = None
         imagem_final_mime = "image/png"
 
@@ -916,7 +1026,24 @@ with tab_ler_folha:
                 st.warning("Envie e prepare uma imagem antes de interpretar.")
             elif not texto(st.secrets.get("GEMINI_API_KEY", "")):
                 st.error("Configure GEMINI_API_KEY em st.secrets para usar a leitura automática.")
+            elif not st.session_state.get("gemini_teste_ok"):
+                st.warning("Clique em Testar Gemini e aguarde um teste bem-sucedido antes de ler a imagem.")
+            elif not imagem_folha_editada:
+                st.warning("Envie uma imagem válida antes de interpretar.")
             else:
+                try:
+                    imagem_saida = BytesIO()
+                    formato_saida = "PNG" if getattr(imagem_folha_editada, "format", None) == "PNG" else "JPEG"
+                    mime_saida = "image/png" if formato_saida == "PNG" else "image/jpeg"
+                    imagem_folha_editada.convert("RGB").save(imagem_saida, format=formato_saida)
+
+                    with st.spinner("Interpretando a folha com Gemini 2.5 Flash..."):
+                        st.session_state["previa_ler_folha"] = interpretar_folha_com_gemini(
+                            imagem_saida.getvalue(),
+                            mime_saida,
+                        )
+                except Exception as erro:
+                    mostrar_erro_gemini(erro)
                 with st.spinner("Interpretando a folha com Gemini 2.5 Flash..."):
                     st.session_state["previa_ler_folha"] = interpretar_folha_com_gemini(
                         imagem_final_bytes,
