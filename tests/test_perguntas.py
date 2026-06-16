@@ -74,6 +74,14 @@ class PerguntasTest(unittest.TestCase):
         resposta = responder_pergunta("Separar por motorista as coletas feitas com TRUCK", str(self.csv))
         self.assertIn("MOTORISTA JEAN ROBSON (2 coleta(s))", resposta)
 
+    def test_pergunta_quantas_coletas_motorista_mes_dataframe(self):
+        resposta = responder_pergunta("Quantas coletas Jean fez este mês?", str(self.csv))
+        self.assertIn("JEAN REALIZOU 2 COLETA(S) ESTE MÊS.", resposta)
+
+    def test_pergunta_quantas_coletas_motorista_sem_periodo(self):
+        resposta = responder_pergunta("quantas coletas jean fez?", str(self.csv))
+        self.assertIn("JEAN REALIZOU 2 COLETA(S).", resposta)
+
     def test_cria_coluna_tipo_veiculo_quando_nao_existe(self):
         caminho = self.base / "sem_veiculo.csv"
         self.df.drop(columns=["tipo_veiculo"]).to_csv(caminho, index=False)
