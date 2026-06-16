@@ -1,3 +1,4 @@
+import importlib
 import re
 import streamlit as st
 import pandas as pd
@@ -8,6 +9,14 @@ from datetime import datetime
 from supabase import create_client
 from google import genai
 from google.genai import types
+
+
+ST_CROPPER_DISPONIVEL = importlib.util.find_spec("streamlit_cropper") is not None
+st_cropper = (
+    importlib.import_module("streamlit_cropper").st_cropper
+    if ST_CROPPER_DISPONIVEL
+    else None
+)
 
 st.set_page_config(page_title="Controle Operacional", layout="wide")
 
@@ -953,9 +962,8 @@ with tab_ler_folha:
         imagem_final_bytes = None
         imagem_final_mime = "image/png"
 
-        if arquivo_folha:
-            imagem_original = ImageOps.exif_transpose(Image.open(arquivo_folha)).convert("RGB")
-            st.image(imagem_original, caption="Prévia da foto enviada", use_container_width=True)
+        if arquivo_folha and not erro_imagem:
+            imagem_original = ImageOps.exif_transpose(Image.open(BytesIO(imagem_bytes))).convert("RGB")
 
             st.markdown("**Preparar imagem antes da leitura**")
             rotacao = st.radio(
@@ -972,50 +980,64 @@ with tab_ler_folha:
             )
 
             imagem_girada = imagem_original.rotate(rotacao, expand=True) if rotacao else imagem_original
-            largura, altura = imagem_girada.size
+            chave_corte = f"{arquivo_folha.name}_{arquivo_folha.size}_{rotacao}"
+            chave_imagem_usada = f"imagem_cortada_ler_folha_{chave_corte}"
 
-            st.caption("Ajuste o corte em pixels. Por padrão, a imagem inteira será enviada.")
-            chave_corte = f"{arquivo_folha.name}_{arquivo_folha.size}_{largura}x{altura}"
-            col_esq, col_dir = st.columns(2)
-            with col_esq:
-                x_inicio = st.slider(
-                    "Corte esquerdo",
-                    0,
-                    max(largura - 1, 0),
-                    0,
-                    key=f"crop_x_inicio_ler_folha_{chave_corte}",
-                )
-                y_inicio = st.slider(
-                    "Corte superior",
-                    0,
-                    max(altura - 1, 0),
-                    0,
-                    key=f"crop_y_inicio_ler_folha_{chave_corte}",
-                )
-            with col_dir:
-                x_fim = st.slider(
-                    "Corte direito",
-                    1,
-                    largura,
-                    largura,
-                    key=f"crop_x_fim_ler_folha_{chave_corte}",
-                )
-                y_fim = st.slider(
-                    "Corte inferior",
-                    1,
-                    altura,
-                    altura,
-                    key=f"crop_y_fim_ler_folha_{chave_corte}",
+            st.caption(
+                "Arraste uma caixa sobre a imagem para selecionar um corte. "
+                "Se você não clicar em Usar imagem cortada, a imagem inteira girada será usada."
+            )
+
+            col_original, col_corte = st.columns(2)
+            with col_original:
+                st.image(imagem_girada, caption="Imagem original/girada", use_container_width=True)
+
+            with col_corte:
+                if ST_CROPPER_DISPONIVEL:
+                    imagem_cortada_preview = st_cropper(
+                        imagem_girada,
+                        realtime_update=True,
+                        box_color="#1f77b4",
+                        aspect_ratio=None,
+                        return_type="image",
+                        key=f"cropper_ler_folha_{chave_corte}",
+                    )
+                else:
+                    st.warning(
+                        "O streamlit-cropper não está instalado neste ambiente. "
+                        "Instale as dependências do requirements.txt para habilitar o corte por arrastar."
+                    )
+                    largura, altura = imagem_girada.size
+                    x_inicio = st.slider("Corte esquerdo", 0, max(largura - 1, 0), 0)
+                    y_inicio = st.slider("Corte superior", 0, max(altura - 1, 0), 0)
+                    x_fim = st.slider("Corte direito", 1, largura, largura)
+                    y_fim = st.slider("Corte inferior", 1, altura, altura)
+                    imagem_cortada_preview = imagem_girada.crop((x_inicio, y_inicio, x_fim, y_fim))
+
+                st.image(
+                    imagem_cortada_preview,
+                    caption="Imagem cortada (prévia)",
+                    use_container_width=True,
                 )
 
-            if x_inicio >= x_fim or y_inicio >= y_fim:
-                st.error("O corte precisa manter uma área válida da imagem.")
+                if st.button("Usar imagem cortada", key=f"usar_imagem_cortada_{chave_corte}"):
+                    buffer_corte = BytesIO()
+                    imagem_cortada_preview.convert("RGB").save(buffer_corte, format="PNG")
+                    st.session_state[chave_imagem_usada] = buffer_corte.getvalue()
+                    st.success("Imagem cortada selecionada para a leitura.")
+
+            if chave_imagem_usada in st.session_state:
+                imagem_final_bytes = st.session_state[chave_imagem_usada]
+                imagem_final = Image.open(BytesIO(imagem_final_bytes)).convert("RGB")
+                legenda_final = "Imagem final cortada que será analisada pelo Gemini"
             else:
-                imagem_final = imagem_girada.crop((x_inicio, y_inicio, x_fim, y_fim))
+                imagem_final = imagem_girada
                 buffer_imagem_final = BytesIO()
                 imagem_final.save(buffer_imagem_final, format="PNG")
                 imagem_final_bytes = buffer_imagem_final.getvalue()
-                st.image(imagem_final, caption="Imagem final que será analisada pelo Gemini", use_container_width=True)
+                legenda_final = "Imagem final inteira que será analisada pelo Gemini"
+
+            st.image(imagem_final, caption=legenda_final, use_container_width=True)
 
         imagem_pronta = imagem_final_bytes is not None
 
