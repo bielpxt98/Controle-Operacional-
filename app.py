@@ -348,13 +348,25 @@ def interpretar_folha_com_gemini(imagem_bytes, mime_type="image/png"):
 
     regras = carregar_regras_operacionais()
     prompt = f"""
-Leia a imagem da folha operacional e transforme os registros encontrados em texto para a Atualização rápida.
+Leia a imagem da folha operacional e transforme TODOS os registros/coletas encontrados em texto para a Atualização rápida.
 
 REGRAS OPERACIONAIS:
 {regras}
 
+REGRAS OBRIGATÓRIAS PARA A LEITURA DA FOLHA:
+- Nunca resuma a folha.
+- Nunca retorne apenas exemplos.
+- Não omita nenhuma coleta identificada.
+- Retorne uma linha separada para cada coleta encontrada na imagem.
+- Se um bloco começa com "MOTORISTA:", todas as linhas abaixo pertencem ao mesmo motorista até aparecer outro "MOTORISTA:".
+- Se o motorista possui um valor ao lado, por exemplo "JEAN 992,17", aplique esse valor em todas as coletas do bloco desse motorista.
+- Se aparecer "1468,13x2", cada uma das 2 coletas do bloco deve receber o valor 1468,13.
+- Se aparecer "992,17" e existirem 4 coletas abaixo, as 4 coletas devem receber 992,17.
+- Se alguma informação estiver ilegível, preencha o campo correspondente com REVISAR.
+- Confira a imagem inteira antes de responder e inclua todas as linhas/coletas visíveis.
+
 SAÍDA OBRIGATÓRIA:
-Devolva somente as linhas no formato da Atualização rápida. Não inclua explicações.
+Devolva somente as linhas no formato da Atualização rápida, sem explicações, cabeçalhos, Markdown ou exemplos.
 """.strip()
 
     client = genai.Client(api_key=api_key)
@@ -366,7 +378,7 @@ Devolva somente as linhas no formato da Atualização rápida. Não inclua expli
         ],
     )
 
-    return texto(resposta.text), modelo_usado
+    return resposta.text if resposta.text is not None else "", modelo_usado
 
 def trocar_ano_data(valor, ano=2026):
     s = texto(valor)
@@ -1138,8 +1150,14 @@ with tab_ler_folha:
                     except Exception as e:
                         mostrar_erro_gemini(e)
                     else:
+                        st.session_state["resposta_original_gemini_ler_folha"] = texto_interpretado
                         st.session_state["previa_ler_folha"] = texto_interpretado
                         st.success(f"Folha interpretada com {modelo_usado}.")
+
+        resposta_original_gemini = st.session_state.get("resposta_original_gemini_ler_folha", "")
+        if resposta_original_gemini:
+            with st.expander("Resposta original do Gemini"):
+                st.code(resposta_original_gemini, language="text")
 
         previa_ler_folha = st.text_area(
             "Prévia editável no formato da Atualização rápida",
