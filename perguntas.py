@@ -31,6 +31,11 @@ COLUNAS_PADRAO = {
     "remessas": "delivery",
     "sr": "sr",
     "cliente": "cliente",
+    "tipo veiculo": "tipo_veiculo",
+    "tipo_veiculo": "tipo_veiculo",
+    "veiculo": "tipo_veiculo",
+    "veículo": "tipo_veiculo",
+    "carreta": "tipo_veiculo",
     "valor": "valor_frete",
     "frete": "valor_frete",
     "valor frete": "valor_frete",
@@ -64,6 +69,7 @@ COLUNAS_NECESSARIAS = [
     "c_horario",
     "f_horario",
     "observacoes",
+    "tipo_veiculo",
 ]
 
 
@@ -116,6 +122,7 @@ def _normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
     df["data"] = pd.to_datetime(df["data"], errors="coerce", dayfirst=True)
     df["motorista"] = df["motorista"].apply(_normalizar_motorista)
     df["valor_frete"] = df["valor_frete"].apply(_numero)
+    df["tipo_veiculo"] = df["tipo_veiculo"].apply(lambda v: _sem_acentos(v))
     return df
 
 
@@ -131,6 +138,11 @@ def _numero(valor: object) -> float:
         return 0.0
 
 
+def _tem_coluna_veiculo(colunas: Iterable[object]) -> bool:
+    chaves = {_chave_coluna(coluna) for coluna in colunas}
+    return "tipo veiculo" in chaves or "veiculo" in chaves
+
+
 def _ler_sqlite(caminho: Path) -> pd.DataFrame:
     with sqlite3.connect(caminho) as conexao:
         tabelas = pd.read_sql_query(
@@ -143,6 +155,38 @@ def _ler_sqlite(caminho: Path) -> pd.DataFrame:
         return pd.read_sql_query(f'SELECT * FROM "{tabela}"', conexao)
 
 
+def _garantir_coluna_veiculo(caminho: Path) -> None:
+    """Cria tipo_veiculo na fonte local quando não existir tipo_veiculo/veiculo."""
+    ext = caminho.suffix.lower()
+    if ext in {".xlsx", ".xls", ".xlsm"}:
+        planilhas = pd.read_excel(caminho, sheet_name=None)
+        alterou = False
+        for nome, df in planilhas.items():
+            if not _tem_coluna_veiculo(df.columns):
+                planilhas[nome] = df.assign(tipo_veiculo=pd.NA)
+                alterou = True
+        if alterou:
+            with pd.ExcelWriter(caminho, engine="openpyxl") as writer:
+                for nome, df in planilhas.items():
+                    df.to_excel(writer, sheet_name=nome, index=False)
+    elif ext in {".csv", ".txt"}:
+        df = pd.read_csv(caminho, sep=None, engine="python")
+        if not _tem_coluna_veiculo(df.columns):
+            df["tipo_veiculo"] = pd.NA
+            df.to_csv(caminho, index=False)
+    elif ext in {".db", ".sqlite", ".sqlite3"}:
+        with sqlite3.connect(caminho) as conexao:
+            tabelas = pd.read_sql_query(
+                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
+                conexao,
+            )["name"].tolist()
+            tabela = "deliveries" if "deliveries" in tabelas else (tabelas[0] if tabelas else "")
+            if tabela:
+                info = pd.read_sql_query(f'PRAGMA table_info("{tabela}")', conexao)
+                if not _tem_coluna_veiculo(info["name"].tolist()):
+                    conexao.execute(f'ALTER TABLE "{tabela}" ADD COLUMN tipo_veiculo TEXT')
+
+
 def carregar_dados(caminho_dados: str) -> pd.DataFrame:
     """Carrega CSV, Excel ou SQLite e devolve um DataFrame normalizado."""
     caminho = Path(caminho_dados)
@@ -150,6 +194,7 @@ def carregar_dados(caminho_dados: str) -> pd.DataFrame:
         raise FileNotFoundError(f"Arquivo de dados não encontrado: {caminho_dados}")
 
     ext = caminho.suffix.lower()
+    _garantir_coluna_veiculo(caminho)
     if ext in {".xlsx", ".xls", ".xlsm"}:
         df = pd.read_excel(caminho)
     elif ext in {".csv", ".txt"}:
@@ -189,6 +234,98 @@ def _filtrar_motorista(df: pd.DataFrame, motorista: str) -> pd.DataFrame:
     return df[df["motorista"] == motorista]
 
 
+def _extrair_termo_apos(pergunta_norm: str, termos: Iterable[str]) -> str:
+    for termo in termos:
+        match = re.search(rf"\b{termo}\s+([A-Z0-9][A-Z0-9 ._-]*)", pergunta_norm)
+        if match:
+            valor = match.group(1).strip()
+            valor = re.split(r"\b(COM|NO|NA|EM|ESTE|ESSE|MES|HOJE|FEZ|USARAM|USOU)\b", valor)[0]
+            return valor.strip()
+    return ""
+
+
+def _extrair_veiculo(pergunta: str) -> str:
+    pergunta_norm = _sem_acentos(pergunta)
+    conhecidos = ["TRUCK", "TOCO", "VAN", "UTILITARIO", "CARRETA", "BITRUCK", "VUC"]
+    for veiculo in conhecidos:
+        if re.search(rf"\b{re.escape(veiculo)}\b", pergunta_norm):
+            return veiculo
+    return _extrair_termo_apos(pergunta_norm, ["VEICULO", "TIPO"])
+
+
+def _extrair_data_especifica(pergunta: str) -> pd.Timestamp | None:
+    match = re.search(r"\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b", pergunta)
+    if not match:
+        return None
+    dia, mes, ano = match.groups()
+    ano = ano or str(date.today().year)
+    if len(ano) == 2:
+        ano = "20" + ano
+    return pd.to_datetime(f"{dia}/{mes}/{ano}", dayfirst=True, errors="coerce")
+
+
+def _aplicar_filtros_pergunta(df: pd.DataFrame, pergunta: str, motorista: str = "") -> pd.DataFrame:
+    pergunta_norm = _sem_acentos(pergunta)
+    base = df
+    data_especifica = _extrair_data_especifica(pergunta)
+    if data_especifica is not None and not pd.isna(data_especifica):
+        base = base[base["data"].dt.date == data_especifica.date()]
+    elif "HOJE" in pergunta_norm:
+        base = _periodo_hoje(base)
+    elif "MES" in pergunta_norm or "MÊS" in pergunta_norm:
+        base = _periodo_mes(base)
+
+    base = _filtrar_motorista(base, motorista)
+
+    delivery = _extrair_termo_apos(pergunta_norm, ["DELIVERY", "ENTREGA", "DOCUMENTO", "REMESSA"])
+    if delivery:
+        base = base[base["delivery"].apply(lambda v: delivery in _sem_acentos(v))]
+
+    cliente = _extrair_termo_apos(pergunta_norm, ["CLIENTE"])
+    if cliente:
+        base = base[base["cliente"].apply(lambda v: cliente in _sem_acentos(v))]
+
+    return base
+
+
+def _linhas_veiculo(df: pd.DataFrame, veiculo: str) -> str:
+    linhas = []
+    for _, row in df.head(50).iterrows():
+        data = row.get("data")
+        data_txt = pd.Timestamp(data).strftime("%d/%m/%Y") if not pd.isna(data) else ""
+        linhas.append(
+            "DATA {data} M {motorista} D {delivery} CL {cliente} VEÍCULO {veiculo}".format(
+                data=data_txt,
+                motorista="" if _valor_vazio(row.get("motorista")) else row.get("motorista"),
+                delivery="" if _valor_vazio(row.get("delivery")) else row.get("delivery"),
+                cliente="" if _valor_vazio(row.get("cliente")) else row.get("cliente"),
+                veiculo=veiculo,
+            )
+        )
+    if len(df) > 50:
+        linhas.append(f"... e mais {len(df) - 50} coleta(s).")
+    linhas.append(f"TOTAL DE COLETAS COM {veiculo}: {len(df)}")
+    return "\n".join(linhas)
+
+
+def _responder_veiculo(df: pd.DataFrame, pergunta: str, motorista: str) -> str:
+    veiculo = _extrair_veiculo(pergunta)
+    base = _aplicar_filtros_pergunta(df, pergunta, motorista)
+    base = base[base["tipo_veiculo"].apply(lambda v: veiculo in _sem_acentos(v))]
+
+    pergunta_norm = _sem_acentos(pergunta)
+    if "POR MOTORISTA" in pergunta_norm or "SEPARAR POR MOTORISTA" in pergunta_norm:
+        if base.empty:
+            return f"TOTAL DE COLETAS COM {veiculo}: 0"
+        partes = []
+        for nome, grupo in base.groupby("motorista", dropna=False):
+            partes.append(f"MOTORISTA {nome} ({len(grupo)} coleta(s))")
+            partes.append(_linhas_veiculo(grupo, veiculo))
+        return "\n".join(partes)
+
+    return _linhas_veiculo(base, veiculo)
+
+
 def _linhas_resumo(df: pd.DataFrame) -> str:
     if df.empty:
         return "Nenhuma coleta encontrada."
@@ -221,6 +358,10 @@ def responder_pergunta(pergunta: str, caminho_dados: str) -> str:
     pergunta_norm = _sem_acentos(pergunta)
     df_mes = _periodo_mes(df)
     motorista = _extrair_motorista(pergunta, df["motorista"].dropna().astype(str))
+    veiculo = _extrair_veiculo(pergunta)
+
+    if veiculo:
+        return _responder_veiculo(df, pergunta, motorista)
 
     if "SEM FI" in pergunta_norm or "SEM FINAL" in pergunta_norm or "SEM FINALIZACAO" in pergunta_norm:
         pendentes = df[df["f_horario"].apply(_valor_vazio)]
