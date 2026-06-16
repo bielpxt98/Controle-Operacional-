@@ -2,6 +2,7 @@ import re
 import streamlit as st
 import pandas as pd
 from io import BytesIO
+from PIL import Image, ImageOps
 from datetime import datetime
 from supabase import create_client
 from google import genai
@@ -177,10 +178,8 @@ DATA 15/06/2026 M JEAN D 3787805566 P 117 CL ASSAÍ PARIPE V 1021,05 L 08:08 C 0
 """.strip()
 
 
-def interpretar_folha_com_gemini(arquivo_imagem):
+def interpretar_folha_com_gemini(imagem_bytes, mime_type="image/png"):
     api_key = st.secrets["GEMINI_API_KEY"]
-    imagem_bytes = arquivo_imagem.getvalue()
-    mime_type = arquivo_imagem.type or "image/png"
     regras = carregar_regras_operacionais()
     prompt = f"""
 Leia a imagem da folha operacional e transforme os registros encontrados em texto para a Atualização rápida.
@@ -843,17 +842,86 @@ with tab_ler_folha:
             key="upload_ler_folha",
         )
 
-        if arquivo_folha:
-            st.image(arquivo_folha, caption="Imagem enviada", use_container_width=True)
+        imagem_final_bytes = None
+        imagem_final_mime = "image/png"
 
-        if st.button("Interpretar folha com Gemini", disabled=not arquivo_folha):
-            if not arquivo_folha:
-                st.warning("Envie uma imagem antes de interpretar.")
+        if arquivo_folha:
+            imagem_original = ImageOps.exif_transpose(Image.open(arquivo_folha)).convert("RGB")
+            st.image(imagem_original, caption="Prévia da foto enviada", use_container_width=True)
+
+            st.markdown("**Preparar imagem antes da leitura**")
+            rotacao = st.radio(
+                "Girar imagem",
+                options=[0, 90, -90, 180],
+                format_func=lambda valor: {
+                    0: "Não girar",
+                    90: "90° para esquerda",
+                    -90: "90° para direita",
+                    180: "180°",
+                }[valor],
+                horizontal=True,
+                key="rotacao_ler_folha",
+            )
+
+            imagem_girada = imagem_original.rotate(rotacao, expand=True) if rotacao else imagem_original
+            largura, altura = imagem_girada.size
+
+            st.caption("Ajuste o corte em pixels. Por padrão, a imagem inteira será enviada.")
+            chave_corte = f"{arquivo_folha.name}_{arquivo_folha.size}_{largura}x{altura}"
+            col_esq, col_dir = st.columns(2)
+            with col_esq:
+                x_inicio = st.slider(
+                    "Corte esquerdo",
+                    0,
+                    max(largura - 1, 0),
+                    0,
+                    key=f"crop_x_inicio_ler_folha_{chave_corte}",
+                )
+                y_inicio = st.slider(
+                    "Corte superior",
+                    0,
+                    max(altura - 1, 0),
+                    0,
+                    key=f"crop_y_inicio_ler_folha_{chave_corte}",
+                )
+            with col_dir:
+                x_fim = st.slider(
+                    "Corte direito",
+                    1,
+                    largura,
+                    largura,
+                    key=f"crop_x_fim_ler_folha_{chave_corte}",
+                )
+                y_fim = st.slider(
+                    "Corte inferior",
+                    1,
+                    altura,
+                    altura,
+                    key=f"crop_y_fim_ler_folha_{chave_corte}",
+                )
+
+            if x_inicio >= x_fim or y_inicio >= y_fim:
+                st.error("O corte precisa manter uma área válida da imagem.")
+            else:
+                imagem_final = imagem_girada.crop((x_inicio, y_inicio, x_fim, y_fim))
+                buffer_imagem_final = BytesIO()
+                imagem_final.save(buffer_imagem_final, format="PNG")
+                imagem_final_bytes = buffer_imagem_final.getvalue()
+                st.image(imagem_final, caption="Imagem final que será analisada pelo Gemini", use_container_width=True)
+
+        imagem_pronta = imagem_final_bytes is not None
+
+        if st.button("Ler com Gemini", disabled=not imagem_pronta):
+            if not imagem_pronta:
+                st.warning("Envie e prepare uma imagem antes de interpretar.")
             elif not texto(st.secrets.get("GEMINI_API_KEY", "")):
                 st.error("Configure GEMINI_API_KEY em st.secrets para usar a leitura automática.")
             else:
                 with st.spinner("Interpretando a folha com Gemini 2.5 Flash..."):
-                    st.session_state["previa_ler_folha"] = interpretar_folha_com_gemini(arquivo_folha)
+                    st.session_state["previa_ler_folha"] = interpretar_folha_com_gemini(
+                        imagem_final_bytes,
+                        imagem_final_mime,
+                    )
 
         previa_ler_folha = st.text_area(
             "Prévia editável no formato da Atualização rápida",

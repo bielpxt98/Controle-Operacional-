@@ -5,3 +5,4 @@ supabase
 xlsxwriter
 
 google-genai
+Pillow
