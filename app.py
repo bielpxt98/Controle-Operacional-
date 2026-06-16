@@ -4,6 +4,8 @@ import pandas as pd
 from io import BytesIO
 from datetime import datetime
 from supabase import create_client
+from google import genai
+from google.genai import types
 
 st.set_page_config(page_title="Controle Operacional", layout="wide")
 
@@ -128,6 +130,78 @@ def autenticar_admin():
 
         return False
 
+
+
+def carregar_regras_operacionais():
+    caminho_regras = "REGRAS_OPERACIONAIS.md"
+
+    try:
+        with open(caminho_regras, "r", encoding="utf-8") as arquivo_regras:
+            regras = arquivo_regras.read().strip()
+    except FileNotFoundError:
+        regras = ""
+
+    if regras:
+        return regras
+
+    return """
+Você é um assistente operacional que lê fotos de folhas operacionais.
+Extraia somente os registros operacionais visíveis e devolva uma linha por registro.
+Não invente dados que não estejam legíveis na imagem.
+Quando um campo não estiver legível, omita o campo em vez de chutar.
+Use exatamente as abreviações aceitas pela Atualização rápida:
+DATA = Data no formato dd/mm/aaaa
+DF = Data finalização no formato dd/mm/aaaa
+M = Motorista
+D = Delivery
+SR = SR
+CL = Cliente
+P = Paletes
+V = Valor do frete com vírgula decimal quando houver centavos
+L = Chegada no formato HH:MM
+C = Coleta no formato HH:MM
+FI = Finalização no formato HH:MM
+O = Observação, somente para deslocamento, bloqueio, motivo, remessa, NOK, CS OK, C OK ou L OK
+
+Regras obrigatórias:
+- Devolva apenas as linhas da Atualização rápida, sem explicações, sem markdown e sem numeração.
+- Cada registro deve ficar em uma única linha.
+- Não use o campo S.
+- S.F e L.F devem ficar dentro do campo CL, junto do cliente.
+- FI deve conter somente horário.
+- O não deve ser usado para HP, última ocorrência, finalizado ou em andamento.
+- Normalize nomes conhecidos quando possível: Jean, Wilson, Luis, Gabriel, Jones, Fabio, Argemiro ou Valdemir.
+
+Exemplo de saída:
+DATA 15/06/2026 M JEAN D 3787805566 P 117 CL ASSAÍ PARIPE V 1021,05 L 08:08 C 09:31 FI 13:44
+""".strip()
+
+
+def interpretar_folha_com_gemini(arquivo_imagem):
+    api_key = st.secrets["GEMINI_API_KEY"]
+    imagem_bytes = arquivo_imagem.getvalue()
+    mime_type = arquivo_imagem.type or "image/png"
+    regras = carregar_regras_operacionais()
+    prompt = f"""
+Leia a imagem da folha operacional e transforme os registros encontrados em texto para a Atualização rápida.
+
+REGRAS OPERACIONAIS:
+{regras}
+
+SAÍDA OBRIGATÓRIA:
+Devolva somente as linhas no formato da Atualização rápida. Não inclua explicações.
+""".strip()
+
+    client = genai.Client(api_key=api_key)
+    resposta = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[
+            prompt,
+            types.Part.from_bytes(data=imagem_bytes, mime_type=mime_type),
+        ],
+    )
+
+    return texto(resposta.text)
 
 def trocar_ano_data(valor, ano=2026):
     s = texto(valor)
@@ -516,10 +590,11 @@ def excel_bytes(df):
 
 admin = autenticar_admin()
 
-tab_busca, tab_rapida, tab_importar, tab_admin = st.tabs(
+tab_busca, tab_rapida, tab_ler_folha, tab_importar, tab_admin = st.tabs(
     [
         "Buscar / visualizar",
         "Atualização rápida",
+        "Ler folha",
         "Importar Excel mestre",
         "Administração",
     ]
@@ -748,6 +823,83 @@ D 3787762754 FI 11:03
                         st.write(f"- {erro}")
 
                 st.caption("Atualize a página ou volte na aba Buscar / editar para conferir os dados.")
+
+
+with tab_ler_folha:
+    st.subheader("Ler folha")
+
+    if not admin:
+        st.warning("Apenas administradores podem acessar a leitura de folha.")
+    else:
+        st.info(
+            "Envie uma foto da folha operacional. O Gemini 2.5 Flash vai gerar "
+            "uma prévia no formato da Atualização rápida, e o Supabase só será "
+            "atualizado depois da sua confirmação."
+        )
+
+        arquivo_folha = st.file_uploader(
+            "Enviar foto da folha operacional",
+            type=["jpg", "jpeg", "png"],
+            key="upload_ler_folha",
+        )
+
+        if arquivo_folha:
+            st.image(arquivo_folha, caption="Imagem enviada", use_container_width=True)
+
+        if st.button("Interpretar folha com Gemini", disabled=not arquivo_folha):
+            if not arquivo_folha:
+                st.warning("Envie uma imagem antes de interpretar.")
+            elif not texto(st.secrets.get("GEMINI_API_KEY", "")):
+                st.error("Configure GEMINI_API_KEY em st.secrets para usar a leitura automática.")
+            else:
+                with st.spinner("Interpretando a folha com Gemini 2.5 Flash..."):
+                    st.session_state["previa_ler_folha"] = interpretar_folha_com_gemini(arquivo_folha)
+
+        previa_ler_folha = st.text_area(
+            "Prévia editável no formato da Atualização rápida",
+            value=st.session_state.get("previa_ler_folha", ""),
+            height=280,
+            key="texto_ler_folha",
+            placeholder="DATA 15/06/2026 M JEAN D 3787805566 P 117 CL ASSAÍ PARIPE V 1021,05 L 08:08 C 09:31 FI 13:44",
+        )
+
+        if st.button("Confirmar e atualizar", type="primary"):
+            linhas = [linha.strip() for linha in previa_ler_folha.splitlines() if linha.strip()]
+
+            if not linhas:
+                st.warning("Não há linhas para atualizar.")
+            else:
+                criados = 0
+                atualizados = 0
+                erros = []
+
+                for idx, linha in enumerate(linhas, start=1):
+                    parsed, erro = parse_atualizacao_rapida(linha)
+
+                    if erro:
+                        erros.append(f"Linha {idx}: {erro} — {linha}")
+                        continue
+
+                    try:
+                        resultado = atualizar_rapido_no_supabase(parsed)
+                    except Exception as e:
+                        erros.append(f"Linha {idx}: {e} — {linha}")
+                        continue
+
+                    if resultado == "criado":
+                        criados += 1
+                    else:
+                        atualizados += 1
+
+                st.success("Processamento concluído.")
+                st.write(f"Registros criados: {criados}")
+                st.write(f"Registros atualizados: {atualizados}")
+                st.write(f"Linhas com erro: {len(erros)}")
+
+                if erros:
+                    st.error("Erros encontrados:")
+                    for erro in erros:
+                        st.write(f"- {erro}")
 
 
 with tab_importar:
