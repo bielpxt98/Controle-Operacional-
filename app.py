@@ -1442,30 +1442,189 @@ def responder_conversacao(pergunta, dados):
 
 admin = autenticar_admin()
 
-(
-    tab_busca,
-    tab_conversacao,
-    tab_rapida,
-    tab_conversa,
-    tab_ler_folha,
-    tab_importar,
-    tab_admin,
-) = st.tabs(
-    [
-        "Buscar / visualizar",
-        "Conversação",
-        "Atualização rápida",
-        "Atualização por conversa",
-        "Ler folha",
-        "Importar Excel mestre",
-        "Administração",
-    ]
-)
 
+def aplicar_css_profissional():
+    st.markdown(
+        """
+        <style>
+        :root {
+            --bg: #0b1220;
+            --panel: #111827;
+            --panel-soft: #172033;
+            --border: rgba(148, 163, 184, 0.22);
+            --text: #e5e7eb;
+            --muted: #94a3b8;
+            --accent: #38bdf8;
+            --accent-2: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+        .stApp {
+            background: radial-gradient(circle at top left, rgba(56,189,248,0.12), transparent 30%),
+                        linear-gradient(135deg, #08111f 0%, #0f172a 45%, #111827 100%);
+            color: var(--text);
+        }
+        [data-testid="stHeader"] { background: rgba(8,17,31,0.82); backdrop-filter: blur(12px); }
+        [data-testid="stSidebar"] { background: linear-gradient(180deg, #0f172a, #111827); border-right: 1px solid var(--border); }
+        .main .block-container { padding-top: 1.35rem; max-width: 1320px; }
+        .app-hero {
+            position: sticky; top: 0; z-index: 5;
+            padding: 1.1rem 1.25rem; margin-bottom: 1rem;
+            border: 1px solid var(--border); border-radius: 1.25rem;
+            background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(17,24,39,0.9));
+            box-shadow: 0 18px 45px rgba(0,0,0,0.28);
+        }
+        .app-hero h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.6rem); letter-spacing: -0.04em; }
+        .app-hero p { margin: .25rem 0 0; color: var(--muted); font-size: 1.02rem; }
+        .metric-card, .nav-card {
+            height: 100%; padding: 1rem; border: 1px solid var(--border); border-radius: 1.15rem;
+            background: linear-gradient(180deg, rgba(30,41,59,0.96), rgba(15,23,42,0.94));
+            box-shadow: 0 16px 36px rgba(0,0,0,0.25);
+        }
+        .metric-card .icon, .nav-card .icon { font-size: 1.55rem; }
+        .metric-card .label { color: var(--muted); font-size: .9rem; margin-top: .35rem; }
+        .metric-card .value { font-size: 2rem; font-weight: 800; margin-top: .15rem; color: #f8fafc; }
+        .metric-card .hint { color: #cbd5e1; font-size: .82rem; margin-top: .25rem; }
+        .section-card { padding: 1rem; border: 1px solid var(--border); border-radius: 1.15rem; background: rgba(15,23,42,0.72); }
+        div.stButton > button {
+            border-radius: .9rem; min-height: 2.8rem; font-weight: 700; border: 1px solid rgba(56,189,248,.25);
+            background: linear-gradient(135deg, rgba(30,41,59,.95), rgba(15,23,42,.95)); color: #e2e8f0;
+        }
+        div.stButton > button:hover { border-color: var(--accent); color: white; box-shadow: 0 0 0 3px rgba(56,189,248,.12); }
+        div.stButton > button[kind="primary"] { background: linear-gradient(135deg, #0284c7, #0369a1); border-color: #38bdf8; }
+        [data-testid="stDataFrame"] { border: 1px solid var(--border); border-radius: 1rem; overflow: auto; box-shadow: 0 12px 30px rgba(0,0,0,.22); }
+        .stAlert { border-radius: 1rem; border: 1px solid var(--border); }
+        @media (max-width: 760px) {
+            .main .block-container { padding-left: .75rem; padding-right: .75rem; }
+            .app-hero { position: relative; padding: .95rem; }
+            div[data-testid="column"] { width: 100% !important; flex: 1 1 100% !important; }
+            div.stButton > button { width: 100%; min-height: 3.25rem; font-size: 1rem; }
+            [data-testid="stDataFrame"] { overflow-x: auto; }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+PAGINAS = {
+    "dashboard": {"label": "Dashboard", "icon": "📊"},
+    "busca": {"label": "Buscar / visualizar", "icon": "🔎"},
+    "conversacao": {"label": "Conversação", "icon": "💬"},
+    "rapida": {"label": "Atualização rápida", "icon": "⚡"},
+    "conversa": {"label": "Atualização por conversa", "icon": "🗣️"},
+    "ler_folha": {"label": "Ler folha", "icon": "📄"},
+    "importar": {"label": "Importar Excel mestre", "icon": "📥"},
+    "admin": {"label": "Administração", "icon": "🛠️"},
+}
+
+
+def ir_para_pagina(pagina):
+    st.session_state["pagina_atual"] = pagina
+
+
+def render_header():
+    st.markdown(
+        """
+        <div class="app-hero">
+            <h1>Controle Operacional</h1>
+            <p>Gestão de coletas, entregas, finalizações e observações</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_menu(pagina_atual):
+    with st.sidebar:
+        st.markdown("### Navegação")
+        for chave, pagina in PAGINAS.items():
+            prefixo = "● " if chave == pagina_atual else ""
+            if st.button(f"{prefixo}{pagina['icon']} {pagina['label']}", key=f"nav_{chave}", use_container_width=True):
+                ir_para_pagina(chave)
+                st.rerun()
+
+
+def calcular_resumos(df_base):
+    if df_base.empty:
+        return {"total": 0, "sem_fi": 0, "bloqueio": 0, "deslocamento": 0, "sr": 0}, pd.Series(dtype="int64")
+    obs = df_base.get("observacoes", pd.Series([""] * len(df_base))).fillna("").astype(str).str.upper()
+    fi = df_base.get("f_horario", pd.Series([""] * len(df_base))).fillna("").astype(str).str.strip()
+    sr = df_base.get("sr", pd.Series([""] * len(df_base))).fillna("").astype(str).str.strip()
+    motoristas = df_base.get("motorista", pd.Series(dtype="object")).fillna("Sem motorista").replace("", "Sem motorista").value_counts()
+    return {
+        "total": len(df_base),
+        "sem_fi": int((fi == "").sum()),
+        "bloqueio": int(obs.str.contains("BLOQ", na=False).sum()),
+        "deslocamento": int(obs.str.contains("DESLOC", na=False).sum()),
+        "sr": int((sr != "").sum()),
+    }, motoristas
+
+
+def metric_card(icon, label, value, hint=""):
+    st.markdown(
+        f'<div class="metric-card"><div class="icon">{icon}</div><div class="label">{label}</div><div class="value">{value}</div><div class="hint">{hint}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+aplicar_css_profissional()
 df = listar()
+if "pagina_atual" not in st.session_state:
+    st.session_state["pagina_atual"] = "dashboard"
+pagina_atual = st.session_state["pagina_atual"]
+render_menu(pagina_atual)
+render_header()
 
 
-with tab_busca:
+if pagina_atual == "dashboard":
+    resumo, total_por_motorista = calcular_resumos(df)
+
+    st.markdown("### Visão geral da operação")
+    cols = st.columns(5)
+    with cols[0]:
+        metric_card("🚚", "Total de coletas", resumo["total"], "Registros na base")
+    with cols[1]:
+        metric_card("⏱️", "Coletas sem FI", resumo["sem_fi"], "Pendentes de finalização")
+    with cols[2]:
+        metric_card("⛔", "Coletas com bloqueio", resumo["bloqueio"], "Observações de bloqueio")
+    with cols[3]:
+        metric_card("↔️", "Coletas com deslocamento", resumo["deslocamento"], "Ocorrências de deslocamento")
+    with cols[4]:
+        metric_card("🧾", "Coletas com SR", resumo["sr"], "Solicitações registradas")
+
+    st.markdown("### Acesso rápido")
+    nav_items = [
+        ("busca", "🔎", "Buscar / visualizar", "Consultar, filtrar, editar e excluir registros."),
+        ("conversacao", "💬", "Conversação", "Perguntas livres sobre os dados operacionais."),
+        ("rapida", "⚡", "Atualização rápida", "Atualizar registros por abreviações."),
+        ("conversa", "🗣️", "Atualização por conversa", "Interpretar frase natural e confirmar alteração."),
+        ("ler_folha", "📄", "Ler folha", "Extrair dados de foto da folha operacional."),
+        ("importar", "📥", "Importar Excel mestre", "Carregar planilha base para a nuvem."),
+        ("admin", "🛠️", "Administração", "Exportação e rotinas administrativas."),
+    ]
+    for linha in range(0, len(nav_items), 4):
+        cols_nav = st.columns(4)
+        for col, (chave, icon, titulo, desc) in zip(cols_nav, nav_items[linha:linha + 4]):
+            with col:
+                st.markdown(
+                    f'<div class="nav-card"><div class="icon">{icon}</div><h3>{titulo}</h3><p>{desc}</p></div>',
+                    unsafe_allow_html=True,
+                )
+                if st.button(f"Abrir {titulo}", key=f"card_{chave}", use_container_width=True):
+                    ir_para_pagina(chave)
+                    st.rerun()
+
+    st.markdown("### Total por motorista")
+    if total_por_motorista.empty:
+        st.info("Nenhum registro encontrado para resumir por motorista.")
+    else:
+        df_motoristas = total_por_motorista.rename_axis("Motorista").reset_index(name="Total de coletas")
+        st.dataframe(df_motoristas, use_container_width=True, hide_index=True)
+
+
+
+if pagina_atual == "busca":
     st.subheader("Buscar na nuvem")
 
     q = st.text_input(
@@ -1615,7 +1774,7 @@ with tab_busca:
             st.error(f"Erro ao editar: {e}")
 
 
-with tab_conversacao:
+if pagina_atual == "conversacao":
     st.subheader("Conversação")
     st.info(
         "Digite uma pergunta livre para o assistente operacional calcular a resposta "
@@ -1677,7 +1836,7 @@ with tab_conversacao:
             st.write(item["resposta"])
 
 
-with tab_rapida:
+if pagina_atual == "rapida":
     st.subheader("Atualização rápida")
 
     if not admin:
@@ -1771,7 +1930,7 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                 st.caption("Atualize a página ou volte na aba Buscar / editar para conferir os dados.")
 
 
-with tab_conversa:
+if pagina_atual == "conversa":
     st.subheader("Atualização por conversa")
 
     if not admin:
@@ -1874,7 +2033,7 @@ with tab_conversa:
                     st.rerun()
 
 
-with tab_ler_folha:
+if pagina_atual == "ler_folha":
     st.subheader("Ler folha")
 
     if not admin:
@@ -2152,7 +2311,7 @@ with tab_ler_folha:
                         st.write(f"- {erro}")
 
 
-with tab_importar:
+if pagina_atual == "importar":
     st.subheader("Importar Excel mestre")
 
     if not admin:
@@ -2192,7 +2351,7 @@ with tab_importar:
                 st.info(f"{ignorados} linhas ignoradas sem delivery e sem SR.")
 
 
-with tab_admin:
+if pagina_atual == "admin":
     st.subheader("Administração")
 
     if not admin:
