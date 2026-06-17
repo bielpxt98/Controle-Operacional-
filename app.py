@@ -27,6 +27,26 @@ SUPABASE_KEY = "sb_publishable_8pSOHjRSllI9wWVYPkmYFA_AfzxV-QS"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
+PERGUNTAS_PROGRAMADAS = [
+    "Quantas coletas JEAN teve hoje?",
+    "Quantas coletas JEAN teve este mês?",
+    "Quantas coletas cada motorista teve este mês?",
+    "Quais coletas estão sem FI?",
+    "Quais coletas estão sem C?",
+    "Quais coletas tiveram bloqueio?",
+    "Quais coletas tiveram deslocamento?",
+    "Quantas remessas tiveram no mês?",
+    "Qual valor total por motorista no mês?",
+    "Qual motorista teve mais coletas?",
+    "Quantos SR teve hoje?",
+    "Quantos SR teve este mês?",
+    "Quantos deslocamentos por motorista?",
+    "Quantos deslocamentos por motivo?",
+    "Quantos bloqueios por motorista?",
+    "Quantos bloqueios por motivo?",
+]
+
+
 MOTORISTAS_FIXOS = {
     "WILSON REIS": {"cpf": "806.984.765-49", "cavalo": "JJF1856", "carreta": "NVQ8447"},
     "FABIO SOUZA": {"cpf": "007.714.335-30", "cavalo": "PEL4695", "carreta": "NLB7814"},
@@ -1156,11 +1176,36 @@ def excel_bytes(df):
     return out.getvalue()
 
 
+def responder_conversacao(pergunta, dados):
+    if not pergunta or not pergunta.strip():
+        st.warning("Escolha ou digite uma pergunta para consultar o histórico.")
+        return
+
+    if dados.empty:
+        st.warning("Ainda não existem dados carregados para responder a pergunta.")
+        return
+
+    try:
+        resposta = responder_pergunta_df(pergunta, dados)
+        st.success(resposta)
+    except Exception as e:
+        st.error(f"Erro ao responder a pergunta: {e}")
+
+
 admin = autenticar_admin()
 
-tab_busca, tab_rapida, tab_conversa, tab_ler_folha, tab_importar, tab_admin = st.tabs(
+(
+    tab_busca,
+    tab_conversacao,
+    tab_rapida,
+    tab_conversa,
+    tab_ler_folha,
+    tab_importar,
+    tab_admin,
+) = st.tabs(
     [
         "Buscar / visualizar",
+        "Conversação",
         "Atualização rápida",
         "Atualização por conversa",
         "Ler folha",
@@ -1317,6 +1362,35 @@ with tab_busca:
 
         except Exception as e:
             st.error(f"Erro ao editar: {e}")
+
+
+with tab_conversacao:
+    st.subheader("Conversação")
+    st.info(
+        "Use as perguntas programadas para conversar com o histórico de coletas. "
+        "Esta consulta não altera nenhum registro."
+    )
+
+    pergunta_programada = st.selectbox(
+        "Perguntas programadas",
+        PERGUNTAS_PROGRAMADAS,
+    )
+
+    pergunta_livre = st.text_input(
+        "Ou digite outra pergunta",
+        placeholder="Ex.: Quais coletas estão sem FI?",
+    )
+
+    pergunta_escolhida = pergunta_livre.strip() or pergunta_programada
+
+    col_responder, col_exemplo = st.columns([1, 3])
+    with col_responder:
+        consultar = st.button("Responder", type="primary")
+    with col_exemplo:
+        st.caption(f"Pergunta que será enviada: {pergunta_escolhida}")
+
+    if consultar:
+        responder_conversacao(pergunta_escolhida, df)
 
 
 with tab_rapida:
