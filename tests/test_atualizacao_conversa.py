@@ -1,7 +1,10 @@
 import ast
 import re
+import logging
 from datetime import datetime
 from pathlib import Path
+
+import pandas as pd
 
 
 FUNCOES_NECESSARIAS = {
@@ -24,6 +27,7 @@ FUNCOES_NECESSARIAS = {
     "combinar_observacoes_conversa",
     "parse_atualizacao_conversa",
     "campos_atualizacao_conversa",
+    "buscar_coletas_por_conversa",
 }
 
 CONSTANTES_NECESSARIAS = {
@@ -36,7 +40,9 @@ CONSTANTES_NECESSARIAS = {
 def carregar_funcoes_app():
     """Carrega só funções puras do app, sem executar a interface Streamlit."""
     modulo = ast.parse(Path("app.py").read_text(encoding="utf-8"))
-    namespace = {"re": re, "datetime": datetime}
+    namespace = {"re": re, "datetime": datetime, "logger": logging.getLogger("test_atualizacao_conversa")}
+    import pandas as pd
+    namespace["pd"] = pd
 
     for node in modulo.body:
         if isinstance(node, ast.Assign) and any(getattr(t, "id", None) in CONSTANTES_NECESSARIAS for t in node.targets):
@@ -79,3 +85,60 @@ def test_conversa_finalizacao_salva_observacao_livre_ate_fim_da_frase():
     campos = app["campos_atualizacao_conversa"](parsed)
     assert campos["f_horario"] == "16:22"
     assert campos["observacoes"] == "CLIENTE PEDIU COMPROVANTE DEPOIS"
+
+
+def test_conversa_formato_operacional_extrai_delivery_e_busca_somente_por_d():
+    app = carregar_funcoes_app()
+    df = pd.DataFrame(
+        [
+            {"id": 1, "D": 3787816621, "motorista": "Outro", "cliente": "Cliente X", "f_horario": "08:00"},
+            {"id": 2, "D": 3787816622, "motorista": "Jean", "cliente": "Cliente Y", "f_horario": ""},
+        ]
+    )
+
+    parsed, erro = app["parse_atualizacao_conversa"]("D   3787816621 FI 09:44 DF 17/06")
+    resultados = app["buscar_coletas_por_conversa"](df, parsed)
+
+    assert erro is None
+    assert parsed["final_delivery"] == "3787816621"
+    assert parsed["horario"] == "09:44"
+    assert parsed["data_finalizacao"] == "17/06"
+    assert len(resultados) == 1
+    assert resultados.iloc[0]["id"] == 1
+
+
+def test_conversa_aceita_delivery_sem_letra_d_no_inicio():
+    app = carregar_funcoes_app()
+    df = pd.DataFrame(
+        [{"id": 1, "delivery": "3787816621", "motorista": "Outro", "cliente": "Cliente X", "f_horario": "08:00"}]
+    )
+
+    parsed, erro = app["parse_atualizacao_conversa"]("3787816621 FI 09:44 DF 17/06")
+    resultados = app["buscar_coletas_por_conversa"](df, parsed)
+
+    assert erro is None
+    assert parsed["final_delivery"] == "3787816621"
+    assert len(resultados) == 1
+    assert resultados.iloc[0]["id"] == 1
+
+
+def test_conversa_aceita_alias_delivery_e_remessa():
+    app = carregar_funcoes_app()
+
+    for frase in ["delivery 3787816621 FI 09:44", "remessa 3787816621 FI 09:44", "d 3787816621 FI 09:44"]:
+        parsed, erro = app["parse_atualizacao_conversa"](frase)
+        assert erro is None
+        assert parsed["final_delivery"] == "3787816621"
+
+
+def test_conversa_aceita_apenas_delivery_para_abrir_confirmacao():
+    app = carregar_funcoes_app()
+    df = pd.DataFrame([{"id": 1, "delivery": 3787816621, "motorista": "Outro", "cliente": "Cliente X", "f_horario": ""}])
+
+    parsed, erro = app["parse_atualizacao_conversa"]("D 3787816621")
+    resultados = app["buscar_coletas_por_conversa"](df, parsed)
+
+    assert erro is None
+    assert parsed["final_delivery"] == "3787816621"
+    assert parsed["acao"] == ""
+    assert len(resultados) == 1

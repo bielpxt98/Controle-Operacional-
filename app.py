@@ -1020,7 +1020,13 @@ def normalizar_data_conversa(v):
 
 
 def identificar_acao_conversa(frase):
-    texto_limpo = limpar_busca(frase)
+    texto_sem_marcador_delivery = re.sub(
+        r"(?<!\w)(?:D|DELIVERY|REMESSA)\s*:?\s*\d{4,}\b",
+        " ",
+        texto(frase),
+        flags=re.IGNORECASE | re.UNICODE,
+    )
+    texto_limpo = limpar_busca(texto_sem_marcador_delivery)
     for acao_candidata, aliases in ACOES_CONVERSA.items():
         if any(re.search(rf"\b{re.escape(alias)}\b", texto_limpo) for alias in aliases):
             return acao_candidata
@@ -1069,9 +1075,20 @@ def extrair_motorista_conversa(frase):
 
 
 def extrair_codigo_conversa(frase):
-    numeros = re.findall(r"\b\d{4,}\b", texto(frase))
+    original = texto(frase)
+    marcador = re.search(
+        r"(?<!\w)(?:D|DELIVERY|REMESSA)\s*:?\s*(\d{4,})\b",
+        original,
+        flags=re.IGNORECASE | re.UNICODE,
+    )
+    if marcador:
+        return marcador.group(1)
+
+    numeros = re.findall(r"\b\d{4,}\b", original)
     completos = [n for n in numeros if parece_delivery_completo(n)]
-    return (completos[-1] if completos else (numeros[-1] if numeros else ""))
+    if completos:
+        return completos[0]
+    return numeros[0] if numeros else ""
 
 
 def extrair_contexto_linha_busca(frase, codigo):
@@ -1219,7 +1236,7 @@ def parse_atualizacao_conversa(frase):
     if not acao and horario:
         acao = "FINALIZACAO"
 
-    if not acao and not eh_alteracao:
+    if not acao and not eh_alteracao and not codigo:
         return None, "Não encontrei ação válida: finalizou, bloqueio, deslocamento, mudar ou trocar."
 
     if acao and not horario:
@@ -1246,7 +1263,7 @@ def parse_atualizacao_conversa(frase):
     if not codigo:
         return None, "Não encontrei delivery/remessa com pelo menos 4 dígitos."
 
-    if not acao and not (motorista_alteracao or cliente_alteracao):
+    if eh_alteracao and not acao and not (motorista_alteracao or cliente_alteracao):
         return None, "Não encontrei motorista ou cliente para alterar."
 
     observacao_acao = None
@@ -1307,12 +1324,15 @@ def buscar_coletas_por_conversa(df_base, parsed):
         return pd.DataFrame()
 
     resultado = df_base.copy()
+    if "delivery" not in resultado.columns and "D" in resultado.columns:
+        resultado["delivery"] = resultado["D"]
     for coluna in ["motorista", "delivery", "cliente", "f_horario", "data", "data_finalizacao"]:
         if coluna not in resultado.columns:
             resultado[coluna] = ""
 
     codigo_busca = limpar_codigo_delivery(parsed.get("final_delivery"))
     if codigo_busca:
+        resultado["delivery"] = resultado["delivery"].astype("string").fillna("")
         entregas = resultado["delivery"].apply(limpar_codigo_delivery)
         if parece_delivery_completo(codigo_busca):
             mascara_codigo = entregas == codigo_busca
@@ -1323,6 +1343,13 @@ def buscar_coletas_por_conversa(df_base, parsed):
                 mascara_codigo = entregas.str.endswith(codigo_busca[-4:])
     else:
         mascara_codigo = pd.Series(True, index=resultado.index)
+
+    logger.info("DELIVERY EXTRAÍDO: %s", parsed.get("final_delivery"))
+    logger.info("REGISTROS ENCONTRADOS: %s", int(mascara_codigo.sum()))
+    logger.info("DELIVERY UTILIZADO: %s", codigo_busca)
+
+    if codigo_busca and mascara_codigo.any():
+        return resultado[mascara_codigo].copy()
 
     mascara = mascara_codigo
     if parsed.get("tipo_atualizacao") != "alteracao":
