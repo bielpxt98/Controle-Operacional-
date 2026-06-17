@@ -1596,6 +1596,55 @@ def aplicar_css_profissional():
             z-index: 1;
         }}
         [data-testid="stHeader"] {{ background: transparent; backdrop-filter: none; height: 1.45rem; }}
+
+        /*
+         * Streamlit mostra um estado global de execução durante reruns.
+         * Mantemos apenas o widget discreto no topo direito e neutralizamos
+         * qualquer camada/efeito visual que escureça ou bloqueie a página.
+         */
+        .stApp,
+        [data-testid="stAppViewContainer"],
+        [data-testid="stAppViewBlockContainer"],
+        .main,
+        .main .block-container {{
+            opacity: 1 !important;
+            filter: none !important;
+        }}
+        [data-testid="stAppViewContainer"]::before,
+        [data-testid="stAppViewContainer"]::after,
+        [data-testid="stAppViewBlockContainer"]::before,
+        [data-testid="stAppViewBlockContainer"]::after,
+        .stApp::before,
+        .stApp::after {{
+            pointer-events: none !important;
+            filter: none !important;
+            box-shadow: none !important;
+        }}
+        [data-testid="stStatusWidget"] {{
+            position: fixed !important;
+            top: .48rem !important;
+            right: .72rem !important;
+            z-index: 999999 !important;
+            width: auto !important;
+            min-width: 2.35rem !important;
+            height: 2.05rem !important;
+            padding: .28rem .42rem !important;
+            border-radius: 999px !important;
+            border: 1px solid rgba(110,198,255,.28) !important;
+            background: rgba(6,23,51,.52) !important;
+            backdrop-filter: blur(8px) !important;
+            -webkit-backdrop-filter: blur(8px) !important;
+            box-shadow: 0 8px 22px rgba(0,0,0,.20) !important;
+        }}
+        [data-testid="stStatusWidget"] * {{
+            color: #E0F2FE !important;
+            background: transparent !important;
+            box-shadow: none !important;
+        }}
+        [data-testid="stDecoration"] {{
+            background: linear-gradient(90deg, transparent, rgba(110,198,255,.92), transparent) !important;
+            height: 2px !important;
+        }}
         [data-testid="stSidebar"] {{
             background: linear-gradient(180deg, rgba(5,16,36,0.58) 0%, rgba(7,25,54,0.48) 58%, rgba(10,37,82,0.42) 100%);
             backdrop-filter: blur(8px);
@@ -1692,17 +1741,46 @@ def aplicar_css_profissional():
         div.stButton > button:hover {{ border-color: var(--accent); color: white; box-shadow: 0 0 0 2px rgba(56,189,248,.10); }}
         div.stButton > button[kind="primary"] {{ background: linear-gradient(135deg, #0284c7, #0369a1); border-color: #38bdf8; }}
         [data-testid="stDataFrame"] {{
-            border: 1px solid rgba(110,198,255,.32);
-            border-radius: .8rem;
-            overflow: auto;
-            box-shadow: 0 8px 22px rgba(0,0,0,.14);
-            background: rgba(10,20,40,.22) !important;
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
+            border: 1px solid rgba(110,198,255,.30) !important;
+            border-radius: .86rem !important;
+            overflow: hidden !important;
+            box-shadow: 0 10px 26px rgba(0,0,0,.16) !important;
+            background: rgba(5,16,36,.28) !important;
+            backdrop-filter: blur(7px);
+            -webkit-backdrop-filter: blur(7px);
         }}
-        [data-testid="stDataFrame"] div, [data-testid="stDataFrame"] canvas,
-        [data-testid="stDataFrame"] [class*="glide"], [data-testid="stDataFrame"] [class*="data-grid"] {{
+        [data-testid="stDataFrame"] > div,
+        [data-testid="stDataFrame"] section,
+        [data-testid="stDataFrame"] div[class*="stDataFrame"],
+        [data-testid="stDataFrame"] div[class*="dataframe"],
+        [data-testid="stDataFrame"] div[class*="glide"],
+        [data-testid="stDataFrame"] div[class*="dvn"],
+        [data-testid="stDataFrame"] div[class*="data-grid"],
+        [data-testid="stDataFrame"] [role="grid"],
+        [data-testid="stDataFrame"] [role="rowgroup"],
+        [data-testid="stDataFrame"] [role="row"],
+        [data-testid="stDataFrame"] [role="gridcell"],
+        [data-testid="stDataFrame"] [role="columnheader"] {{
             background-color: transparent !important;
+            color: rgba(241,245,249,.96) !important;
+            border-color: rgba(110,198,255,.15) !important;
+        }}
+        [data-testid="stDataFrame"] canvas {{
+            background: rgba(5,16,36,.18) !important;
+            color-scheme: dark !important;
+        }}
+        [data-testid="stDataFrame"] [class*="dvn-scroller"],
+        [data-testid="stDataFrame"] [class*="scroll"],
+        [data-testid="stDataFrame"] [data-testid*="scroll"] {{
+            background: rgba(5,16,36,.16) !important;
+            scrollbar-color: rgba(110,198,255,.48) rgba(5,16,36,.30) !important;
+        }}
+        [data-testid="stDataFrame"] input,
+        [data-testid="stDataFrame"] textarea,
+        [data-testid="stDataFrame"] [contenteditable="true"] {{
+            background: rgba(8,35,78,.72) !important;
+            color: #FFFFFF !important;
+            border: 1px solid rgba(110,198,255,.34) !important;
         }}
 
         /* Campos de pesquisa e formulários com vidro escuro para revelar a identidade ao fundo. */
@@ -1736,33 +1814,43 @@ def aplicar_css_profissional():
 
         /* Tabelas escuras e translúcidas, mantendo contraste em células e cabeçalhos. */
         [data-testid="stTable"], [data-testid="stDataFrame"], table {{ color: #FFFFFF !important; }}
+        [data-testid="stTable"], .stDataFrame {{
+            background: rgba(5,16,36,.24) !important;
+            border-radius: .86rem !important;
+        }}
         [data-testid="stTable"] table, table {{
-            background: rgba(10,20,40,.22) !important;
+            width: 100%;
+            background: rgba(5,16,36,.22) !important;
             border-collapse: separate;
             border-spacing: 0;
             border: 1px solid rgba(110,198,255,.24);
-            border-radius: .8rem;
+            border-radius: .86rem;
             overflow: hidden;
+            box-shadow: 0 10px 26px rgba(0,0,0,.14);
         }}
         [data-testid="stTable"] thead tr, [data-testid="stTable"] th, table thead tr, table th {{
-            background: rgba(8,35,78,.62) !important;
+            background: rgba(8,35,78,.68) !important;
             color: #FFFFFF !important;
             font-weight: 850;
             border-color: rgba(110,198,255,.22) !important;
         }}
         [data-testid="stTable"] tbody tr, table tbody tr {{ background: rgba(10,20,40,.34) !important; }}
-        [data-testid="stTable"] tbody tr:nth-child(even), table tbody tr:nth-child(even) {{ background: rgba(15,31,58,.28) !important; }}
-        [data-testid="stTable"] td, table td {{ color: rgba(241,245,249,.94) !important; border-color: rgba(110,198,255,.16) !important; }}
-        .stDataFrame [role="grid"] {{ background-color: rgba(10,20,40,.20) !important; }}
+        [data-testid="stTable"] tbody tr:nth-child(even), table tbody tr:nth-child(even) {{ background: rgba(15,31,58,.26) !important; }}
+        [data-testid="stTable"] td, table td {{ color: rgba(241,245,249,.95) !important; border-color: rgba(110,198,255,.16) !important; }}
+        .stDataFrame [role="grid"] {{ background-color: rgba(5,16,36,.18) !important; }}
         .stDataFrame [role="row"], .stDataFrame [role="gridcell"] {{
             background-color: rgba(10,20,40,.18) !important;
-            color: rgba(241,245,249,.94) !important;
+            color: rgba(241,245,249,.95) !important;
             border-color: rgba(110,198,255,.14) !important;
         }}
+        .stDataFrame [role="row"]:nth-child(even), .stDataFrame [role="gridcell"]:nth-child(even) {{
+            background-color: rgba(15,31,58,.14) !important;
+        }}
         .stDataFrame [role="columnheader"] {{
-            background-color: rgba(8,35,78,.62) !important;
+            background-color: rgba(8,35,78,.70) !important;
             color: #FFFFFF !important;
             border-color: rgba(110,198,255,.22) !important;
+            font-weight: 850 !important;
         }}
         .stAlert {{ border-radius: .8rem; border: 1px solid var(--border); padding: .55rem .75rem; background: rgba(10,20,40,.38); color: #FFFFFF; }}
         @media (max-width: 760px) {{
