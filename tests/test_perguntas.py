@@ -188,12 +188,37 @@ class PerguntasTest(unittest.TestCase):
 
         resposta = responder_pergunta("relatório deslocamento 10/06 17/06", str(caminho))
 
-        self.assertIn("DATA | DELIVERY | CLIENTE | PENDENTE | VALOR", resposta)
-        self.assertIn(f"10/06/{ano} | 3787807939 | COMERCIAL SEIS IRMAOS | PENDENTE | R$ 734,07", resposta)
-        self.assertIn(f"17/06/{ano} | 2002 | B | PENDENTE | R$ 50,00", resposta)
+        self.assertIn("DATA | DELIVERY | CLIENTE | PENDENTE | VALOR PLANILHA | VALOR TOTAL", resposta)
+        self.assertIn(f"10/06/{ano} | 3787807939 | COMERCIAL SEIS IRMAOS | PENDENTE | R$ 734,07 | R$ 1.468,13", resposta)
+        self.assertIn(f"17/06/{ano} | 2002 | B | PENDENTE | R$ 50,00 | R$ 100,00", resposta)
         self.assertIn("TOTAL DE REGISTROS: 2", resposta)
-        self.assertIn("VALOR TOTAL: R$ 784,07", resposta)
+        self.assertIn("TOTAL PLANILHA: R$ 784,07", resposta)
+        self.assertIn("TOTAL ORIGINAL: R$ 1.568,13", resposta)
         self.assertNotIn("2003", resposta)
+
+    def test_relatorio_deslocamento_data_unica_sem_palavra_relatorio(self):
+        ano = date.today().year
+        df = pd.DataFrame([
+            {"data": f"16/06/{ano}", "delivery": "3787762706", "cliente": "AMERICANAS S.A F.S", "valor_frete": "992,17", "status": "", "observacoes": "DESLOCAMENTO"},
+            {"data": f"17/06/{ano}", "delivery": "3787762754", "cliente": "ASSAI PARIPE", "valor_frete": "1021,05", "status": "", "observacoes": "DESLOCAMENTO"},
+        ])
+        caminho = self.base / "relatorio_deslocamento_data_unica.csv"
+        df.to_csv(caminho, index=False)
+
+        resposta = responder_pergunta("deslocamentos 16/06", str(caminho))
+
+        self.assertIn("DATA | DELIVERY | CLIENTE | PENDENTE | VALOR PLANILHA | VALOR TOTAL", resposta)
+        self.assertIn(f"16/06/{ano} | 3787762706 | AMERICANAS S.A F.S | PENDENTE | R$ 496,08 | R$ 992,17", resposta)
+        self.assertIn("TOTAL DE REGISTROS: 1", resposta)
+        self.assertIn("TOTAL PLANILHA: R$ 496,08", resposta)
+        self.assertIn("TOTAL ORIGINAL: R$ 992,17", resposta)
+        self.assertNotIn("3787762754", resposta)
+
+        resposta_periodo = responder_pergunta("me mande os dados dos deslocamentos do dia 16/06 ao dia 17/06", str(caminho))
+        self.assertIn(f"17/06/{ano} | 3787762754 | ASSAI PARIPE | PENDENTE | R$ 510,53 | R$ 1.021,05", resposta_periodo)
+        self.assertIn("TOTAL DE REGISTROS: 2", resposta_periodo)
+        self.assertIn("TOTAL PLANILHA: R$ 1.006,61", resposta_periodo)
+        self.assertIn("TOTAL ORIGINAL: R$ 2.013,22", resposta_periodo)
 
     def test_relatorio_reembolso_intervalo_datas_valor_cheio(self):
         ano = date.today().year

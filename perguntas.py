@@ -11,6 +11,7 @@ import re
 import sqlite3
 import unicodedata
 from datetime import date
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Iterable
 
@@ -483,6 +484,9 @@ def _aplicar_periodo_operacional(df: pd.DataFrame, pergunta: str) -> pd.DataFram
     if inicio is not None and fim is not None:
         logger.info("Aplicando período operacional de %s a %s para pergunta: %s", inicio.date(), fim.date(), pergunta)
         return df[(df["data"].dt.date >= inicio.date()) & (df["data"].dt.date <= fim.date())]
+    data_especifica = _extrair_data_especifica(pergunta)
+    if data_especifica is not None and not pd.isna(data_especifica):
+        return df[df["data"].dt.date == data_especifica.date()]
     if "HOJE" in pergunta_norm:
         return _periodo_hoje(df)
     if "MES" in pergunta_norm or "MÊS" in pergunta_norm:
@@ -569,12 +573,28 @@ def _responder_observacao(
 
 
 
-def _formatar_moeda_brasileira(valor: float) -> str:
-    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+def _formatar_moeda_brasileira(valor: float | Decimal) -> str:
+    valor_decimal = Decimal(str(valor)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return f"R$ {valor_decimal:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _tem_data_na_pergunta(pergunta: str) -> bool:
+    return bool(re.search(r"\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b", pergunta))
+
+
+def _valor_planilha_deslocamento(valor_original: Decimal) -> Decimal:
+    centavos = int((valor_original * Decimal("100")).to_integral_value(rounding=ROUND_HALF_UP)) % 100
+    if centavos == 5:
+        return (valor_original / Decimal("2")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return Decimal(f"{float(valor_original) / 2:.2f}")
 
 
 def _eh_pedido_relatorio_especial(pergunta_norm: str, tipo: str) -> bool:
-    return "RELATORIO" in pergunta_norm and tipo in pergunta_norm
+    if tipo != "DESLOCAMENTO":
+        return "RELATORIO" in pergunta_norm and tipo in pergunta_norm
+    if "DESLOC" not in pergunta_norm or "QUANT" in pergunta_norm:
+        return False
+    return "RELATORIO" in pergunta_norm or _tem_data_na_pergunta(pergunta_norm)
 
 
 def _linhas_relatorio_especial(df: pd.DataFrame, tipo: str) -> str:
@@ -582,35 +602,47 @@ def _linhas_relatorio_especial(df: pd.DataFrame, tipo: str) -> str:
         return "Nenhum registro encontrado para o período informado."
 
     if tipo == "DESLOCAMENTO":
-        cabecalho = "DATA | DELIVERY | CLIENTE | PENDENTE | VALOR"
+        cabecalho = "DATA | DELIVERY | CLIENTE | PENDENTE | VALOR PLANILHA | VALOR TOTAL"
         status_coluna = "PENDENTE"
-        divisor = 2
     else:
         cabecalho = "DATA | DELIVERY | CLIENTE | STATUS | VALOR"
         status_coluna = "REEMBOLSO"
-        divisor = 1
 
     linhas = [cabecalho]
-    valor_total = 0.0
+    total_planilha = Decimal("0.00")
+    total_original = Decimal("0.00")
     for _, row in df.sort_values("data").iterrows():
         data = row.get("data")
         data_txt = pd.Timestamp(data).strftime("%d/%m/%Y") if not pd.isna(data) else ""
-        valor = _numero(row.get("valor_frete")) / divisor
-        valor_total += valor
+        valor_original = Decimal(str(_numero(row.get("valor_frete"))))
+        total_original += valor_original
+        if tipo == "DESLOCAMENTO":
+            valor_planilha = _valor_planilha_deslocamento(valor_original)
+            total_planilha += valor_planilha
+            valor_txt = f"{_formatar_moeda_brasileira(valor_planilha)} | {_formatar_moeda_brasileira(valor_original)}"
+        else:
+            valor_txt = _formatar_moeda_brasileira(valor_original)
         linhas.append(
             "{data} | {delivery} | {cliente} | {status} | {valor}".format(
                 data=data_txt,
                 delivery="" if _valor_vazio(row.get("delivery")) else str(row.get("delivery")).strip(),
                 cliente="" if _valor_vazio(row.get("cliente")) else str(row.get("cliente")).strip(),
                 status=status_coluna,
-                valor=_formatar_moeda_brasileira(valor),
+                valor=valor_txt,
             )
         )
 
-    linhas.extend([
-        f"TOTAL DE REGISTROS: {len(df)}",
-        f"VALOR TOTAL: {_formatar_moeda_brasileira(valor_total)}",
-    ])
+    if tipo == "DESLOCAMENTO":
+        linhas.extend([
+            f"TOTAL DE REGISTROS: {len(df)}",
+            f"TOTAL PLANILHA: {_formatar_moeda_brasileira(total_planilha)}",
+            f"TOTAL ORIGINAL: {_formatar_moeda_brasileira(total_original)}",
+        ])
+    else:
+        linhas.extend([
+            f"TOTAL DE REGISTROS: {len(df)}",
+            f"VALOR TOTAL: {_formatar_moeda_brasileira(total_original)}",
+        ])
     return "\n".join(linhas)
 
 
