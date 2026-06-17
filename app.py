@@ -3,6 +3,7 @@ import importlib
 import logging
 import re
 import traceback
+from html import escape
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -1545,6 +1546,23 @@ def responder_conversacao(pergunta, dados):
 
 
 
+def renderizar_mensagem_conversacao(tipo: str, texto_mensagem: str, quando: str = "") -> None:
+    """Renderiza perguntas e respostas em caixas escuras com quebra de linha preservada."""
+    titulo = "Pergunta" if tipo == "user" else "Resposta"
+    classe = "conversation-question" if tipo == "user" else "conversation-answer"
+    horario = f'<div class="conversation-time">{escape(quando)}</div>' if quando else ""
+    st.markdown(
+        f"""
+        <div class="conversation-card {classe}">
+            <div class="conversation-title">{titulo}</div>
+            <div class="conversation-text">{escape(str(texto_mensagem))}</div>
+            {horario}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def aplicar_css_profissional():
     st.markdown(
         """
@@ -1689,6 +1707,48 @@ def aplicar_css_profissional():
         .metric-card .hint {{ color: #cbd5e1; font-size: .68rem; margin-top: .15rem; line-height: 1.2; }}
         .nav-card h3 {{ font-size: .92rem; margin: .32rem 0 .18rem; }}
         .nav-card p {{ color: var(--muted); font-size: .72rem; line-height: 1.25; margin: 0; min-height: 2.7em; }}
+
+        .conversation-card {{
+            margin: .55rem 0;
+            padding: .85rem 1rem;
+            border: 1px solid rgba(148, 203, 255, 0.30);
+            border-radius: 1rem;
+            background: rgba(5, 15, 35, 0.70);
+            color: #FFFFFF;
+            box-shadow: 0 18px 38px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            overflow-wrap: anywhere;
+        }}
+        .conversation-question {{
+            border-left: 4px solid rgba(110, 198, 255, 0.86);
+        }}
+        .conversation-answer {{
+            border-left: 4px solid rgba(49, 208, 124, 0.86);
+        }}
+        .conversation-title {{
+            margin-bottom: .38rem;
+            color: #FFFFFF;
+            font-weight: 900;
+            letter-spacing: .01em;
+            text-transform: uppercase;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, .74);
+        }}
+        .conversation-text {{
+            color: #FFFFFF;
+            font-size: .98rem;
+            font-weight: 650;
+            line-height: 1.65;
+            white-space: pre-wrap;
+            text-shadow: 0 2px 7px rgba(0, 0, 0, .72);
+        }}
+        .conversation-time {{
+            margin-top: .48rem;
+            color: rgba(226, 232, 240, .92);
+            font-size: .78rem;
+            font-weight: 700;
+        }}
+
         .section-card {{ padding: .75rem; border: 1px solid var(--border); border-radius: .9rem; background: var(--panel); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 16px 34px rgba(3,18,45,0.20); }}
         div.stButton > button {{
             border-radius: .68rem; min-height: 2.25rem; padding: .32rem .62rem; font-size: .86rem; font-weight: 700; border: 1px solid rgba(56,189,248,.22);
@@ -2194,11 +2254,8 @@ if pagina_atual == "conversacao":
     if not st.session_state["historico_conversacao"]:
         st.write("Nenhuma pergunta feita nesta sessão.")
     for item in st.session_state["historico_conversacao"]:
-        with st.chat_message("user"):
-            st.write(item["pergunta"])
-            st.caption(item["quando"])
-        with st.chat_message("assistant"):
-            st.write(item["resposta"])
+        renderizar_mensagem_conversacao("user", item["pergunta"], item["quando"])
+        renderizar_mensagem_conversacao("assistant", item["resposta"])
 
 
 if pagina_atual == "rapida":
