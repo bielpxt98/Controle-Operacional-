@@ -3,6 +3,7 @@ import importlib
 import logging
 import re
 import traceback
+from functools import lru_cache
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -27,8 +28,18 @@ st_cropper = (
 )
 
 LOGO_PATH = Path(__file__).resolve().parent / "logo.png"
-LOGO_IMAGEM = Image.open(LOGO_PATH)
-LOGO_DATA_URI = f"data:image/png;base64,{base64.b64encode(LOGO_PATH.read_bytes()).decode('ascii')}"
+
+
+@lru_cache(maxsize=1)
+def carregar_logo(path: str):
+    logo_path = Path(path)
+    logo_bytes = logo_path.read_bytes()
+    logo_imagem = Image.open(BytesIO(logo_bytes))
+    logo_data_uri = f"data:image/png;base64,{base64.b64encode(logo_bytes).decode('ascii')}"
+    return logo_imagem, logo_data_uri
+
+
+LOGO_IMAGEM, LOGO_DATA_URI = carregar_logo(str(LOGO_PATH))
 
 st.set_page_config(page_title="Controle Operacional", page_icon=LOGO_IMAGEM, layout="wide")
 
@@ -177,6 +188,7 @@ def aplicar_padronizacao_motoristas(df_preview):
         atualizacao = completar_dados_motorista(atualizacao)
 
         supabase.table("deliveries").update(atualizacao).eq("id", int(id_registro)).execute()
+        invalidar_cache_dados()
         total += 1
 
     return total
@@ -336,6 +348,17 @@ def testar_gemini():
     st.session_state["gemini_teste_ok"] = True
     return True
 
+def invalidar_cache_dados():
+    listar.clear()
+    st.session_state.pop("df_deliveries", None)
+
+
+def obter_df_deliveries():
+    if "df_deliveries" not in st.session_state:
+        st.session_state["df_deliveries"] = listar()
+    return st.session_state["df_deliveries"]
+
+
 def senha_admin_configurada():
     try:
         return bool(st.secrets["ADMIN_PASSWORD"])
@@ -348,30 +371,33 @@ def autenticar_admin():
         st.session_state.admin_autenticado = False
 
     with st.sidebar:
-        st.header("Acesso")
-
         if st.session_state.admin_autenticado:
             st.success("Administrador autenticado")
-            if st.button("Sair do modo administrador"):
+            if st.button("Sair", key="btn_sair_admin", use_container_width=True):
                 st.session_state.admin_autenticado = False
+                st.session_state.pop("senha_admin", None)
                 st.rerun()
+            st.divider()
             return True
 
         st.info("Visitante: acesso somente para buscar e visualizar.")
 
         if not senha_admin_configurada():
             st.warning("Configure ADMIN_PASSWORD em st.secrets para liberar o modo administrador.")
+            st.divider()
             return False
 
-        senha = st.text_input("Senha administrativa", type="password")
+        senha = st.text_input("Senha administrativa", type="password", key="senha_admin")
 
-        if st.button("Entrar como administrador"):
+        if st.button("Entrar", key="btn_entrar_admin", use_container_width=True):
             if senha == st.secrets["ADMIN_PASSWORD"]:
                 st.session_state.admin_autenticado = True
+                st.session_state.pop("senha_admin", None)
                 st.rerun()
             else:
                 st.error("Senha administrativa inválida.")
 
+        st.divider()
         return False
 
 
@@ -657,6 +683,7 @@ def atualizar_datas_para_2026():
 
         if len(atualizacao) > 1:
             supabase.table("deliveries").update(atualizacao).eq("id", row["id"]).execute()
+            invalidar_cache_dados()
             total += 1
 
     return total
@@ -681,6 +708,7 @@ def numero(v):
         return None
 
 
+@st.cache_data(show_spinner="Carregando dados...")
 def listar():
     res = supabase.table("deliveries").select("*").execute()
     return ordenar_visualizacao(pd.DataFrame(res.data or []))
@@ -937,16 +965,22 @@ def montar_registro(row):
 
 
 def salvar_registro(registro):
+    alterou = False
     if registro.get("delivery"):
         supabase.table("deliveries").upsert(
             registro,
             on_conflict="delivery"
         ).execute()
+        alterou = True
     elif registro.get("sr"):
         supabase.table("deliveries").upsert(
             registro,
             on_conflict="sr"
         ).execute()
+        alterou = True
+
+    if alterou:
+        invalidar_cache_dados()
 
 
 def parse_atualizacao_rapida(linha):
@@ -1045,9 +1079,11 @@ def atualizar_rapido_no_supabase(parsed):
 
     if existente.data:
         supabase.table("deliveries").update(campos).eq(chave, valor).execute()
+        invalidar_cache_dados()
         return "atualizado"
 
     supabase.table("deliveries").insert(campos).execute()
+    invalidar_cache_dados()
     return "criado"
 
 
@@ -1456,6 +1492,7 @@ def atualizar_conversa_no_supabase(id_registro, parsed):
         "id",
         int(id_registro),
     ).execute()
+    invalidar_cache_dados()
 
 
 def resumo_confirmacao_conversa(item, parsed):
@@ -1566,11 +1603,14 @@ def aplicar_css_profissional():
             background: linear-gradient(180deg, rgba(5,16,36,0.98) 0%, rgba(7,25,54,0.96) 58%, rgba(10,37,82,0.94) 100%);
             border-right: 1px solid rgba(125, 185, 255, 0.30);
             box-shadow: 12px 0 34px rgba(0, 0, 0, 0.30);
-            min-width: 13.5rem !important;
-            max-width: 13.5rem !important;
+            min-width: 12.75rem !important;
+            max-width: 12.75rem !important;
         }}
-        [data-testid="stSidebar"] section {{ padding-top: .65rem; }}
-        [data-testid="stSidebar"] .block-container {{ padding: .65rem .7rem 1rem; }}
+        [data-testid="stSidebar"] section {{ padding-top: .35rem; }}
+        [data-testid="stSidebar"] .block-container {{ padding: .4rem .55rem .85rem; }}
+        [data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {{ gap: .35rem; }}
+        [data-testid="stSidebar"] .stAlert {{ padding: .35rem .5rem; }}
+        [data-testid="stSidebar"] hr {{ margin: .25rem 0 .45rem; }}
         .main .block-container {{ padding: .75rem 1.15rem 1.25rem; max-width: 1480px; }}
         .block-container h1, .block-container h2, .block-container h3, .block-container p, .block-container label, .block-container span {{ text-shadow: 0 1px 2px rgba(0,0,0,.34); }}
         .block-container h2, .block-container h3 {{ letter-spacing: -.02em; margin-top: .65rem; margin-bottom: .45rem; }}
@@ -1608,7 +1648,7 @@ def aplicar_css_profissional():
             background: linear-gradient(135deg, rgba(28, 84, 159, .72), rgba(12, 48, 105, .66)); color: #f8fbff;
         }}
         div.stButton > button p {{ font-size: .86rem; }}
-        [data-testid="stSidebar"] div.stButton > button {{ min-height: 2.05rem; justify-content: flex-start; border-radius: .62rem; font-size: .8rem; }}
+        [data-testid="stSidebar"] div.stButton > button {{ min-height: 1.95rem; justify-content: flex-start; border-radius: .58rem; font-size: .78rem; padding: .24rem .48rem; }}
         [data-testid="stSidebar"] div.stButton > button p {{ font-size: .8rem; }}
         div.stButton > button:hover {{ border-color: var(--accent); color: white; box-shadow: 0 0 0 2px rgba(56,189,248,.10); }}
         div.stButton > button[kind="primary"] {{ background: linear-gradient(135deg, #0284c7, #0369a1); border-color: #38bdf8; }}
@@ -1642,7 +1682,7 @@ PAGINAS = {
 
 
 def ir_para_pagina(pagina):
-    st.session_state["pagina_atual"] = pagina
+    st.session_state["pagina"] = pagina
 
 
 def render_header():
@@ -1662,12 +1702,11 @@ def render_header():
 
 def render_menu(pagina_atual):
     with st.sidebar:
-        st.markdown("### Navegação")
+        st.markdown("#### Navegação")
         for chave, pagina in PAGINAS.items():
             prefixo = "● " if chave == pagina_atual else ""
             if st.button(f"{prefixo}{pagina['icon']} {pagina['label']}", key=f"nav_{chave}", use_container_width=True):
                 ir_para_pagina(chave)
-                st.rerun()
 
 
 def calcular_resumos(df_base):
@@ -1694,10 +1733,10 @@ def metric_card(icon, label, value, hint=""):
 
 
 aplicar_css_profissional()
-df = listar()
-if "pagina_atual" not in st.session_state:
-    st.session_state["pagina_atual"] = "dashboard"
-pagina_atual = st.session_state["pagina_atual"]
+df = obter_df_deliveries()
+if "pagina" not in st.session_state:
+    st.session_state["pagina"] = "dashboard"
+pagina_atual = st.session_state["pagina"]
 render_menu(pagina_atual)
 render_header()
 
@@ -1884,6 +1923,7 @@ if pagina_atual == "busca":
                             "id",
                             id_selecionado
                         ).execute()
+                        invalidar_cache_dados()
 
                         st.success("Registro atualizado.")
 
@@ -1892,6 +1932,7 @@ if pagina_atual == "busca":
                         "id",
                         id_selecionado
                     ).execute()
+                    invalidar_cache_dados()
 
                     st.warning("Registro excluído.")
 
@@ -2482,7 +2523,7 @@ if pagina_atual == "admin":
     if not admin:
         st.warning("Entre como administrador para acessar as funções administrativas.")
     else:
-        df_atual = listar()
+        df_atual = obter_df_deliveries()
 
         st.write(f"Registros na nuvem: {len(df_atual)}")
 
