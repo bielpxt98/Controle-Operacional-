@@ -1162,25 +1162,59 @@ def extrair_valores_alteracao_conversa(frase, codigo):
     return motorista.strip(), cliente.strip()
 
 
+
+def extrair_observacao_livre_conversa(frase):
+    """Extrai texto livre informado no marcador O até o fim da frase."""
+    original = texto(frase)
+    if not original:
+        return ""
+
+    matches = list(re.finditer(r"(?<!\w)O\s+(.+)$", original, flags=re.IGNORECASE | re.UNICODE))
+    if not matches:
+        return ""
+
+    observacao = matches[-1].group(1).strip(" :-|")
+    return limpar_busca(observacao).strip()
+
+
+def remover_observacao_livre_conversa(frase):
+    """Remove o marcador O e sua observação para não contaminar cliente/motorista."""
+    original = texto(frase)
+    if not original:
+        return ""
+    return re.sub(r"(?<!\w)O\s+.+$", " ", original, count=1, flags=re.IGNORECASE | re.UNICODE).strip()
+
+
+def combinar_observacoes_conversa(*observacoes):
+    partes = []
+    for obs in observacoes:
+        obs_limpa = texto(obs).strip(" |")
+        if obs_limpa:
+            partes.append(obs_limpa.upper())
+    return " | ".join(partes) if partes else None
+
 def parse_atualizacao_conversa(frase):
     original = texto(frase)
     if not original:
         return None, "Digite uma frase para interpretar."
 
-    horario_match = re.search(r"\b([0-2]?\d[:hH][0-5]\d)\b", original)
+    observacao_livre = extrair_observacao_livre_conversa(original)
+    original_sem_observacao = remover_observacao_livre_conversa(original) if observacao_livre else original
+
+    horario_match = re.search(r"\b([0-2]?\d[:hH][0-5]\d)\b", original_sem_observacao)
     horario = normalizar_horario(horario_match.group(1)) if horario_match else ""
     data_finalizacao = ""
-    data_match = re.search(r"\b(?:DT|DF|DATA)\s*(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\b", original, flags=re.IGNORECASE)
+    data_match = re.search(r"\b(?:DT|DF|DATA)\s*(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\b", original_sem_observacao, flags=re.IGNORECASE)
     if data_match:
         data_finalizacao = normalizar_data_conversa(data_match.group(1))
 
-    codigo = extrair_codigo_conversa(original)
-    acao = identificar_acao_conversa(original)
+    codigo = extrair_codigo_conversa(original_sem_observacao)
+    acao = identificar_acao_conversa(original_sem_observacao)
     eh_alteracao = bool(re.search(r"\b(MUDAR|TROCAR|ALTERAR|CORRIGIR|AGORA)\b", limpar_busca(original)))
 
-    motorista_alteracao, cliente_alteracao = extrair_valores_alteracao_conversa(original, codigo) if eh_alteracao else ("", "")
-    motorista_linha, cliente_linha = extrair_contexto_linha_busca(original, codigo)
-    motorista = motorista_alteracao or motorista_linha or extrair_motorista_conversa(original)
+    motorista_alteracao, cliente_alteracao = extrair_valores_alteracao_conversa(original_sem_observacao, codigo) if eh_alteracao else ("", "")
+    motorista_linha, cliente_linha = extrair_contexto_linha_busca(original_sem_observacao, codigo)
+    motorista = motorista_alteracao or motorista_linha or extrair_motorista_conversa(original_sem_observacao)
 
     if not acao and horario:
         acao = "FINALIZACAO"
@@ -1191,7 +1225,7 @@ def parse_atualizacao_conversa(frase):
     if acao and not horario:
         return None, "Não encontrei horário no formato HH:MM."
 
-    texto_cliente = re.sub(r"\b[0-2]?\d[:hH][0-5]\d\b", " ", original)
+    texto_cliente = re.sub(r"\b[0-2]?\d[:hH][0-5]\d\b", " ", original_sem_observacao)
     texto_cliente = re.sub(r"\b\d{4,}\b", " ", texto_cliente)
     texto_cliente = re.sub(r"\b(?:DT|DF|DATA)\s*\d{1,2}/\d{1,2}(?:/\d{2,4})?\b", " ", texto_cliente, flags=re.IGNORECASE)
 
@@ -1215,11 +1249,12 @@ def parse_atualizacao_conversa(frase):
     if not acao and not (motorista_alteracao or cliente_alteracao):
         return None, "Não encontrei motorista ou cliente para alterar."
 
-    observacoes = None
+    observacao_acao = None
     if acao == "BLOQUEIO":
-        observacoes = f"BLOQUEIO {horario}"
+        observacao_acao = f"BLOQUEIO {horario}"
     elif acao == "DESLOCAMENTO":
-        observacoes = f"DESLOCAMENTO {horario}"
+        observacao_acao = f"DESLOCAMENTO {horario}"
+    observacoes = combinar_observacoes_conversa(observacao_acao, observacao_livre)
 
     return {
         "motorista": motorista,
