@@ -182,6 +182,67 @@ def aplicar_padronizacao_motoristas(df_preview):
 
     return total
 
+
+def calcular_status_automatico(observacoes):
+    """Calcula STATUS exclusivamente a partir do campo O/observações."""
+    obs = limpar_busca(observacoes)
+    tem_bloqueio = bool(re.search(r"\bBLOQ(?:UEIO)?\b", obs))
+    tem_deslocamento = "DESLOC" in obs
+
+    if tem_bloqueio and tem_deslocamento:
+        return "BLOQUEIO / DESLOCAMENTO"
+    if tem_bloqueio:
+        return "BLOQUEIO"
+    if tem_deslocamento:
+        return "DESLOCAMENTO"
+    return "FINALIZADO"
+
+
+def preview_atualizacao_status(df_base):
+    colunas = ["id", "status_atual", "status_novo", "delivery", "cliente", "observacoes"]
+    if df_base.empty:
+        return pd.DataFrame(columns=colunas)
+
+    registros = []
+    for _, row in df_base.iterrows():
+        novo_status = calcular_status_automatico(row.get("observacoes", ""))
+        registros.append({
+            "id": row.get("id"),
+            "status_atual": texto(row.get("status")),
+            "status_novo": novo_status,
+            "delivery": row.get("delivery", ""),
+            "cliente": row.get("cliente", ""),
+            "observacoes": row.get("observacoes", ""),
+        })
+
+    return pd.DataFrame(registros, columns=colunas)
+
+
+def resumo_preview_status(df_preview):
+    status_possiveis = ["FINALIZADO", "BLOQUEIO", "DESLOCAMENTO", "BLOQUEIO / DESLOCAMENTO"]
+    contagem = df_preview["status_novo"].value_counts() if not df_preview.empty else pd.Series(dtype=int)
+    return {status: int(contagem.get(status, 0)) for status in status_possiveis}
+
+
+def aplicar_atualizacao_status(df_preview):
+    total = 0
+    if df_preview.empty:
+        return total
+
+    for _, row in df_preview.iterrows():
+        id_registro = row.get("id")
+        novo_status = texto(row.get("status_novo"))
+        if pd.isna(id_registro) or not novo_status:
+            continue
+
+        supabase.table("deliveries").update({
+            "status": novo_status,
+            "atualizado_em": datetime.now().isoformat(),
+        }).eq("id", int(id_registro)).execute()
+        total += 1
+
+    return total
+
 def completar_dados_motorista(campos):
     motorista = normalizar_motorista(campos.get("motorista", ""))
 
@@ -959,7 +1020,7 @@ def montar_registro(row):
         "c_horario": normalizar_horario(row.get("c_horario", "")) or None,
         "f_horario": normalizar_horario(row.get("f_horario", "")) or None,
         "tipo": texto(row.get("tipo", "")) or None,
-        "status": texto(row.get("status", "")) or None,
+        "status": calcular_status_automatico(row.get("observacoes", "")),
         "observacoes": normalizar_observacao(row.get("observacoes", "")),
         "inconsistencias": texto(row.get("inconsistencias", "")) or None,
         "confianca": texto(row.get("confianca", "")) or None,
@@ -1053,6 +1114,8 @@ def parse_atualizacao_rapida(linha):
         campos["observacoes"] = obs
     if observacao_bd:
         campos["observacoes"] = observacao_bd
+
+    campos["status"] = calcular_status_automatico(campos.get("observacoes", ""))
 
     if campos.get("observacoes"):
         obs_lower = campos["observacoes"].lower()
@@ -1484,6 +1547,7 @@ def campos_atualizacao_conversa(parsed):
         campos["cliente"] = normalizar_cliente_rapido(parsed["novo_cliente"])
     if parsed.get("observacoes"):
         campos["observacoes"] = parsed["observacoes"]
+        campos["status"] = calcular_status_automatico(parsed["observacoes"])
     return completar_dados_motorista(campos) if campos.get("motorista") else campos
 
 
@@ -2168,7 +2232,7 @@ if pagina_atual == "busca":
                             "c_horario": normalizar_horario(c_h) or None,
                             "f_horario": normalizar_horario(f_h) or None,
                             "tipo": tipo or None,
-                            "status": status or None,
+                            "status": calcular_status_automatico(observacoes),
                             "confianca": confianca or None,
                             "cpf": cpf or None,
                             "cavalo": cavalo or None,
@@ -2826,6 +2890,48 @@ if pagina_atual == "admin":
                     "Baixe novamente o Excel mestre para obter a planilha corrigida."
                 )
                 st.rerun()
+
+        st.divider()
+        st.subheader("Atualizar status automaticamente")
+        st.caption(
+            "Recalcula somente o campo STATUS a partir do campo O/observações: "
+            "BLOQUEIO, DESLOCAMENTO, BLOQUEIO / DESLOCAMENTO ou FINALIZADO."
+        )
+
+        preview_status = preview_atualizacao_status(df_atual)
+        resumo_status = resumo_preview_status(preview_status)
+        c_status1, c_status2, c_status3, c_status4 = st.columns(4)
+        c_status1.metric("FINALIZADO", resumo_status["FINALIZADO"])
+        c_status2.metric("BLOQUEIO", resumo_status["BLOQUEIO"])
+        c_status3.metric("DESLOCAMENTO", resumo_status["DESLOCAMENTO"])
+        c_status4.metric("BLOQUEIO / DESLOCAMENTO", resumo_status["BLOQUEIO / DESLOCAMENTO"])
+
+        alteracoes_status = preview_status[
+            preview_status["status_atual"].fillna("") != preview_status["status_novo"].fillna("")
+        ] if not preview_status.empty else preview_status
+        st.write(f"Registros que terão STATUS alterado: {len(alteracoes_status)}")
+
+        if not alteracoes_status.empty:
+            st.dataframe(
+                alteracoes_status.rename(columns={
+                    "id": "ID",
+                    "status_atual": "STATUS atual",
+                    "status_novo": "STATUS novo",
+                    "delivery": "Delivery",
+                    "cliente": "Cliente",
+                    "observacoes": "O/Observações",
+                }),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        if st.button("Confirmar atualização automática de status", type="primary"):
+            total = aplicar_atualizacao_status(preview_status)
+            st.success(
+                f"{total} registro(s) atualizado(s) no Supabase. "
+                "Baixe novamente o Excel mestre para obter a planilha com STATUS recalculado."
+            )
+            st.rerun()
 
         st.divider()
         st.subheader("Trocar ano das datas para 2026")
