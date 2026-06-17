@@ -265,9 +265,6 @@ def testar_gemini():
     st.session_state["gemini_teste_ok"] = True
     return True
 
-st.title("Controle Operacional — Supabase + Excel Mestre")
-
-
 def senha_admin_configurada():
     try:
         return bool(st.secrets["ADMIN_PASSWORD"])
@@ -1460,45 +1457,69 @@ def aplicar_css_profissional():
             --danger: #ef4444;
         }
         .stApp {
-            background: radial-gradient(circle at top left, rgba(56,189,248,0.12), transparent 30%),
-                        linear-gradient(135deg, #08111f 0%, #0f172a 45%, #111827 100%);
+            background: radial-gradient(circle at top left, rgba(56,189,248,0.10), transparent 28%),
+                        linear-gradient(135deg, #08111f 0%, #0f172a 48%, #111827 100%);
             color: var(--text);
         }
-        [data-testid="stHeader"] { background: rgba(8,17,31,0.82); backdrop-filter: blur(12px); }
-        [data-testid="stSidebar"] { background: linear-gradient(180deg, #0f172a, #111827); border-right: 1px solid var(--border); }
-        .main .block-container { padding-top: 1.35rem; max-width: 1320px; }
+        [data-testid="stHeader"] { background: rgba(8,17,31,0.82); backdrop-filter: blur(12px); height: 2.35rem; }
+        [data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #0f172a, #111827);
+            border-right: 1px solid var(--border);
+            min-width: 13.5rem !important;
+            max-width: 13.5rem !important;
+        }
+        [data-testid="stSidebar"] section { padding-top: .65rem; }
+        [data-testid="stSidebar"] .block-container { padding: .65rem .7rem 1rem; }
+        .main .block-container { padding: .75rem 1.15rem 1.25rem; max-width: 1480px; }
+        .block-container h2, .block-container h3 { letter-spacing: -.02em; margin-top: .65rem; margin-bottom: .45rem; }
+        .block-container h3 { font-size: 1.05rem; }
+        div[data-testid="stVerticalBlock"] { gap: .55rem; }
+        div[data-testid="stHorizontalBlock"] { gap: .55rem; }
         .app-hero {
-            position: sticky; top: 0; z-index: 5;
-            padding: 1.1rem 1.25rem; margin-bottom: 1rem;
-            border: 1px solid var(--border); border-radius: 1.25rem;
+            padding: .75rem .95rem; margin-bottom: .55rem;
+            border: 1px solid var(--border); border-radius: .9rem;
             background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(17,24,39,0.9));
-            box-shadow: 0 18px 45px rgba(0,0,0,0.28);
+            box-shadow: 0 10px 28px rgba(0,0,0,0.22);
         }
-        .app-hero h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.6rem); letter-spacing: -0.04em; }
-        .app-hero p { margin: .25rem 0 0; color: var(--muted); font-size: 1.02rem; }
+        .app-hero h1 { margin: 0; font-size: clamp(1.25rem, 2.5vw, 1.75rem); letter-spacing: -0.04em; line-height: 1.15; }
+        .app-hero p { margin: .15rem 0 0; color: var(--muted); font-size: .86rem; }
+        .sidebar-logo {
+            display: flex; align-items: center; gap: .55rem; margin: .15rem 0 .7rem; padding: .55rem .6rem;
+            border: 1px solid var(--border); border-radius: .85rem; background: rgba(15,23,42,.72);
+        }
+        .sidebar-logo .mark { display: grid; place-items: center; width: 1.85rem; height: 1.85rem; border-radius: .55rem; background: linear-gradient(135deg, #0284c7, #22c55e); font-size: .95rem; }
+        .sidebar-logo .name { font-weight: 800; font-size: .9rem; line-height: 1; }
+        .sidebar-logo .sub { color: var(--muted); font-size: .68rem; margin-top: .12rem; }
         .metric-card, .nav-card {
-            height: 100%; padding: 1rem; border: 1px solid var(--border); border-radius: 1.15rem;
+            height: 100%; padding: .72rem .78rem; border: 1px solid var(--border); border-radius: .85rem;
             background: linear-gradient(180deg, rgba(30,41,59,0.96), rgba(15,23,42,0.94));
-            box-shadow: 0 16px 36px rgba(0,0,0,0.25);
+            box-shadow: 0 10px 24px rgba(0,0,0,0.20);
         }
-        .metric-card .icon, .nav-card .icon { font-size: 1.55rem; }
-        .metric-card .label { color: var(--muted); font-size: .9rem; margin-top: .35rem; }
-        .metric-card .value { font-size: 2rem; font-weight: 800; margin-top: .15rem; color: #f8fafc; }
-        .metric-card .hint { color: #cbd5e1; font-size: .82rem; margin-top: .25rem; }
-        .section-card { padding: 1rem; border: 1px solid var(--border); border-radius: 1.15rem; background: rgba(15,23,42,0.72); }
+        .metric-card .icon, .nav-card .icon { font-size: 1.05rem; line-height: 1; }
+        .metric-card .label { color: var(--muted); font-size: .74rem; margin-top: .25rem; line-height: 1.15; }
+        .metric-card .value { font-size: 1.45rem; font-weight: 800; margin-top: .05rem; color: #f8fafc; line-height: 1.05; }
+        .metric-card .hint { color: #cbd5e1; font-size: .68rem; margin-top: .15rem; line-height: 1.2; }
+        .nav-card h3 { font-size: .92rem; margin: .32rem 0 .18rem; }
+        .nav-card p { color: var(--muted); font-size: .72rem; line-height: 1.25; margin: 0; min-height: 2.7em; }
+        .section-card { padding: .75rem; border: 1px solid var(--border); border-radius: .9rem; background: rgba(15,23,42,0.72); }
         div.stButton > button {
-            border-radius: .9rem; min-height: 2.8rem; font-weight: 700; border: 1px solid rgba(56,189,248,.25);
+            border-radius: .68rem; min-height: 2.25rem; padding: .32rem .62rem; font-size: .86rem; font-weight: 700; border: 1px solid rgba(56,189,248,.22);
             background: linear-gradient(135deg, rgba(30,41,59,.95), rgba(15,23,42,.95)); color: #e2e8f0;
         }
-        div.stButton > button:hover { border-color: var(--accent); color: white; box-shadow: 0 0 0 3px rgba(56,189,248,.12); }
+        div.stButton > button p { font-size: .86rem; }
+        [data-testid="stSidebar"] div.stButton > button { min-height: 2.05rem; justify-content: flex-start; border-radius: .62rem; font-size: .8rem; }
+        [data-testid="stSidebar"] div.stButton > button p { font-size: .8rem; }
+        div.stButton > button:hover { border-color: var(--accent); color: white; box-shadow: 0 0 0 2px rgba(56,189,248,.10); }
         div.stButton > button[kind="primary"] { background: linear-gradient(135deg, #0284c7, #0369a1); border-color: #38bdf8; }
-        [data-testid="stDataFrame"] { border: 1px solid var(--border); border-radius: 1rem; overflow: auto; box-shadow: 0 12px 30px rgba(0,0,0,.22); }
-        .stAlert { border-radius: 1rem; border: 1px solid var(--border); }
+        [data-testid="stDataFrame"] { border: 1px solid var(--border); border-radius: .8rem; overflow: auto; box-shadow: 0 8px 22px rgba(0,0,0,.18); }
+        .stAlert { border-radius: .8rem; border: 1px solid var(--border); padding: .55rem .75rem; }
         @media (max-width: 760px) {
-            .main .block-container { padding-left: .75rem; padding-right: .75rem; }
-            .app-hero { position: relative; padding: .95rem; }
+            .main .block-container { padding-left: .7rem; padding-right: .7rem; }
+            .app-hero { padding: .7rem .78rem; }
+            .app-hero h1 { font-size: 1.28rem; }
             div[data-testid="column"] { width: 100% !important; flex: 1 1 100% !important; }
-            div.stButton > button { width: 100%; min-height: 3.25rem; font-size: 1rem; }
+            div.stButton > button { width: 100%; min-height: 2.75rem; font-size: .95rem; }
+            div.stButton > button p { font-size: .95rem; }
             [data-testid="stDataFrame"] { overflow-x: auto; }
         }
         </style>
@@ -1537,6 +1558,15 @@ def render_header():
 
 def render_menu(pagina_atual):
     with st.sidebar:
+        st.markdown(
+            """
+            <div class="sidebar-logo">
+                <div class="mark">CO</div>
+                <div><div class="name">Controle</div><div class="sub">Operacional</div></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         st.markdown("### Navegação")
         for chave, pagina in PAGINAS.items():
             prefixo = "● " if chave == pagina_atual else ""
