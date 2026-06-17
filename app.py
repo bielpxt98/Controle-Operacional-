@@ -1532,23 +1532,31 @@ def aplicar_css_profissional():
                         linear-gradient(135deg, #08111f 0%, #0f172a 48%, #111827 100%);
             color: var(--text);
         }}
-        .stApp::before {{
+        .stApp > header,
+        .stApp [data-testid="stSidebar"],
+        .stApp .main {{
+            position: relative;
+            z-index: 1;
+        }}
+        .stApp .main .block-container {{
+            position: relative;
+            z-index: 1;
+            isolation: isolate;
+        }}
+        .stApp .main .block-container::before {{
             content: "";
             position: fixed;
             inset: 0;
             z-index: 0;
             pointer-events: none;
-            background-image:
-                linear-gradient(135deg, rgba(8,17,31,0.86), rgba(15,23,42,0.72)),
-                url("{logo_data_uri}");
+            background-image: url("{logo_data_uri}");
             background-position: center center;
             background-repeat: no-repeat;
-            background-size: 50%;
-            opacity: 0.08;
+            background-size: 80%;
+            background-attachment: fixed;
+            opacity: 0.18;
         }}
-        .stApp > header,
-        .stApp [data-testid="stSidebar"],
-        .stApp .main .block-container {{
+        .stApp .main .block-container > div {{
             position: relative;
             z-index: 1;
         }}
