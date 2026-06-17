@@ -2328,28 +2328,41 @@ if pagina_atual == "rapida":
     if not admin:
         st.warning("Apenas administradores podem usar a atualização rápida.")
     else:
-        st.info(
+        st.markdown(
             """
+<style>
+div[data-testid="stExpander"] details {
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 12px;
+}
+</style>
+""",
+            unsafe_allow_html=True,
+        )
+        with st.expander("ℹ️ Legendas e regras", expanded=False):
+            st.markdown(
+                """
 Use uma atualização por linha.
 
-Abreviações:
-M = Motorista
-D = Delivery
-SR = SR
-CL = Cliente
-P = Paletes
-V = Valor do frete
-L = Chegada
-C = Coleta
-FI = Finalização
-O = Observação
-DATA = Data
-DF = Data finalização
+#### Abreviações
+- **M** = Motorista
+- **D** = Delivery
+- **SR** = SR
+- **CL** = Cliente
+- **P** = Paletes
+- **V** = Valor do frete
+- **L** = Chegada
+- **C** = Coleta
+- **FI** = Finalização
+- **O** = Observação
+- **DATA** = Data
+- **DF** = Data finalização
 
 O site completa automaticamente CPF, cavalo e carreta quando o motorista for:
 Jean, Wilson, Luis, Gabriel, Jones, Fabio, Argemiro ou Valdemir.
 
-Regras importantes:
+#### Regras importantes
 - S.F e L.F ficam no CL, junto do cliente.
 - FI recebe somente horário.
 - B(HORÁRIO) na folha manuscrita vira FI HORÁRIO e O BLOQUEIO HORÁRIO.
@@ -2359,7 +2372,8 @@ Regras importantes:
 - O só deve ser usado para deslocamento, bloqueio, motivo ou remessa.
 - Não usar O para HP, última ocorrência, finalizado ou em andamento.
 
-Exemplos corretos:
+#### Exemplos corretos
+```text
 M Jean D 3787760670 P 100 CL Atacadão CT Sul V 1021,05 L 08:51 C 10:51 FI —
 M Jones D 3787780078 P 272 CL Drogaria São Paulo L.F V 992,17 L 07:33 C 09:59 FI —
 M Fabio D 3787760662 P 200 CL Assaí Froes da Mota S.F V 1468,13 L 10:34 C 12:22 FI —
@@ -2367,8 +2381,9 @@ M Luis D 3402132015 P 476 CL JDE CAFÉ V 1276,13 O CS OK C OK L OK
 D 3787762754 FI 11:03
 M Jean D 3787805422 CL Mercantil L.F V 992,17 L 15:51 B(19:49)
 M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
+```
 """
-        )
+            )
 
         texto_rapido = st.text_area(
             "Digite uma ou mais atualizações",
