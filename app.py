@@ -343,36 +343,71 @@ def senha_admin_configurada():
         return False
 
 
-def autenticar_admin():
-    if "admin_autenticado" not in st.session_state:
-        st.session_state.admin_autenticado = False
-
-    with st.sidebar:
-        st.header("Acesso")
-
-        if st.session_state.admin_autenticado:
-            st.success("Administrador autenticado")
-            if st.button("Sair do modo administrador"):
-                st.session_state.admin_autenticado = False
-                st.rerun()
-            return True
-
-        st.info("Visitante: acesso somente para buscar e visualizar.")
+def modal_login_admin():
+    @st.dialog("Acesso administrativo")
+    def exibir_modal():
+        st.markdown("**Senha administrativa**")
 
         if not senha_admin_configurada():
             st.warning("Configure ADMIN_PASSWORD em st.secrets para liberar o modo administrador.")
-            return False
+            if st.button("Cancelar", key="admin_modal_cancelar_sem_senha"):
+                st.session_state.admin_login_modal_aberto = False
+                st.rerun()
+            return
 
-        senha = st.text_input("Senha administrativa", type="password")
+        with st.form("admin_login_form", clear_on_submit=True):
+            senha = st.text_input("Senha administrativa", type="password", label_visibility="collapsed")
+            col_entrar, col_cancelar = st.columns(2)
+            entrar = col_entrar.form_submit_button("Entrar", type="primary", use_container_width=True)
+            cancelar = col_cancelar.form_submit_button("Cancelar", use_container_width=True)
 
-        if st.button("Entrar como administrador"):
+        if cancelar:
+            st.session_state.admin_login_modal_aberto = False
+            st.rerun()
+
+        if entrar:
             if senha == st.secrets["ADMIN_PASSWORD"]:
                 st.session_state.admin_autenticado = True
+                st.session_state.admin_login_modal_aberto = False
+                st.session_state.admin_menu_aberto = False
                 st.rerun()
             else:
                 st.error("Senha administrativa inválida.")
 
-        return False
+    exibir_modal()
+
+
+def autenticar_admin():
+    if "admin_autenticado" not in st.session_state:
+        st.session_state.admin_autenticado = False
+    if "admin_login_modal_aberto" not in st.session_state:
+        st.session_state.admin_login_modal_aberto = False
+    if "admin_menu_aberto" not in st.session_state:
+        st.session_state.admin_menu_aberto = False
+
+    with st.sidebar:
+        st.markdown('<div class="sidebar-auth-anchor">', unsafe_allow_html=True)
+
+        if st.session_state.admin_autenticado:
+            if st.button("👤", key="admin_status_toggle", help="Administrador autenticado", use_container_width=False):
+                st.session_state.admin_menu_aberto = not st.session_state.admin_menu_aberto
+
+            if st.session_state.admin_menu_aberto:
+                st.markdown('<div class="admin-status-card"><strong>Administrador autenticado</strong></div>', unsafe_allow_html=True)
+                if st.button("Sair do modo administrador", key="admin_logout", use_container_width=True):
+                    st.session_state.admin_autenticado = False
+                    st.session_state.admin_menu_aberto = False
+                    st.rerun()
+        else:
+            if st.button("🔒", key="admin_login_toggle", help="Entrar como administrador", use_container_width=False):
+                st.session_state.admin_login_modal_aberto = True
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    if st.session_state.admin_login_modal_aberto and not st.session_state.admin_autenticado:
+        modal_login_admin()
+
+    return st.session_state.admin_autenticado
 
 
 
@@ -1508,7 +1543,6 @@ def responder_conversacao(pergunta, dados):
         return None, f"Erro ao responder a pergunta. Traceback completo:\n{tb}"
 
 
-admin = autenticar_admin()
 
 
 def aplicar_css_profissional():
@@ -1614,6 +1648,47 @@ def aplicar_css_profissional():
         div.stButton > button p {{ font-size: .86rem; }}
         [data-testid="stSidebar"] div.stButton > button {{ min-height: 2.05rem; justify-content: flex-start; border-radius: .62rem; font-size: .8rem; }}
         [data-testid="stSidebar"] div.stButton > button p {{ font-size: .8rem; }}
+        .sidebar-auth-anchor {{
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: .35rem;
+            margin: 0 0 .35rem;
+            padding: 0;
+        }}
+        .sidebar-auth-anchor + div {{ margin-top: 0 !important; }}
+        [data-testid="stSidebar"] div.stButton:has(button[aria-label="Entrar como administrador"]),
+        [data-testid="stSidebar"] div.stButton:has(button[aria-label="Administrador autenticado"]) {{
+            width: fit-content;
+        }}
+        [data-testid="stSidebar"] button[aria-label="Entrar como administrador"],
+        [data-testid="stSidebar"] button[aria-label="Administrador autenticado"] {{
+            width: 2rem;
+            min-width: 2rem;
+            min-height: 2rem;
+            padding: 0;
+            justify-content: center;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, .08);
+            border: 1px solid rgba(148, 163, 184, .34);
+            box-shadow: none;
+        }}
+        [data-testid="stSidebar"] button[aria-label="Entrar como administrador"] p,
+        [data-testid="stSidebar"] button[aria-label="Administrador autenticado"] p {{
+            font-size: .88rem;
+            line-height: 1;
+            text-shadow: none;
+        }}
+        .admin-status-card {{
+            margin: .1rem 0 .25rem;
+            padding: .52rem .6rem;
+            border-radius: .72rem;
+            border: 1px solid rgba(49, 208, 124, .28);
+            background: rgba(15, 118, 110, .16);
+            color: #ecfdf5;
+            font-size: .78rem;
+            line-height: 1.2;
+        }}
         div.stButton > button:hover {{ border-color: var(--accent); color: white; box-shadow: 0 0 0 2px rgba(56,189,248,.10); }}
         div.stButton > button[kind="primary"] {{ background: linear-gradient(135deg, #0284c7, #0369a1); border-color: #38bdf8; }}
         [data-testid="stDataFrame"] {{
@@ -1770,6 +1845,7 @@ def metric_card(icon, label, value, hint=""):
 
 
 aplicar_css_profissional()
+admin = autenticar_admin()
 df = listar()
 if "pagina_atual" not in st.session_state:
     st.session_state["pagina_atual"] = "dashboard"
