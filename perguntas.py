@@ -6,6 +6,7 @@ Este módulo não usa APIs externas nem modelos de IA. Ele carrega dados locais
 
 from __future__ import annotations
 
+import logging
 import re
 import sqlite3
 import unicodedata
@@ -15,6 +16,8 @@ from typing import Iterable
 
 import pandas as pd
 
+
+logger = logging.getLogger(__name__)
 
 COLUNAS_PADRAO = {
     "data": "data",
@@ -36,6 +39,7 @@ COLUNAS_PADRAO = {
     "veiculo": "tipo_veiculo",
     "veículo": "tipo_veiculo",
     "tipo": "tipo_veiculo",
+    "tipo veiculo usado": "tipo_veiculo",
     "carreta": "tipo_veiculo",
     "valor": "valor_frete",
     "frete": "valor_frete",
@@ -122,6 +126,13 @@ def normalizar_observacao_operacional(valor: object) -> str | None:
     if re.search(r"\bS\.?R\b", obs) or "REEMB" in obs or "SOLICITACAO DE REEMBOLSO" in obs:
         return "O SR/REEMBOLSO"
 
+    tem_deslocamento = "DESLOC" in obs
+    if tem_deslocamento:
+        for motivo in MOTIVOS_DESLOCAMENTO:
+            if motivo in obs:
+                return f"O DESLOCAMENTO {motivo}"
+        return "O DESLOCAMENTO"
+
     tem_bloqueio = re.search(r"\bBLOQ(?:UEIO)?\b", obs) is not None
     if tem_bloqueio or any(motivo in obs for motivo in MOTIVOS_BLOQUEIO):
         for motivo in MOTIVOS_BLOQUEIO:
@@ -129,8 +140,7 @@ def normalizar_observacao_operacional(valor: object) -> str | None:
                 return f"O BLOQUEIO {motivo}"
         return "O BLOQUEIO"
 
-    tem_deslocamento = "DESLOC" in obs
-    if tem_deslocamento or any(motivo in obs for motivo in MOTIVOS_DESLOCAMENTO):
+    if any(motivo in obs for motivo in MOTIVOS_DESLOCAMENTO):
         for motivo in MOTIVOS_DESLOCAMENTO:
             if motivo in obs:
                 return f"O DESLOCAMENTO {motivo}"
@@ -169,14 +179,28 @@ def _normalizar_motorista(valor: object) -> str:
 
 
 def _normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
+    logger.debug("Normalizando dataframe para perguntas. Colunas originais: %s", list(df.columns))
     mapa = {}
     for coluna in df.columns:
         chave = _chave_coluna(coluna)
         if chave in COLUNAS_PADRAO:
             mapa[coluna] = COLUNAS_PADRAO[chave]
     df = df.rename(columns=mapa).copy()
+    if df.columns.duplicated().any():
+        duplicadas = df.columns[df.columns.duplicated()].unique().tolist()
+        logger.warning("Colunas duplicadas após normalização: %s. Unindo valores não vazios.", duplicadas)
+        colunas_unidas = {}
+        for coluna in dict.fromkeys(df.columns):
+            valores = df.loc[:, df.columns == coluna]
+            if isinstance(valores, pd.Series) or valores.shape[1] == 1:
+                colunas_unidas[coluna] = valores.squeeze(axis=1)
+            else:
+                colunas_unidas[coluna] = valores.bfill(axis=1).iloc[:, 0]
+        df = pd.DataFrame(colunas_unidas, index=df.index)
+    logger.debug("Mapa de colunas aplicado: %s. Colunas normalizadas: %s", mapa, list(df.columns))
     for coluna in COLUNAS_NECESSARIAS:
         if coluna not in df.columns:
+            logger.warning("Coluna ausente após normalização: %s. Criando coluna vazia para manter consulta.", coluna)
             df[coluna] = pd.NA
     df["data"] = pd.to_datetime(df["data"], errors="coerce", dayfirst=True)
     df["motorista"] = df["motorista"].apply(_normalizar_motorista)
@@ -418,23 +442,29 @@ def _linhas_resumo(df: pd.DataFrame) -> str:
 
 
 def _extrair_intervalo_datas(pergunta: str) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
-    datas = re.findall(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b", pergunta)
+    datas = re.findall(r"\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b", pergunta)
     if len(datas) < 2:
         return None, None
     valores = []
+    ano_atual = str(date.today().year)
     for dia, mes, ano in datas[:2]:
+        ano = ano or ano_atual
         if len(ano) == 2:
             ano = "20" + ano
         valores.append(pd.to_datetime(f"{dia}/{mes}/{ano}", dayfirst=True, errors="coerce"))
     if any(pd.isna(v) for v in valores):
         return None, None
-    return valores[0], valores[1]
+    inicio, fim = valores
+    if inicio > fim:
+        inicio, fim = fim, inicio
+    return inicio, fim
 
 
 def _aplicar_periodo_operacional(df: pd.DataFrame, pergunta: str) -> pd.DataFrame:
     pergunta_norm = _sem_acentos(pergunta)
     inicio, fim = _extrair_intervalo_datas(pergunta)
     if inicio is not None and fim is not None:
+        logger.info("Aplicando período operacional de %s a %s para pergunta: %s", inicio.date(), fim.date(), pergunta)
         return df[(df["data"].dt.date >= inicio.date()) & (df["data"].dt.date <= fim.date())]
     if "HOJE" in pergunta_norm:
         return _periodo_hoje(df)
@@ -443,7 +473,17 @@ def _aplicar_periodo_operacional(df: pd.DataFrame, pergunta: str) -> pd.DataFram
     return df
 
 
+def _validar_colunas_consulta(df: pd.DataFrame, colunas: Iterable[str], consulta: str) -> None:
+    faltantes = [coluna for coluna in colunas if coluna not in df.columns]
+    if faltantes:
+        logger.error("Consulta %r falhou por colunas ausentes: %s. Colunas disponíveis: %s", consulta, faltantes, list(df.columns))
+        raise KeyError(f"Colunas ausentes para a consulta: {', '.join(faltantes)}")
+    logger.debug("Consulta %r validou as colunas: %s", consulta, list(colunas))
+
+
 def _filtrar_observacao(df: pd.DataFrame, tipo: str) -> pd.DataFrame:
+    _validar_colunas_consulta(df, ["observacoes"], f"observações {tipo}")
+    logger.info("Filtrando observações do tipo %s em %s registro(s)", tipo, len(df))
     if tipo == "SR/REEMBOLSO":
         return df[df["observacoes"].apply(lambda v: "SR" in _sem_acentos(v) or "REEMB" in _sem_acentos(v))]
     return df[df["observacoes"].apply(lambda v: tipo in _sem_acentos(v))]
@@ -461,7 +501,7 @@ def _motivo_observacao(obs: object, tipo: str) -> str:
 
 def _linhas_observacoes(df: pd.DataFrame) -> str:
     if df.empty:
-        return "Nenhuma observação encontrada."
+        return "Nenhum registro encontrado."
     linhas = []
     for _, row in df.head(50).iterrows():
         data = row.get("data")
@@ -488,21 +528,24 @@ def _responder_observacao(
     motorista: str = "",
 ) -> str:
     pergunta_norm = _sem_acentos(pergunta)
+    _validar_colunas_consulta(df, ["data", "motorista", "observacoes"], pergunta)
     base = _filtrar_motorista(_filtrar_observacao(_aplicar_periodo_operacional(df, pergunta), tipo), motorista)
     if "POR MOTORISTA" in pergunta_norm:
         if base.empty:
-            return f"{rotulo_total}: 0"
+            return "Nenhum registro encontrado."
         contagem = base.groupby("motorista", dropna=False).size().sort_values(ascending=False)
         return f"{rotulo_total}: {len(base)}\n" + "\n".join(f"{m}: {int(q)}" for m, q in contagem.items())
     if "POR MOTIVO" in pergunta_norm:
         if base.empty:
-            return f"{rotulo_total}: 0"
+            return "Nenhum registro encontrado."
         motivos = base["observacoes"].apply(lambda v: _motivo_observacao(v, tipo if tipo != "SR/REEMBOLSO" else "REEMBOLSO"))
         contagem = motivos.value_counts()
         return f"{rotulo_total}: {len(base)}\n" + "\n".join(f"{m}: {int(q)}" for m, q in contagem.items())
     if "MOSTRAR" in pergunta_norm or "QUAIS" in pergunta_norm or "LISTAR" in pergunta_norm:
         return _linhas_observacoes(base)
     alvo = f" DE {motorista}" if motorista else ""
+    if base.empty:
+        return "Nenhum registro encontrado."
     return f"{rotulo_total}{alvo}: {len(base)}"
 
 
@@ -524,7 +567,10 @@ def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
     mesma normalização usada para CSV, Excel e SQLite antes de interpretar a
     pergunta.
     """
+    logger.info("Respondendo pergunta operacional: %s", pergunta)
     df = _normalizar_colunas(dados.copy())
+    _validar_colunas_consulta(df, ["data", "motorista", "delivery", "sr", "cliente", "valor_frete", "c_horario", "f_horario", "observacoes", "tipo_veiculo"], pergunta)
+    logger.debug("DataFrame normalizado para pergunta %r: %s linhas, colunas %s", pergunta, len(df), list(df.columns))
     pergunta_norm = _sem_acentos(pergunta)
     df_mes = _periodo_mes(df)
     motorista = _extrair_motorista(pergunta, df["motorista"].dropna().astype(str))
@@ -609,10 +655,8 @@ def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
         primeiro_nome = motorista.split()[0]
         return f"{primeiro_nome} realizou {len(base)} coleta(s).".upper()
 
-    return (
-        "Não entendi a pergunta. Tente perguntar sobre: hoje, mês, cada motorista, "
-        "sem FI, sem C, bloqueio, deslocamento, remessas, valor por motorista ou motorista com mais coletas."
-    )
+    logger.info("Pergunta não reconhecida: %s", pergunta)
+    return "Pergunta não reconhecida."
 
 
 def responder_pergunta(pergunta: str, caminho_dados: str) -> str:
