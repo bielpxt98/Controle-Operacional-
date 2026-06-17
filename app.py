@@ -771,7 +771,11 @@ def normalizar_cliente_rapido(v):
     elif "ASSAI" in s_limpo_sem_local:
         base = s_limpo_sem_local.replace("ASSAI", "ASSAÍ").strip()
     elif "WMS" in s_sem_local or "WMX" in s_sem_local or "ATAKADO" in s_sem_local:
-        base = "WMS MAX ATACADO"
+        # WMS pode ter complemento/localidade no nome do cliente
+        # (ex.: "WMS MAX ATACADO AV. SANTOS DUMONT").
+        # A normalização aqui deve preservar o texto completo para salvar;
+        # qualquer forma simplificada deve ser usada somente em busca/comparação.
+        base = s_sem_local.strip()
     else:
         base = s_sem_local.strip()
 

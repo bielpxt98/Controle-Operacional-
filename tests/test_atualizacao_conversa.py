@@ -28,6 +28,11 @@ FUNCOES_NECESSARIAS = {
     "parse_atualizacao_conversa",
     "campos_atualizacao_conversa",
     "buscar_coletas_por_conversa",
+    "parse_atualizacao_rapida",
+    "montar_registro",
+    "numero",
+    "extrair_regra_bloqueio_deslocamento",
+    "normalizar_observacao",
 }
 
 CONSTANTES_NECESSARIAS = {
@@ -142,3 +147,45 @@ def test_conversa_aceita_apenas_delivery_para_abrir_confirmacao():
     assert parsed["final_delivery"] == "3787816621"
     assert parsed["acao"] == ""
     assert len(resultados) == 1
+
+
+def test_normalizar_cliente_wms_preserva_nome_completo():
+    app = carregar_funcoes_app()
+
+    assert app["normalizar_cliente_rapido"]("WMS MAX ATACADO AV. SANTOS DUMONT") == "WMS MAX ATACADO AV. SANTOS DUMONT"
+
+
+def test_atualizacao_rapida_preserva_cliente_wms_completo():
+    app = carregar_funcoes_app()
+
+    campos, erro = app["parse_atualizacao_rapida"](
+        "M ARIEL D 3787816621 CL WMS MAX ATACADO AV. SANTOS DUMONT"
+    )
+
+    assert erro is None
+    assert campos["campos"]["cliente"] == "WMS MAX ATACADO AV. SANTOS DUMONT"
+
+
+def test_atualizacao_conversa_preserva_novo_cliente_wms_completo():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_atualizacao_conversa"](
+        "alterar cliente 3787816621 para WMS MAX ATACADO AV. SANTOS DUMONT"
+    )
+    campos = app["campos_atualizacao_conversa"](parsed)
+
+    assert erro is None
+    assert parsed["novo_cliente"] == "WMS MAX ATACADO AV. SANTOS DUMONT"
+    assert campos["cliente"] == "WMS MAX ATACADO AV. SANTOS DUMONT"
+
+
+def test_montar_registro_excel_preserva_cliente_wms_completo():
+    app = carregar_funcoes_app()
+
+    registro = app["montar_registro"]({
+        "delivery": "3787816621",
+        "motorista": "ARIEL",
+        "cliente": "WMS MAX ATACADO AV. SANTOS DUMONT",
+    })
+
+    assert registro["cliente"] == "WMS MAX ATACADO AV. SANTOS DUMONT"
