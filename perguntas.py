@@ -416,6 +416,20 @@ def _linhas_resumo(df: pd.DataFrame) -> str:
     return "\n".join(linhas) + sufixo
 
 
+def _linhas_codigos_sem_fi(df: pd.DataFrame) -> str:
+    if df.empty:
+        return "Nenhuma coleta encontrada."
+    linhas = []
+    for _, row in df.head(50).iterrows():
+        delivery = "" if _valor_vazio(row.get("delivery")) else str(row.get("delivery")).strip()
+        motorista = "" if _valor_vazio(row.get("motorista")) else str(row.get("motorista")).strip()
+        cliente = "" if _valor_vazio(row.get("cliente")) else str(row.get("cliente")).strip()
+        linhas.append(f"D {delivery} | {motorista} | {cliente}")
+    if len(df) > 50:
+        linhas.append(f"... e mais {len(df) - 50} coleta(s).")
+    return "\n".join(linhas)
+
+
 
 def _extrair_intervalo_datas(pergunta: str) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
     datas = re.findall(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b", pergunta)
@@ -548,6 +562,8 @@ def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
 
     if "SEM FI" in pergunta_norm or "SEM FINAL" in pergunta_norm or "SEM FINALIZACAO" in pergunta_norm:
         pendentes = df[df["f_horario"].apply(_valor_vazio)]
+        if "CODIGO" in pergunta_norm:
+            return _linhas_codigos_sem_fi(pendentes)
         return f"Coletas sem FI: {len(pendentes)}\n{_linhas_resumo(pendentes)}"
 
     if re.search(r"\bSEM C\b", pergunta_norm) or "SEM COLETA" in pergunta_norm:
