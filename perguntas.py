@@ -35,6 +35,7 @@ COLUNAS_PADRAO = {
     "tipo_veiculo": "tipo_veiculo",
     "veiculo": "tipo_veiculo",
     "veículo": "tipo_veiculo",
+    "tipo": "tipo_veiculo",
     "carreta": "tipo_veiculo",
     "valor": "valor_frete",
     "frete": "valor_frete",
@@ -308,7 +309,7 @@ def _extrair_termo_apos(pergunta_norm: str, termos: Iterable[str]) -> str:
         if match:
             valor = match.group(1).strip()
             valor = re.split(r"\b(COM|NO|NA|EM|ESTE|ESSE|MES|HOJE|FEZ|USARAM|USOU)\b", valor)[0]
-            return valor.strip()
+            return valor.strip(" .?!,;:")
     return ""
 
 
@@ -479,9 +480,15 @@ def _linhas_observacoes(df: pd.DataFrame) -> str:
     return "\n".join(linhas)
 
 
-def _responder_observacao(df: pd.DataFrame, pergunta: str, tipo: str, rotulo_total: str) -> str:
+def _responder_observacao(
+    df: pd.DataFrame,
+    pergunta: str,
+    tipo: str,
+    rotulo_total: str,
+    motorista: str = "",
+) -> str:
     pergunta_norm = _sem_acentos(pergunta)
-    base = _filtrar_observacao(_aplicar_periodo_operacional(df, pergunta), tipo)
+    base = _filtrar_motorista(_filtrar_observacao(_aplicar_periodo_operacional(df, pergunta), tipo), motorista)
     if "POR MOTORISTA" in pergunta_norm:
         if base.empty:
             return f"{rotulo_total}: 0"
@@ -495,7 +502,19 @@ def _responder_observacao(df: pd.DataFrame, pergunta: str, tipo: str, rotulo_tot
         return f"{rotulo_total}: {len(base)}\n" + "\n".join(f"{m}: {int(q)}" for m, q in contagem.items())
     if "MOSTRAR" in pergunta_norm or "QUAIS" in pergunta_norm or "LISTAR" in pergunta_norm:
         return _linhas_observacoes(base)
-    return f"{rotulo_total}: {len(base)}"
+    alvo = f" DE {motorista}" if motorista else ""
+    return f"{rotulo_total}{alvo}: {len(base)}"
+
+
+def _responder_cliente(df: pd.DataFrame, pergunta: str, motorista: str) -> str:
+    pergunta_norm = _sem_acentos(pergunta)
+    cliente = _extrair_termo_apos(pergunta_norm, ["CLIENTE"])
+    if not cliente:
+        return ""
+    base = _aplicar_filtros_pergunta(df, pergunta, motorista)
+    if "QUANT" in pergunta_norm:
+        return f"Coletas do cliente {cliente}: {len(base)}."
+    return f"Coletas do cliente {cliente}: {len(base)}\n{_linhas_resumo(base)}"
 
 
 def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
@@ -515,13 +534,17 @@ def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
         return _responder_veiculo(df, pergunta, motorista)
 
     if "SR" in pergunta_norm or "REEMB" in pergunta_norm:
-        return _responder_observacao(df, pergunta, "SR/REEMBOLSO", "TOTAL DE SR/REEMBOLSO")
+        return _responder_observacao(df, pergunta, "SR/REEMBOLSO", "TOTAL DE SR/REEMBOLSO", motorista)
 
     if "DESLOC" in pergunta_norm:
-        return _responder_observacao(df, pergunta, "DESLOCAMENTO", "TOTAL DE DESLOCAMENTOS")
+        return _responder_observacao(df, pergunta, "DESLOCAMENTO", "TOTAL DE DESLOCAMENTOS", motorista)
 
     if "BLOQUE" in pergunta_norm or "BLOQ" in pergunta_norm:
-        return _responder_observacao(df, pergunta, "BLOQUEIO", "TOTAL DE BLOQUEIOS")
+        return _responder_observacao(df, pergunta, "BLOQUEIO", "TOTAL DE BLOQUEIOS", motorista)
+
+    resposta_cliente = _responder_cliente(df, pergunta, motorista)
+    if resposta_cliente:
+        return resposta_cliente
 
     if "SEM FI" in pergunta_norm or "SEM FINAL" in pergunta_norm or "SEM FINALIZACAO" in pergunta_norm:
         pendentes = df[df["f_horario"].apply(_valor_vazio)]

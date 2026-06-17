@@ -124,6 +124,23 @@ class PerguntasTest(unittest.TestCase):
         self.assertIn("D 1007", resposta)
         self.assertIn("F 16:20 O MOTORISTA TERCEIRIZADO BLOQUEIO ÀS 16:20", resposta)
 
+    def test_consulta_cliente_livre(self):
+        df = pd.concat([self.df, pd.DataFrame([{"data": date.today().strftime("%d/%m/%Y"), "motorista": "Luis", "delivery": "1008", "cliente": "ASSAÍ", "observacoes": ""}])], ignore_index=True)
+        caminho = self.base / "cliente.csv"
+        df.to_csv(caminho, index=False)
+        resposta = responder_pergunta("Mostre todas as coletas do cliente ASSAÍ.", str(caminho))
+        self.assertIn("Coletas do cliente ASSAI: 1", resposta)
+        self.assertIn("1008", resposta)
+        self.assertNotIn("1001", resposta)
+
+    def test_observacoes_deslocamento_por_motorista_nome(self):
+        resposta = responder_pergunta("Quantos deslocamentos Fabio teve?", str(self.csv))
+        self.assertIn("TOTAL DE DESLOCAMENTOS DE FABIO SOUZA: 1", resposta)
+
+    def test_observacoes_bloqueio_por_motorista_nome(self):
+        resposta = responder_pergunta("Quantos bloqueios Jean teve?", str(self.csv))
+        self.assertIn("TOTAL DE BLOQUEIOS DE JEAN ROBSON: 1", resposta)
+
 
 if __name__ == "__main__":
     unittest.main()
