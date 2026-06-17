@@ -1178,18 +1178,15 @@ def excel_bytes(df):
 
 def responder_conversacao(pergunta, dados):
     if not pergunta or not pergunta.strip():
-        st.warning("Escolha ou digite uma pergunta para consultar o histórico.")
-        return
+        return None, "Escolha ou digite uma pergunta para consultar o histórico."
 
     if dados.empty:
-        st.warning("Ainda não existem dados carregados para responder a pergunta.")
-        return
+        return None, "Ainda não existem dados carregados para responder a pergunta."
 
     try:
-        resposta = responder_pergunta_df(pergunta, dados)
-        st.success(resposta)
+        return responder_pergunta_df(pergunta, dados), None
     except Exception as e:
-        st.error(f"Erro ao responder a pergunta: {e}")
+        return None, f"Erro ao responder a pergunta: {e}"
 
 
 admin = autenticar_admin()
@@ -1367,30 +1364,59 @@ with tab_busca:
 with tab_conversacao:
     st.subheader("Conversação")
     st.info(
-        "Use as perguntas programadas para conversar com o histórico de coletas. "
-        "Esta consulta não altera nenhum registro."
+        "Digite uma pergunta livre para o assistente operacional calcular a resposta "
+        "com base nos dados carregados. As perguntas programadas continuam como atalhos rápidos."
     )
 
+    if "historico_conversacao" not in st.session_state:
+        st.session_state["historico_conversacao"] = []
+
     pergunta_programada = st.selectbox(
-        "Perguntas programadas",
+        "Atalhos rápidos",
         PERGUNTAS_PROGRAMADAS,
     )
 
     pergunta_livre = st.text_input(
-        "Ou digite outra pergunta",
-        placeholder="Ex.: Quais coletas estão sem FI?",
+        "Pergunte ao assistente operacional",
+        placeholder="Ex.: Mostre todas as coletas do cliente ASSAÍ.",
     )
 
     pergunta_escolhida = pergunta_livre.strip() or pergunta_programada
 
-    col_responder, col_exemplo = st.columns([1, 3])
+    col_responder, col_limpar, col_exemplo = st.columns([1, 1, 3])
     with col_responder:
         consultar = st.button("Responder", type="primary")
+    with col_limpar:
+        limpar_historico = st.button("Limpar histórico")
     with col_exemplo:
         st.caption(f"Pergunta que será enviada: {pergunta_escolhida}")
 
+    if limpar_historico:
+        st.session_state["historico_conversacao"] = []
+
     if consultar:
-        responder_conversacao(pergunta_escolhida, df)
+        resposta, erro = responder_conversacao(pergunta_escolhida, df)
+        if erro:
+            st.warning(erro)
+        else:
+            st.session_state["historico_conversacao"].append(
+                {
+                    "pergunta": pergunta_escolhida,
+                    "resposta": resposta,
+                    "quando": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                }
+            )
+
+    st.divider()
+    st.caption("Histórico da conversa nesta sessão")
+    if not st.session_state["historico_conversacao"]:
+        st.write("Nenhuma pergunta feita nesta sessão.")
+    for item in st.session_state["historico_conversacao"]:
+        with st.chat_message("user"):
+            st.write(item["pergunta"])
+            st.caption(item["quando"])
+        with st.chat_message("assistant"):
+            st.write(item["resposta"])
 
 
 with tab_rapida:
