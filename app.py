@@ -1,5 +1,7 @@
 import importlib
+import logging
 import re
+import traceback
 import streamlit as st
 import pandas as pd
 from io import BytesIO
@@ -11,6 +13,9 @@ from google import genai
 from google.genai import types
 from perguntas import responder_pergunta_df
 
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 ST_CROPPER_DISPONIVEL = importlib.util.find_spec("streamlit_cropper") is not None
 st_cropper = (
@@ -1184,9 +1189,12 @@ def responder_conversacao(pergunta, dados):
         return None, "Ainda não existem dados carregados para responder a pergunta."
 
     try:
+        logger.info("Consulta da Conversação iniciada: %s", pergunta)
         return responder_pergunta_df(pergunta, dados), None
-    except Exception as e:
-        return None, f"Erro ao responder a pergunta: {e}"
+    except Exception:
+        tb = traceback.format_exc()
+        logger.error("Consulta da Conversação falhou: %s\n%s", pergunta, tb)
+        return None, f"Erro ao responder a pergunta. Traceback completo:\n{tb}"
 
 
 admin = autenticar_admin()
@@ -1236,8 +1244,11 @@ with tab_busca:
             try:
                 resposta_pergunta = responder_pergunta_df(q, df)
                 st.success(resposta_pergunta)
-            except Exception as e:
-                st.error(f"Erro ao interpretar pergunta: {e}")
+            except Exception:
+                tb = traceback.format_exc()
+                logger.error("Consulta da busca falhou: %s\n%s", q, tb)
+                st.error("Erro ao interpretar pergunta. Traceback completo:")
+                st.code(tb)
         else:
             q_upper = q.upper()
             resultado = df[
@@ -1397,7 +1408,11 @@ with tab_conversacao:
     if consultar:
         resposta, erro = responder_conversacao(pergunta_escolhida, df)
         if erro:
-            st.warning(erro)
+            if erro.startswith("Erro ao responder a pergunta"):
+                st.error("Erro ao responder a pergunta. Traceback completo:")
+                st.code(erro)
+            else:
+                st.warning(erro)
         else:
             st.session_state["historico_conversacao"].append(
                 {

@@ -163,6 +163,26 @@ class PerguntasTest(unittest.TestCase):
         resposta = responder_pergunta("Quantos bloqueios Jean teve?", str(self.csv))
         self.assertIn("TOTAL DE BLOQUEIOS DE JEAN ROBSON: 1", resposta)
 
+    def test_deslocamento_intervalo_datas_sem_ano(self):
+        ano = date.today().year
+        df = pd.DataFrame([
+            {"data": f"10/06/{ano}", "motorista": "Jean", "delivery": "2001", "cliente": "A", "observacoes": "DESLOCAMENTO CLIENTE FECHADO"},
+            {"data": f"17/06/{ano}", "motorista": "Fabio", "delivery": "2002", "cliente": "B", "observacoes": "O DESLOCAMENTO"},
+            {"data": f"18/06/{ano}", "motorista": "Luis", "delivery": "2003", "cliente": "C", "observacoes": "DESLOCAMENTO"},
+        ])
+        caminho = self.base / "desloc_periodo.csv"
+        df.to_csv(caminho, index=False)
+        resposta = responder_pergunta("quantas coletas tiveram deslocamento do dia 10/06 ao dia 17/06", str(caminho))
+        self.assertIn("TOTAL DE DESLOCAMENTOS: 2", resposta)
+
+    def test_pergunta_nao_reconhecida(self):
+        resposta = responder_pergunta("qual é a previsão do tempo?", str(self.csv))
+        self.assertEqual("Pergunta não reconhecida.", resposta)
+
+    def test_deslocamento_sem_resultados(self):
+        resposta = responder_pergunta("quantas coletas tiveram deslocamento do dia 01/01/2000 ao dia 02/01/2000", str(self.csv))
+        self.assertEqual("Nenhum registro encontrado.", resposta)
+
 
 if __name__ == "__main__":
     unittest.main()
