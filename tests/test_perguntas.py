@@ -175,6 +175,49 @@ class PerguntasTest(unittest.TestCase):
         resposta = responder_pergunta("quantas coletas tiveram deslocamento do dia 10/06 ao dia 17/06", str(caminho))
         self.assertIn("TOTAL DE DESLOCAMENTOS: 2", resposta)
 
+
+    def test_relatorio_deslocamento_intervalo_datas_formato_especial(self):
+        ano = date.today().year
+        df = pd.DataFrame([
+            {"data": f"10/06/{ano}", "delivery": "3787807939", "cliente": "COMERCIAL SEIS IRMAOS", "valor_frete": "1468,13", "status": "", "observacoes": "O DESLOCAMENTO"},
+            {"data": f"17/06/{ano}", "delivery": "2002", "cliente": "B", "valor_frete": "100,00", "status": "DESLOCAMENTO", "observacoes": ""},
+            {"data": f"18/06/{ano}", "delivery": "2003", "cliente": "C", "valor_frete": "80,00", "status": "DESLOCAMENTO", "observacoes": ""},
+        ])
+        caminho = self.base / "relatorio_deslocamento.csv"
+        df.to_csv(caminho, index=False)
+
+        resposta = responder_pergunta("relatório deslocamento 10/06 17/06", str(caminho))
+
+        self.assertIn("DATA | DELIVERY | CLIENTE | PENDENTE | VALOR", resposta)
+        self.assertIn(f"10/06/{ano} | 3787807939 | COMERCIAL SEIS IRMAOS | PENDENTE | R$ 734,07", resposta)
+        self.assertIn(f"17/06/{ano} | 2002 | B | PENDENTE | R$ 50,00", resposta)
+        self.assertIn("TOTAL DE REGISTROS: 2", resposta)
+        self.assertIn("VALOR TOTAL: R$ 784,07", resposta)
+        self.assertNotIn("2003", resposta)
+
+    def test_relatorio_reembolso_intervalo_datas_valor_cheio(self):
+        ano = date.today().year
+        df = pd.DataFrame([
+            {"data": f"15/06/{ano}", "delivery": "3787807939", "cliente": "COMERCIAL SEIS IRMAOS", "valor_frete": "1468,13", "observacoes": "SR 12345 REEMBOLSO"},
+            {"data": f"16/06/{ano}", "delivery": "2002", "cliente": "B", "valor_frete": "1.000,00", "observacoes": "O REEMBOLSO"},
+            {"data": f"17/06/{ano}", "delivery": "2003", "cliente": "C", "valor_frete": "80,00", "observacoes": "DESLOCAMENTO"},
+        ])
+        caminho = self.base / "relatorio_reembolso.csv"
+        df.to_csv(caminho, index=False)
+
+        resposta = responder_pergunta("gerar relatório de reembolsos de 10/06 até 17/06", str(caminho))
+
+        self.assertIn("DATA | DELIVERY | CLIENTE | STATUS | VALOR", resposta)
+        self.assertIn(f"15/06/{ano} | 3787807939 | COMERCIAL SEIS IRMAOS | REEMBOLSO | R$ 1.468,13", resposta)
+        self.assertIn(f"16/06/{ano} | 2002 | B | REEMBOLSO | R$ 1.000,00", resposta)
+        self.assertIn("TOTAL DE REGISTROS: 2", resposta)
+        self.assertIn("VALOR TOTAL: R$ 2.468,13", resposta)
+        self.assertNotIn("2003", resposta)
+
+    def test_relatorio_especial_sem_registros(self):
+        resposta = responder_pergunta("relatório reembolso 01/01/2000 02/01/2000", str(self.csv))
+        self.assertEqual("Nenhum registro encontrado para o período informado.", resposta)
+
     def test_pergunta_nao_reconhecida(self):
         resposta = responder_pergunta("qual é a previsão do tempo?", str(self.csv))
         self.assertEqual("Pergunta não reconhecida.", resposta)

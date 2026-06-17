@@ -41,6 +41,7 @@ COLUNAS_PADRAO = {
     "tipo": "tipo_veiculo",
     "tipo veiculo usado": "tipo_veiculo",
     "carreta": "tipo_veiculo",
+    "status": "status",
     "valor": "valor_frete",
     "frete": "valor_frete",
     "valor frete": "valor_frete",
@@ -75,6 +76,7 @@ COLUNAS_NECESSARIAS = [
     "f_horario",
     "observacoes",
     "tipo_veiculo",
+    "status",
 ]
 
 
@@ -207,6 +209,7 @@ def _normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
     df["valor_frete"] = df["valor_frete"].apply(_numero)
     df["tipo_veiculo"] = df["tipo_veiculo"].apply(lambda v: _sem_acentos(v))
     df["observacoes"] = df["observacoes"].apply(lambda v: normalizar_observacao_operacional(v) or (_sem_acentos(v) if not _valor_vazio(v) else ""))
+    df["status"] = df["status"].apply(lambda v: _sem_acentos(v) if not _valor_vazio(v) else "")
     return df
 
 
@@ -565,6 +568,65 @@ def _responder_observacao(
     return f"{rotulo_total}{alvo}: {len(base)}"
 
 
+
+def _formatar_moeda_brasileira(valor: float) -> str:
+    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _eh_pedido_relatorio_especial(pergunta_norm: str, tipo: str) -> bool:
+    return "RELATORIO" in pergunta_norm and tipo in pergunta_norm
+
+
+def _linhas_relatorio_especial(df: pd.DataFrame, tipo: str) -> str:
+    if df.empty:
+        return "Nenhum registro encontrado para o período informado."
+
+    if tipo == "DESLOCAMENTO":
+        cabecalho = "DATA | DELIVERY | CLIENTE | PENDENTE | VALOR"
+        status_coluna = "PENDENTE"
+        divisor = 2
+    else:
+        cabecalho = "DATA | DELIVERY | CLIENTE | STATUS | VALOR"
+        status_coluna = "REEMBOLSO"
+        divisor = 1
+
+    linhas = [cabecalho]
+    valor_total = 0.0
+    for _, row in df.sort_values("data").iterrows():
+        data = row.get("data")
+        data_txt = pd.Timestamp(data).strftime("%d/%m/%Y") if not pd.isna(data) else ""
+        valor = _numero(row.get("valor_frete")) / divisor
+        valor_total += valor
+        linhas.append(
+            "{data} | {delivery} | {cliente} | {status} | {valor}".format(
+                data=data_txt,
+                delivery="" if _valor_vazio(row.get("delivery")) else str(row.get("delivery")).strip(),
+                cliente="" if _valor_vazio(row.get("cliente")) else str(row.get("cliente")).strip(),
+                status=status_coluna,
+                valor=_formatar_moeda_brasileira(valor),
+            )
+        )
+
+    linhas.extend([
+        f"TOTAL DE REGISTROS: {len(df)}",
+        f"VALOR TOTAL: {_formatar_moeda_brasileira(valor_total)}",
+    ])
+    return "\n".join(linhas)
+
+
+def _responder_relatorio_especial(df: pd.DataFrame, pergunta: str, tipo: str) -> str:
+    _validar_colunas_consulta(df, ["data", "delivery", "cliente", "valor_frete", "observacoes", "status"], pergunta)
+    base = _aplicar_periodo_operacional(df, pergunta)
+    if tipo == "DESLOCAMENTO":
+        base = base[
+            base["status"].apply(lambda v: "DESLOCAMENTO" in _sem_acentos(v))
+            | base["observacoes"].apply(lambda v: "DESLOCAMENTO" in _sem_acentos(v))
+        ]
+    else:
+        base = base[base["observacoes"].apply(lambda v: "REEMBOLSO" in _sem_acentos(v))]
+    return _linhas_relatorio_especial(base, tipo)
+
+
 def _responder_cliente(df: pd.DataFrame, pergunta: str, motorista: str) -> str:
     pergunta_norm = _sem_acentos(pergunta)
     cliente = _extrair_termo_apos(pergunta_norm, ["CLIENTE"])
@@ -594,6 +656,12 @@ def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
 
     if veiculo:
         return _responder_veiculo(df, pergunta, motorista)
+
+    if _eh_pedido_relatorio_especial(pergunta_norm, "DESLOCAMENTO"):
+        return _responder_relatorio_especial(df, pergunta, "DESLOCAMENTO")
+
+    if _eh_pedido_relatorio_especial(pergunta_norm, "REEMBOLSO"):
+        return _responder_relatorio_especial(df, pergunta, "REEMBOLSO")
 
     if "SR" in pergunta_norm or "REEMB" in pergunta_norm:
         return _responder_observacao(df, pergunta, "SR/REEMBOLSO", "TOTAL DE SR/REEMBOLSO", motorista)
