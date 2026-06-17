@@ -521,7 +521,7 @@ def _linhas_observacoes(df: pd.DataFrame) -> str:
         data = row.get("data")
         data_txt = pd.Timestamp(data).strftime("%d/%m/%Y") if not pd.isna(data) else ""
         linhas.append(
-            "DATA {data} M {motorista} D {delivery} CL {cliente} O {observacao}".format(
+            "DATA {data} | M {motorista} | D {delivery} | CL {cliente} | O {observacao}".format(
                 data=data_txt,
                 motorista="" if _valor_vazio(row.get("motorista")) else row.get("motorista"),
                 delivery="" if _valor_vazio(row.get("delivery")) else row.get("delivery"),
@@ -556,7 +556,9 @@ def _responder_observacao(
         contagem = motivos.value_counts()
         return f"{rotulo_total}: {len(base)}\n" + "\n".join(f"{m}: {int(q)}" for m, q in contagem.items())
     if "MOSTRAR" in pergunta_norm or "QUAIS" in pergunta_norm or "LISTAR" in pergunta_norm:
-        return _linhas_observacoes(base)
+        if base.empty:
+            return "Nenhum registro encontrado."
+        return f"{rotulo_total}: {len(base)}\n\n" + _linhas_observacoes(base)
     alvo = f" DE {motorista}" if motorista else ""
     if base.empty:
         return "Nenhum registro encontrado."
