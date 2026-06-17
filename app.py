@@ -63,6 +63,17 @@ MOTORISTAS_FIXOS = {
     "VALDEMIR DE JESUS": {"cpf": "044.327.095-37", "cavalo": "KFL0115", "carreta": "TRUCK"},
 }
 
+MAPA_MOTORISTAS_ANTIGOS = {
+    "JEAN": "JEAN ROBSON",
+    "FABIO": "FABIO SOUZA",
+    "JONES": "JONES ROSARIO",
+    "LUIS": "LUIS CARLOS",
+    "ARIEL": "ARIEL NASCIMENTO",
+    "ARGEMIRO": "ARGEMIRO BORGES",
+    "WILSON": "WILSON REIS",
+    "GABRIEL": "GABRIEL BORGES",
+}
+
 
 def texto(v):
     if v is None:
@@ -89,26 +100,79 @@ def limpar_busca(v):
 
 def normalizar_motorista(v):
     n = limpar_busca(v)
+    mapa_motoristas_antigos = globals().get("MAPA_MOTORISTAS_ANTIGOS", {
+        "JEAN": "JEAN ROBSON",
+        "FABIO": "FABIO SOUZA",
+        "JONES": "JONES ROSARIO",
+        "LUIS": "LUIS CARLOS",
+        "ARIEL": "ARIEL NASCIMENTO",
+        "ARGEMIRO": "ARGEMIRO BORGES",
+        "WILSON": "WILSON REIS",
+        "GABRIEL": "GABRIEL BORGES",
+    })
 
-    if "WILSON" in n:
-        return "WILSON REIS"
-    if "FABIO" in n:
-        return "FABIO SOUZA"
-    if "LUIS" in n:
-        return "LUIS CARLOS"
-    if "ARGEMIRO" in n:
-        return "ARGEMIRO BORGES"
-    if "JEAN" in n:
-        return "JEAN ROBSON"
-    if "JONES" in n:
-        return "JONES ROSARIO"
-    if "GABRIEL" in n:
-        return "GABRIEL BORGES"
-    if "VALDEMIR" in n:
+    if n in mapa_motoristas_antigos:
+        return mapa_motoristas_antigos[n]
+    if n == "VALDEMIR":
         return "VALDEMIR DE JESUS"
 
     return texto(v).upper()
 
+
+
+def normalizar_motorista_antigo_sem_sobrenome(v):
+    nome = limpar_busca(v)
+    return MAPA_MOTORISTAS_ANTIGOS.get(nome)
+
+
+def preview_padronizacao_motoristas(df_base):
+    if df_base.empty or "motorista" not in df_base.columns:
+        return pd.DataFrame(columns=["id", "antes", "depois", "delivery", "cliente", "data"])
+
+    registros = []
+
+    for _, row in df_base.iterrows():
+        antes = texto(row.get("motorista"))
+        depois = normalizar_motorista_antigo_sem_sobrenome(antes)
+
+        if not depois or limpar_busca(antes) == limpar_busca(depois):
+            continue
+
+        registros.append({
+            "id": row.get("id"),
+            "antes": antes,
+            "depois": depois,
+            "delivery": row.get("delivery", ""),
+            "cliente": row.get("cliente", ""),
+            "data": row.get("data", ""),
+        })
+
+    return pd.DataFrame(registros)
+
+
+def aplicar_padronizacao_motoristas(df_preview):
+    total = 0
+
+    if df_preview.empty:
+        return total
+
+    for _, row in df_preview.iterrows():
+        id_registro = row.get("id")
+        novo_motorista = texto(row.get("depois"))
+
+        if pd.isna(id_registro) or not novo_motorista:
+            continue
+
+        atualizacao = {
+            "motorista": novo_motorista,
+            "atualizado_em": datetime.now().isoformat(),
+        }
+        atualizacao = completar_dados_motorista(atualizacao)
+
+        supabase.table("deliveries").update(atualizacao).eq("id", int(id_registro)).execute()
+        total += 1
+
+    return total
 
 def completar_dados_motorista(campos):
     motorista = normalizar_motorista(campos.get("motorista", ""))
@@ -2367,6 +2431,43 @@ if pagina_atual == "admin":
             file_name="excel_mestre_operacional.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+
+        st.divider()
+        st.subheader("Padronizar nomes antigos")
+        st.caption(
+            "Corrige somente o campo MOTORISTA/M quando o registro antigo está salvo "
+            "apenas com o primeiro nome. Cliente, observação e nomes já completos não são alterados."
+        )
+
+        preview_motoristas = preview_padronizacao_motoristas(df_atual)
+        st.write(f"Registros que serão alterados: {len(preview_motoristas)}")
+
+        if preview_motoristas.empty:
+            st.info("Nenhum motorista antigo sem sobrenome encontrado para padronizar.")
+        else:
+            st.dataframe(
+                preview_motoristas.rename(
+                    columns={
+                        "id": "ID",
+                        "antes": "Antes",
+                        "depois": "Depois",
+                        "delivery": "Delivery",
+                        "cliente": "Cliente",
+                        "data": "Data",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+            st.caption("Exemplo da correção: JEAN → JEAN ROBSON; FABIO → FABIO SOUZA.")
+
+            if st.button("Confirmar padronização", type="primary"):
+                total = aplicar_padronizacao_motoristas(preview_motoristas)
+                st.success(
+                    f"{total} registro(s) atualizado(s) no Supabase. "
+                    "Baixe novamente o Excel mestre para obter a planilha corrigida."
+                )
+                st.rerun()
 
         st.divider()
         st.subheader("Trocar ano das datas para 2026")
