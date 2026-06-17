@@ -1515,7 +1515,7 @@ def aplicar_css_profissional():
     st.markdown(
         """
         <style>
-        :root {
+        :root {{
             --bg: #0b1220;
             --panel: #111827;
             --panel-soft: #172033;
@@ -1526,81 +1526,90 @@ def aplicar_css_profissional():
             --accent-2: #22c55e;
             --warning: #f59e0b;
             --danger: #ef4444;
-        }
-        .stApp {
+        }}
+        .stApp {{
             background: radial-gradient(circle at top left, rgba(56,189,248,0.10), transparent 28%),
                         linear-gradient(135deg, #08111f 0%, #0f172a 48%, #111827 100%);
             color: var(--text);
-        }
-        [data-testid="stHeader"] { background: rgba(8,17,31,0.82); backdrop-filter: blur(12px); height: 2.35rem; }
-        [data-testid="stSidebar"] {
+        }}
+        .stApp::before {{
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(135deg, rgba(8,17,31,0.86), rgba(15,23,42,0.72)),
+                url("{logo_data_uri}");
+            background-position: center center;
+            background-repeat: no-repeat;
+            background-size: 50%;
+            opacity: 0.08;
+        }}
+        .stApp > header,
+        .stApp [data-testid="stSidebar"],
+        .stApp .main .block-container {{
+            position: relative;
+            z-index: 1;
+        }}
+        [data-testid="stHeader"] {{ background: rgba(8,17,31,0.82); backdrop-filter: blur(12px); height: 2.35rem; }}
+        [data-testid="stSidebar"] {{
             background: linear-gradient(180deg, #0f172a, #111827);
             border-right: 1px solid var(--border);
             min-width: 13.5rem !important;
             max-width: 13.5rem !important;
-        }
-        [data-testid="stSidebar"] section { padding-top: .65rem; }
-        [data-testid="stSidebar"] .block-container { padding: .65rem .7rem 1rem; }
-        .main .block-container { padding: .75rem 1.15rem 1.25rem; max-width: 1480px; }
-        .block-container h2, .block-container h3 { letter-spacing: -.02em; margin-top: .65rem; margin-bottom: .45rem; }
-        .block-container h3 { font-size: 1.05rem; }
-        div[data-testid="stVerticalBlock"] { gap: .55rem; }
-        div[data-testid="stHorizontalBlock"] { gap: .55rem; }
-        .app-hero {
+        }}
+        [data-testid="stSidebar"] section {{ padding-top: .65rem; }}
+        [data-testid="stSidebar"] .block-container {{ padding: .65rem .7rem 1rem; }}
+        .main .block-container {{ padding: .75rem 1.15rem 1.25rem; max-width: 1480px; }}
+        .block-container h2, .block-container h3 {{ letter-spacing: -.02em; margin-top: .65rem; margin-bottom: .45rem; }}
+        .block-container h3 {{ font-size: 1.05rem; }}
+        div[data-testid="stVerticalBlock"] {{ gap: .55rem; }}
+        div[data-testid="stHorizontalBlock"] {{ gap: .55rem; }}
+        .app-hero {{
             display: flex; align-items: center; gap: .85rem;
             padding: .75rem .95rem; margin-bottom: .55rem;
             border: 1px solid var(--border); border-radius: .9rem;
             background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(17,24,39,0.9));
             box-shadow: 0 10px 28px rgba(0,0,0,0.22);
-        }
-        .app-hero img { width: 3.1rem; height: 3.1rem; object-fit: contain; border-radius: .65rem; background: rgba(255,255,255,.92); padding: .25rem; }
-        .app-hero h1 { margin: 0; font-size: clamp(1.25rem, 2.5vw, 1.75rem); letter-spacing: -0.04em; line-height: 1.15; }
-        .app-hero p { margin: .15rem 0 0; color: var(--muted); font-size: .86rem; }
-        .sidebar-logo {
-            display: flex; align-items: center; gap: .55rem; margin: .15rem 0 .7rem; padding: .55rem .6rem;
-            border: 1px solid var(--border); border-radius: .85rem; background: rgba(15,23,42,.72);
-        }
-        .sidebar-logo img { width: 1.95rem; height: 1.95rem; object-fit: contain; border-radius: .55rem; background: rgba(255,255,255,.92); padding: .18rem; }
-        .sidebar-logo .name { font-weight: 800; font-size: .9rem; line-height: 1; }
-        .sidebar-logo .sub { color: var(--muted); font-size: .68rem; margin-top: .12rem; }
-        .metric-card, .nav-card {
+        }}
+        .app-hero img {{ width: 2.35rem; height: 2.35rem; object-fit: contain; border-radius: .65rem; background: rgba(255,255,255,.92); padding: .25rem; }}
+        .app-hero h1 {{ margin: 0; font-size: clamp(1.25rem, 2.5vw, 1.75rem); letter-spacing: -0.04em; line-height: 1.15; }}
+        .app-hero p {{ margin: .15rem 0 0; color: var(--muted); font-size: .86rem; }}
+        .metric-card, .nav-card {{
             height: 100%; padding: .72rem .78rem; border: 1px solid var(--border); border-radius: .85rem;
             background: linear-gradient(180deg, rgba(30,41,59,0.96), rgba(15,23,42,0.94));
             box-shadow: 0 10px 24px rgba(0,0,0,0.20);
-        }
-        .metric-card .icon, .nav-card .icon { font-size: 1.05rem; line-height: 1; }
-        .metric-card .label { color: var(--muted); font-size: .74rem; margin-top: .25rem; line-height: 1.15; }
-        .metric-card .value { font-size: 1.45rem; font-weight: 800; margin-top: .05rem; color: #f8fafc; line-height: 1.05; }
-        .metric-card .hint { color: #cbd5e1; font-size: .68rem; margin-top: .15rem; line-height: 1.2; }
-        .nav-card h3 { font-size: .92rem; margin: .32rem 0 .18rem; }
-        .nav-card p { color: var(--muted); font-size: .72rem; line-height: 1.25; margin: 0; min-height: 2.7em; }
-        .dashboard-logo { display: flex; align-items: center; gap: .8rem; padding: .75rem .85rem; border: 1px solid var(--border); border-radius: .85rem; background: linear-gradient(180deg, rgba(30,41,59,0.96), rgba(15,23,42,0.94)); }
-        .dashboard-logo img { width: 4rem; height: 4rem; object-fit: contain; border-radius: .75rem; background: rgba(255,255,255,.92); padding: .28rem; }
-        .dashboard-logo strong { display: block; font-size: 1rem; }
-        .dashboard-logo span { color: var(--muted); font-size: .78rem; }
-        .section-card { padding: .75rem; border: 1px solid var(--border); border-radius: .9rem; background: rgba(15,23,42,0.72); }
-        div.stButton > button {
+        }}
+        .metric-card .icon, .nav-card .icon {{ font-size: 1.05rem; line-height: 1; }}
+        .metric-card .label {{ color: var(--muted); font-size: .74rem; margin-top: .25rem; line-height: 1.15; }}
+        .metric-card .value {{ font-size: 1.45rem; font-weight: 800; margin-top: .05rem; color: #f8fafc; line-height: 1.05; }}
+        .metric-card .hint {{ color: #cbd5e1; font-size: .68rem; margin-top: .15rem; line-height: 1.2; }}
+        .nav-card h3 {{ font-size: .92rem; margin: .32rem 0 .18rem; }}
+        .nav-card p {{ color: var(--muted); font-size: .72rem; line-height: 1.25; margin: 0; min-height: 2.7em; }}
+        .section-card {{ padding: .75rem; border: 1px solid var(--border); border-radius: .9rem; background: rgba(15,23,42,0.72); }}
+        div.stButton > button {{
             border-radius: .68rem; min-height: 2.25rem; padding: .32rem .62rem; font-size: .86rem; font-weight: 700; border: 1px solid rgba(56,189,248,.22);
             background: linear-gradient(135deg, rgba(30,41,59,.95), rgba(15,23,42,.95)); color: #e2e8f0;
-        }
-        div.stButton > button p { font-size: .86rem; }
-        [data-testid="stSidebar"] div.stButton > button { min-height: 2.05rem; justify-content: flex-start; border-radius: .62rem; font-size: .8rem; }
-        [data-testid="stSidebar"] div.stButton > button p { font-size: .8rem; }
-        div.stButton > button:hover { border-color: var(--accent); color: white; box-shadow: 0 0 0 2px rgba(56,189,248,.10); }
-        div.stButton > button[kind="primary"] { background: linear-gradient(135deg, #0284c7, #0369a1); border-color: #38bdf8; }
-        [data-testid="stDataFrame"] { border: 1px solid var(--border); border-radius: .8rem; overflow: auto; box-shadow: 0 8px 22px rgba(0,0,0,.18); }
-        .stAlert { border-radius: .8rem; border: 1px solid var(--border); padding: .55rem .75rem; }
-        @media (max-width: 760px) {
-            .main .block-container { padding-left: .7rem; padding-right: .7rem; }
-            .app-hero { padding: .7rem .78rem; }
-            .app-hero h1 { font-size: 1.28rem; }
-            div[data-testid="column"] { width: 100% !important; flex: 1 1 100% !important; }
-            div.stButton > button { width: 100%; min-height: 2.75rem; font-size: .95rem; }
-            div.stButton > button p { font-size: .95rem; }
-            [data-testid="stDataFrame"] { overflow-x: auto; }
-        }
+        }}
+        div.stButton > button p {{ font-size: .86rem; }}
+        [data-testid="stSidebar"] div.stButton > button {{ min-height: 2.05rem; justify-content: flex-start; border-radius: .62rem; font-size: .8rem; }}
+        [data-testid="stSidebar"] div.stButton > button p {{ font-size: .8rem; }}
+        div.stButton > button:hover {{ border-color: var(--accent); color: white; box-shadow: 0 0 0 2px rgba(56,189,248,.10); }}
+        div.stButton > button[kind="primary"] {{ background: linear-gradient(135deg, #0284c7, #0369a1); border-color: #38bdf8; }}
+        [data-testid="stDataFrame"] {{ border: 1px solid var(--border); border-radius: .8rem; overflow: auto; box-shadow: 0 8px 22px rgba(0,0,0,.18); }}
+        .stAlert {{ border-radius: .8rem; border: 1px solid var(--border); padding: .55rem .75rem; }}
+        @media (max-width: 760px) {{
+            .main .block-container {{ padding-left: .7rem; padding-right: .7rem; }}
+            .app-hero {{ padding: .7rem .78rem; }}
+            .app-hero h1 {{ font-size: 1.28rem; }}
+            div[data-testid="column"] {{ width: 100% !important; flex: 1 1 100% !important; }}
+            div.stButton > button {{ width: 100%; min-height: 2.75rem; font-size: .95rem; }}
+            div.stButton > button p {{ font-size: .95rem; }}
+            [data-testid="stDataFrame"] {{ overflow-x: auto; }}
+        }}
         </style>
-        """,
+        """.format(logo_data_uri=LOGO_DATA_URI),
         unsafe_allow_html=True,
     )
 
@@ -1638,15 +1647,6 @@ def render_header():
 
 def render_menu(pagina_atual):
     with st.sidebar:
-        st.markdown(
-            """
-            <div class="sidebar-logo">
-                <img src="{LOGO_DATA_URI}" alt="Logo Controle Operacional">
-                <div><div class="name">Controle</div><div class="sub">Operacional</div></div>
-            </div>
-            """.format(LOGO_DATA_URI=LOGO_DATA_URI),
-            unsafe_allow_html=True,
-        )
         st.markdown("### Navegação")
         for chave, pagina in PAGINAS.items():
             prefixo = "● " if chave == pagina_atual else ""
@@ -1689,11 +1689,6 @@ render_header()
 
 if pagina_atual == "dashboard":
     resumo, total_por_motorista = calcular_resumos(df)
-
-    st.markdown(
-        f'''<div class="dashboard-logo"><img src="{LOGO_DATA_URI}" alt="Logo Controle Operacional"><div><strong>Controle Operacional</strong><span>Dashboard de acompanhamento da operação</span></div></div>''',
-        unsafe_allow_html=True,
-    )
 
     st.markdown("### Visão geral da operação")
     cols = st.columns(5)
