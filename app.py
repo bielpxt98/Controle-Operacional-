@@ -1554,11 +1554,11 @@ def aplicar_css_profissional():
         <style>
         :root {{
             --bg: #081A3A;
-            --panel: rgba(16, 53, 108, 0.70);
-            --panel-soft: rgba(37, 91, 166, 0.54);
-            --border: rgba(125, 185, 255, 0.34);
-            --text: #f8fbff;
-            --muted: #c8d8ee;
+            --panel: rgba(10, 20, 40, 0.45);
+            --panel-soft: rgba(255, 255, 255, 0.08);
+            --border: rgba(255, 255, 255, 0.24);
+            --text: #FFFFFF;
+            --muted: #FFFFFF;
             --accent: #6ec6ff;
             --accent-2: #31d07c;
             --warning: #f59e0b;
@@ -1566,7 +1566,7 @@ def aplicar_css_profissional():
         }}
         .stApp {{
             background:
-                linear-gradient(rgba(5, 20, 50, 0.65), rgba(5, 20, 50, 0.65)),
+                linear-gradient(rgba(5, 20, 50, 0.30), rgba(5, 20, 50, 0.30)),
                 url("{logo_data_uri}");
             background-position: center center;
             background-repeat: no-repeat;
@@ -1592,19 +1592,24 @@ def aplicar_css_profissional():
             inset: 0;
             z-index: 0;
             pointer-events: none;
-            background: radial-gradient(circle at center, rgba(20, 92, 176, 0.18), transparent 62%);
+            background: radial-gradient(circle at center, rgba(20, 92, 176, 0.08), transparent 66%);
         }}
         .stApp .main .block-container > div {{
             position: relative;
             z-index: 1;
         }}
-        [data-testid="stHeader"] {{ background: linear-gradient(90deg, rgba(8,26,58,0.84), rgba(18,61,122,0.64)); backdrop-filter: blur(12px); height: 1.45rem; }}
+        [data-testid="stHeader"] {{ background: transparent; backdrop-filter: none; height: 1.45rem; }}
         [data-testid="stSidebar"] {{
-            background: linear-gradient(180deg, rgba(5,16,36,0.98) 0%, rgba(7,25,54,0.96) 58%, rgba(10,37,82,0.94) 100%);
+            background: linear-gradient(180deg, rgba(5,16,36,0.58) 0%, rgba(7,25,54,0.48) 58%, rgba(10,37,82,0.42) 100%);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
             border-right: 1px solid rgba(125, 185, 255, 0.30);
             box-shadow: 12px 0 34px rgba(0, 0, 0, 0.30);
             min-width: 12.75rem !important;
             max-width: 12.75rem !important;
+            box-shadow: 12px 0 34px rgba(0, 0, 0, 0.18);
+            min-width: 13.5rem !important;
+            max-width: 13.5rem !important;
         }}
         [data-testid="stSidebar"] section {{ padding-top: .35rem; }}
         [data-testid="stSidebar"] .block-container {{ padding: .4rem .55rem .85rem; }}
@@ -1612,17 +1617,19 @@ def aplicar_css_profissional():
         [data-testid="stSidebar"] .stAlert {{ padding: .35rem .5rem; }}
         [data-testid="stSidebar"] hr {{ margin: .25rem 0 .45rem; }}
         .main .block-container {{ padding: .75rem 1.15rem 1.25rem; max-width: 1480px; }}
-        .block-container h1, .block-container h2, .block-container h3, .block-container p, .block-container label, .block-container span {{ text-shadow: 0 1px 2px rgba(0,0,0,.34); }}
-        .block-container h2, .block-container h3 {{ letter-spacing: -.02em; margin-top: .65rem; margin-bottom: .45rem; }}
-        .block-container h3 {{ font-size: 1.05rem; }}
+        .block-container h1, .block-container h2, .block-container h3, .block-container p, .block-container label, .block-container span {{ color: #FFFFFF; text-shadow: 0 2px 5px rgba(0,0,0,.62); }}
+        .block-container h1 {{ font-weight: 900; }}
+        .block-container h2, .block-container h3 {{ letter-spacing: -.02em; margin-top: .65rem; margin-bottom: .45rem; font-weight: 850; background: transparent !important; }}
+        .block-container h2 {{ font-size: 1.45rem; }}
+        .block-container h3 {{ font-size: 1.16rem; }}
         div[data-testid="stVerticalBlock"] {{ gap: .55rem; }}
         div[data-testid="stHorizontalBlock"] {{ gap: .55rem; }}
         .app-hero {{
             display: flex; align-items: center; gap: .85rem;
             padding: .75rem .95rem; margin-bottom: .55rem;
             border: 1px solid var(--border); border-radius: .9rem;
-            background: rgba(10, 20, 40, 0.55);
-            box-shadow: 0 18px 42px rgba(3,18,45,0.28);
+            background: var(--panel);
+            box-shadow: 0 18px 42px rgba(3,18,45,0.22);
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
         }}
@@ -1631,29 +1638,54 @@ def aplicar_css_profissional():
         .app-hero p {{ margin: .15rem 0 0; color: var(--muted); font-size: .86rem; }}
         .metric-card, .nav-card {{
             height: 100%; padding: .72rem .78rem; border: 1px solid var(--border); border-radius: .85rem;
-            background: rgba(10, 20, 40, 0.55);
-            box-shadow: 0 16px 34px rgba(3,18,45,0.24);
+            background: var(--panel);
+            box-shadow: 0 16px 34px rgba(3,18,45,0.18);
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
         }}
         .metric-card .icon, .nav-card .icon {{ font-size: 1.05rem; line-height: 1; }}
         .metric-card .label {{ color: var(--muted); font-size: .74rem; margin-top: .25rem; line-height: 1.15; }}
-        .metric-card .value {{ font-size: 1.45rem; font-weight: 800; margin-top: .05rem; color: #f8fafc; line-height: 1.05; }}
+        .metric-card .value {{ font-size: 1.55rem; font-weight: 900; margin-top: .05rem; color: #FFFFFF; line-height: 1.05; }}
         .metric-card .hint {{ color: #cbd5e1; font-size: .68rem; margin-top: .15rem; line-height: 1.2; }}
         .nav-card h3 {{ font-size: .92rem; margin: .32rem 0 .18rem; }}
         .nav-card p {{ color: var(--muted); font-size: .72rem; line-height: 1.25; margin: 0; min-height: 2.7em; }}
-        .section-card {{ padding: .75rem; border: 1px solid var(--border); border-radius: .9rem; background: rgba(10, 20, 40, 0.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 16px 34px rgba(3,18,45,0.20); }}
+        .section-card {{ padding: .75rem; border: 1px solid var(--border); border-radius: .9rem; background: var(--panel); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 16px 34px rgba(3,18,45,0.20); }}
         div.stButton > button {{
             border-radius: .68rem; min-height: 2.25rem; padding: .32rem .62rem; font-size: .86rem; font-weight: 700; border: 1px solid rgba(56,189,248,.22);
-            background: linear-gradient(135deg, rgba(28, 84, 159, .72), rgba(12, 48, 105, .66)); color: #f8fbff;
+            background: linear-gradient(135deg, rgba(28, 84, 159, .72), rgba(12, 48, 105, .66)); color: #FFFFFF;
         }}
         div.stButton > button p {{ font-size: .86rem; }}
         [data-testid="stSidebar"] div.stButton > button {{ min-height: 1.95rem; justify-content: flex-start; border-radius: .58rem; font-size: .78rem; padding: .24rem .48rem; }}
         [data-testid="stSidebar"] div.stButton > button p {{ font-size: .8rem; }}
         div.stButton > button:hover {{ border-color: var(--accent); color: white; box-shadow: 0 0 0 2px rgba(56,189,248,.10); }}
         div.stButton > button[kind="primary"] {{ background: linear-gradient(135deg, #0284c7, #0369a1); border-color: #38bdf8; }}
-        [data-testid="stDataFrame"] {{ border: 1px solid var(--border); border-radius: .8rem; overflow: auto; box-shadow: 0 8px 22px rgba(0,0,0,.18); }}
-        .stAlert {{ border-radius: .8rem; border: 1px solid var(--border); padding: .55rem .75rem; }}
+        [data-testid="stDataFrame"] {{ border: 1px solid var(--border); border-radius: .8rem; overflow: auto; box-shadow: 0 8px 22px rgba(0,0,0,.14); background: rgba(10,20,40,.28); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }}
+        [data-testid="stDataFrame"] div, [data-testid="stDataFrame"] canvas {{ background-color: transparent !important; }}
+
+        /* Campos de pesquisa e formulários com vidro leve para revelar a identidade ao fundo. */
+        .stTextInput input, .stTextArea textarea, .stNumberInput input, .stDateInput input,
+        div[data-baseweb="select"] > div, div[data-baseweb="input"] > div {{
+            background: rgba(255,255,255,0.08) !important;
+            color: #FFFFFF !important;
+            border: 1px solid rgba(255,255,255,0.28) !important;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 24px rgba(0,0,0,0.12);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }}
+        .stTextInput input::placeholder, .stTextArea textarea::placeholder {{ color: rgba(255,255,255,0.78) !important; }}
+        .stTextInput label, .stTextArea label, .stNumberInput label, .stDateInput label {{ color: #FFFFFF !important; font-weight: 800; }}
+        /* Tabelas mais transparentes, mantendo contraste em células e cabeçalhos. */
+        [data-testid="stTable"], [data-testid="stDataFrame"] {{ color: #FFFFFF; }}
+        [data-testid="stTable"] table {{ background: rgba(10,20,40,.24) !important; border-collapse: separate; border-spacing: 0; }}
+        [data-testid="stTable"] thead tr, [data-testid="stTable"] th {{ background: rgba(10,20,40,.34) !important; color: #FFFFFF !important; font-weight: 850; }}
+        [data-testid="stTable"] tbody tr {{ background: rgba(255,255,255,.055) !important; }}
+        [data-testid="stTable"] tbody tr:nth-child(even) {{ background: rgba(255,255,255,.035) !important; }}
+        [data-testid="stTable"] td {{ color: #FFFFFF !important; border-color: rgba(255,255,255,.12) !important; }}
+        .stDataFrame [role="grid"], .stDataFrame [role="row"], .stDataFrame [role="columnheader"], .stDataFrame [role="gridcell"] {{
+            background-color: rgba(10,20,40,.18) !important;
+            color: #FFFFFF !important;
+        }}
+        .stAlert {{ border-radius: .8rem; border: 1px solid var(--border); padding: .55rem .75rem; background: rgba(10,20,40,.38); color: #FFFFFF; }}
         @media (max-width: 760px) {{
             .main .block-container {{ padding-left: .7rem; padding-right: .7rem; }}
             .app-hero {{ padding: .7rem .78rem; }}
