@@ -1616,31 +1616,78 @@ def aplicar_css_profissional():
         [data-testid="stSidebar"] div.stButton > button p {{ font-size: .8rem; }}
         div.stButton > button:hover {{ border-color: var(--accent); color: white; box-shadow: 0 0 0 2px rgba(56,189,248,.10); }}
         div.stButton > button[kind="primary"] {{ background: linear-gradient(135deg, #0284c7, #0369a1); border-color: #38bdf8; }}
-        [data-testid="stDataFrame"] {{ border: 1px solid var(--border); border-radius: .8rem; overflow: auto; box-shadow: 0 8px 22px rgba(0,0,0,.14); background: rgba(10,20,40,.28); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }}
-        [data-testid="stDataFrame"] div, [data-testid="stDataFrame"] canvas {{ background-color: transparent !important; }}
+        [data-testid="stDataFrame"] {{
+            border: 1px solid rgba(110,198,255,.32);
+            border-radius: .8rem;
+            overflow: auto;
+            box-shadow: 0 8px 22px rgba(0,0,0,.14);
+            background: rgba(10,20,40,.22) !important;
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }}
+        [data-testid="stDataFrame"] div, [data-testid="stDataFrame"] canvas,
+        [data-testid="stDataFrame"] [class*="glide"], [data-testid="stDataFrame"] [class*="data-grid"] {{
+            background-color: transparent !important;
+        }}
 
-        /* Campos de pesquisa e formulários com vidro leve para revelar a identidade ao fundo. */
+        /* Campos de pesquisa e formulários com vidro escuro para revelar a identidade ao fundo. */
+        input, textarea, select,
         .stTextInput input, .stTextArea textarea, .stNumberInput input, .stDateInput input,
         div[data-baseweb="select"] > div, div[data-baseweb="input"] > div {{
-            background: rgba(255,255,255,0.08) !important;
+            background: rgba(10,20,40,0.45) !important;
             color: #FFFFFF !important;
-            border: 1px solid rgba(255,255,255,0.28) !important;
+            border: 1px solid rgba(110,198,255,0.42) !important;
+            border-radius: .68rem !important;
             box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 24px rgba(0,0,0,0.12);
-            backdrop-filter: blur(5px);
-            -webkit-backdrop-filter: blur(5px);
+            caret-color: #FFFFFF;
+            backdrop-filter: blur(7px);
+            -webkit-backdrop-filter: blur(7px);
         }}
-        .stTextInput input::placeholder, .stTextArea textarea::placeholder {{ color: rgba(255,255,255,0.78) !important; }}
+        input:focus, textarea:focus, select:focus,
+        .stTextInput input:focus, .stTextArea textarea:focus, .stNumberInput input:focus, .stDateInput input:focus {{
+            border-color: rgba(110,198,255,0.78) !important;
+            box-shadow: 0 0 0 2px rgba(110,198,255,0.16), 0 8px 24px rgba(0,0,0,0.16) !important;
+        }}
+        input::placeholder, textarea::placeholder,
+        .stTextInput input::placeholder, .stTextArea textarea::placeholder {{ color: rgba(226,232,240,0.82) !important; }}
         .stTextInput label, .stTextArea label, .stNumberInput label, .stDateInput label {{ color: #FFFFFF !important; font-weight: 800; }}
-        /* Tabelas mais transparentes, mantendo contraste em células e cabeçalhos. */
-        [data-testid="stTable"], [data-testid="stDataFrame"] {{ color: #FFFFFF; }}
-        [data-testid="stTable"] table {{ background: rgba(10,20,40,.24) !important; border-collapse: separate; border-spacing: 0; }}
-        [data-testid="stTable"] thead tr, [data-testid="stTable"] th {{ background: rgba(10,20,40,.34) !important; color: #FFFFFF !important; font-weight: 850; }}
-        [data-testid="stTable"] tbody tr {{ background: rgba(255,255,255,.055) !important; }}
-        [data-testid="stTable"] tbody tr:nth-child(even) {{ background: rgba(255,255,255,.035) !important; }}
-        [data-testid="stTable"] td {{ color: #FFFFFF !important; border-color: rgba(255,255,255,.12) !important; }}
-        .stDataFrame [role="grid"], .stDataFrame [role="row"], .stDataFrame [role="columnheader"], .stDataFrame [role="gridcell"] {{
-            background-color: rgba(10,20,40,.18) !important;
+        div[data-baseweb="popover"], div[data-baseweb="menu"], ul[role="listbox"] {{
+            background: rgba(10,20,40,0.96) !important;
             color: #FFFFFF !important;
+            border: 1px solid rgba(110,198,255,0.32) !important;
+        }}
+        div[role="option"] {{ color: #FFFFFF !important; background: transparent !important; }}
+        div[role="option"]:hover {{ background: rgba(110,198,255,0.18) !important; }}
+
+        /* Tabelas escuras e translúcidas, mantendo contraste em células e cabeçalhos. */
+        [data-testid="stTable"], [data-testid="stDataFrame"], table {{ color: #FFFFFF !important; }}
+        [data-testid="stTable"] table, table {{
+            background: rgba(10,20,40,.22) !important;
+            border-collapse: separate;
+            border-spacing: 0;
+            border: 1px solid rgba(110,198,255,.24);
+            border-radius: .8rem;
+            overflow: hidden;
+        }}
+        [data-testid="stTable"] thead tr, [data-testid="stTable"] th, table thead tr, table th {{
+            background: rgba(8,35,78,.62) !important;
+            color: #FFFFFF !important;
+            font-weight: 850;
+            border-color: rgba(110,198,255,.22) !important;
+        }}
+        [data-testid="stTable"] tbody tr, table tbody tr {{ background: rgba(10,20,40,.34) !important; }}
+        [data-testid="stTable"] tbody tr:nth-child(even), table tbody tr:nth-child(even) {{ background: rgba(15,31,58,.28) !important; }}
+        [data-testid="stTable"] td, table td {{ color: rgba(241,245,249,.94) !important; border-color: rgba(110,198,255,.16) !important; }}
+        .stDataFrame [role="grid"] {{ background-color: rgba(10,20,40,.20) !important; }}
+        .stDataFrame [role="row"], .stDataFrame [role="gridcell"] {{
+            background-color: rgba(10,20,40,.18) !important;
+            color: rgba(241,245,249,.94) !important;
+            border-color: rgba(110,198,255,.14) !important;
+        }}
+        .stDataFrame [role="columnheader"] {{
+            background-color: rgba(8,35,78,.62) !important;
+            color: #FFFFFF !important;
+            border-color: rgba(110,198,255,.22) !important;
         }}
         .stAlert {{ border-radius: .8rem; border: 1px solid var(--border); padding: .55rem .75rem; background: rgba(10,20,40,.38); color: #FFFFFF; }}
         @media (max-width: 760px) {{
