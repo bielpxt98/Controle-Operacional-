@@ -48,6 +48,28 @@ class PerguntasTest(unittest.TestCase):
         self.assertIn("1002", resposta)
         self.assertIn("1003", resposta)
 
+    def test_codigos_de_todas_sem_fi(self):
+        df = pd.DataFrame(
+            [
+                {"motorista": "Jean", "delivery": "2001", "cliente": "Cliente A", "f_horario": ""},
+                {"motorista": "Fabio", "delivery": "2002", "cliente": "Cliente B", "f_horario": "-"},
+                {"motorista": "Luis", "delivery": "2003", "cliente": "Cliente C", "f_horario": None},
+                {"motorista": "Jones", "delivery": "2004", "cliente": "Cliente D", "f_horario": float("nan")},
+                {"motorista": "Gabriel", "delivery": "2005", "cliente": "Cliente E", "f_horario": "12:00"},
+            ]
+        )
+        caminho = self.base / "codigos_sem_fi.csv"
+        df.to_csv(caminho, index=False)
+
+        resposta = responder_pergunta("Me envie o código de todas que estão sem FI", str(caminho))
+
+        self.assertIn("D 2001 | JEAN ROBSON | Cliente A", resposta)
+        self.assertIn("D 2002 | FABIO SOUZA | Cliente B", resposta)
+        self.assertIn("D 2003 | LUIS CARLOS | Cliente C", resposta)
+        self.assertIn("D 2004 | JONES ROSARIO | Cliente D", resposta)
+        self.assertNotIn("2005", resposta)
+        self.assertNotIn("Coletas sem FI", resposta)
+
     def test_valor_total_por_motorista(self):
         resposta = responder_pergunta("Qual valor total por motorista no mês?", str(self.csv))
         self.assertIn("JEAN ROBSON: R$ 300,50", resposta)
