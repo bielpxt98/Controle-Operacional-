@@ -1516,20 +1516,21 @@ def aplicar_css_profissional():
         """
         <style>
         :root {{
-            --bg: #0b1220;
-            --panel: #111827;
-            --panel-soft: #172033;
-            --border: rgba(148, 163, 184, 0.22);
-            --text: #e5e7eb;
-            --muted: #94a3b8;
-            --accent: #38bdf8;
-            --accent-2: #22c55e;
+            --bg: #081A3A;
+            --panel: rgba(16, 53, 108, 0.70);
+            --panel-soft: rgba(37, 91, 166, 0.54);
+            --border: rgba(125, 185, 255, 0.34);
+            --text: #f8fbff;
+            --muted: #c8d8ee;
+            --accent: #6ec6ff;
+            --accent-2: #31d07c;
             --warning: #f59e0b;
             --danger: #ef4444;
         }}
         .stApp {{
-            background: radial-gradient(circle at top left, rgba(56,189,248,0.10), transparent 28%),
-                        linear-gradient(135deg, #08111f 0%, #0f172a 48%, #111827 100%);
+            background: radial-gradient(circle at 18% 10%, rgba(110,198,255,0.22), transparent 30%),
+                        radial-gradient(circle at 88% 18%, rgba(49,130,206,0.20), transparent 34%),
+                        linear-gradient(135deg, #081A3A 0%, #0D2B5E 50%, #123D7A 100%);
             color: var(--text);
         }}
         .stApp > header,
@@ -1552,18 +1553,19 @@ def aplicar_css_profissional():
             background-image: url("{logo_data_uri}");
             background-position: center center;
             background-repeat: no-repeat;
-            background-size: 80%;
+            background-size: min(86vw, 980px);
             background-attachment: fixed;
-            opacity: 0.18;
+            opacity: 0.46;
+            filter: drop-shadow(0 18px 40px rgba(3, 18, 45, 0.26));
         }}
         .stApp .main .block-container > div {{
             position: relative;
             z-index: 1;
         }}
-        [data-testid="stHeader"] {{ background: rgba(8,17,31,0.82); backdrop-filter: blur(12px); height: 2.35rem; }}
+        [data-testid="stHeader"] {{ background: linear-gradient(90deg, rgba(8,26,58,0.84), rgba(18,61,122,0.64)); backdrop-filter: blur(12px); height: 1.45rem; }}
         [data-testid="stSidebar"] {{
-            background: linear-gradient(180deg, #0f172a, #111827);
-            border-right: 1px solid var(--border);
+            background: linear-gradient(180deg, #071936 0%, #0A2552 58%, #0D2B5E 100%);
+            border-right: 1px solid rgba(125, 185, 255, 0.26);
             min-width: 13.5rem !important;
             max-width: 13.5rem !important;
         }}
@@ -1578,16 +1580,17 @@ def aplicar_css_profissional():
             display: flex; align-items: center; gap: .85rem;
             padding: .75rem .95rem; margin-bottom: .55rem;
             border: 1px solid var(--border); border-radius: .9rem;
-            background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(17,24,39,0.9));
-            box-shadow: 0 10px 28px rgba(0,0,0,0.22);
+            background: linear-gradient(135deg, rgba(13,43,94,0.76), rgba(18,61,122,0.58));
+            box-shadow: 0 12px 30px rgba(3,18,45,0.18);
         }}
-        .app-hero img {{ width: 2.35rem; height: 2.35rem; object-fit: contain; border-radius: .65rem; background: rgba(255,255,255,.92); padding: .25rem; }}
+        .app-hero img {{ width: 3.2rem; height: 3.2rem; object-fit: contain; border-radius: .75rem; background: rgba(255,255,255,.96); padding: .28rem; box-shadow: 0 8px 22px rgba(3,18,45,.22); }}
         .app-hero h1 {{ margin: 0; font-size: clamp(1.25rem, 2.5vw, 1.75rem); letter-spacing: -0.04em; line-height: 1.15; }}
         .app-hero p {{ margin: .15rem 0 0; color: var(--muted); font-size: .86rem; }}
         .metric-card, .nav-card {{
             height: 100%; padding: .72rem .78rem; border: 1px solid var(--border); border-radius: .85rem;
-            background: linear-gradient(180deg, rgba(30,41,59,0.96), rgba(15,23,42,0.94));
-            box-shadow: 0 10px 24px rgba(0,0,0,0.20);
+            background: linear-gradient(180deg, rgba(45, 103, 178, 0.58), rgba(13, 43, 94, 0.42));
+            box-shadow: 0 10px 24px rgba(3,18,45,0.14);
+            backdrop-filter: blur(6px);
         }}
         .metric-card .icon, .nav-card .icon {{ font-size: 1.05rem; line-height: 1; }}
         .metric-card .label {{ color: var(--muted); font-size: .74rem; margin-top: .25rem; line-height: 1.15; }}
@@ -1595,10 +1598,10 @@ def aplicar_css_profissional():
         .metric-card .hint {{ color: #cbd5e1; font-size: .68rem; margin-top: .15rem; line-height: 1.2; }}
         .nav-card h3 {{ font-size: .92rem; margin: .32rem 0 .18rem; }}
         .nav-card p {{ color: var(--muted); font-size: .72rem; line-height: 1.25; margin: 0; min-height: 2.7em; }}
-        .section-card {{ padding: .75rem; border: 1px solid var(--border); border-radius: .9rem; background: rgba(15,23,42,0.72); }}
+        .section-card {{ padding: .75rem; border: 1px solid var(--border); border-radius: .9rem; background: rgba(30, 86, 160, 0.38); backdrop-filter: blur(6px); }}
         div.stButton > button {{
             border-radius: .68rem; min-height: 2.25rem; padding: .32rem .62rem; font-size: .86rem; font-weight: 700; border: 1px solid rgba(56,189,248,.22);
-            background: linear-gradient(135deg, rgba(30,41,59,.95), rgba(15,23,42,.95)); color: #e2e8f0;
+            background: linear-gradient(135deg, rgba(28, 84, 159, .72), rgba(12, 48, 105, .66)); color: #f8fbff;
         }}
         div.stButton > button p {{ font-size: .86rem; }}
         [data-testid="stSidebar"] div.stButton > button {{ min-height: 2.05rem; justify-content: flex-start; border-radius: .62rem; font-size: .8rem; }}
