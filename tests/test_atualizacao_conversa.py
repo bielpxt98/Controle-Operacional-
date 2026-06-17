@@ -189,3 +189,24 @@ def test_montar_registro_excel_preserva_cliente_wms_completo():
     })
 
     assert registro["cliente"] == "WMS MAX ATACADO AV. SANTOS DUMONT"
+
+
+def test_ariel_usa_dados_fixos_atualizados_em_novas_coletas():
+    app = carregar_funcoes_app()
+
+    campos, erro = app["parse_atualizacao_rapida"]("M ARIEL D 3787816621 CL CLIENTE TESTE")
+    registro = app["montar_registro"]({
+        "delivery": "3787816621",
+        "motorista": "ARIEL",
+        "cliente": "CLIENTE TESTE",
+    })
+
+    assert erro is None
+    assert campos["campos"]["motorista"] == "ARIEL NASCIMENTO"
+    assert campos["campos"]["cpf"] == "050.153.565-95"
+    assert campos["campos"]["cavalo"] == "JVL8A44"
+    assert campos["campos"]["carreta"] == "TRUCK"
+    assert registro["motorista"] == "ARIEL NASCIMENTO"
+    assert registro["cpf"] == "050.153.565-95"
+    assert registro["cavalo"] == "JVL8A44"
+    assert registro["carreta"] == "TRUCK"

@@ -1,7 +1,9 @@
+import base64
 import importlib
 import logging
 import re
 import traceback
+from pathlib import Path
 import streamlit as st
 import pandas as pd
 from io import BytesIO
@@ -24,7 +26,11 @@ st_cropper = (
     else None
 )
 
-st.set_page_config(page_title="Controle Operacional", layout="wide")
+LOGO_PATH = Path(__file__).resolve().parent / "logo.png"
+LOGO_IMAGEM = Image.open(LOGO_PATH)
+LOGO_DATA_URI = f"data:image/png;base64,{base64.b64encode(LOGO_PATH.read_bytes()).decode('ascii')}"
+
+st.set_page_config(page_title="Controle Operacional", page_icon=LOGO_IMAGEM, layout="wide")
 
 SUPABASE_URL = "https://zkqzejnflpzknuuirlav.supabase.co"
 SUPABASE_KEY = "sb_publishable_8pSOHjRSllI9wWVYPkmYFA_AfzxV-QS"
@@ -61,6 +67,7 @@ MOTORISTAS_FIXOS = {
     "JONES ROSARIO": {"cpf": "538.594.654-00", "cavalo": "JHX3C33", "carreta": "KKT9007"},
     "GABRIEL BORGES": {"cpf": "809.066.155-87", "cavalo": "KJV8204", "carreta": "KG61152"},
     "VALDEMIR DE JESUS": {"cpf": "044.327.095-37", "cavalo": "KFL0115", "carreta": "TRUCK"},
+    "ARIEL NASCIMENTO": {"cpf": "050.153.565-95", "cavalo": "JVL8A44", "carreta": "TRUCK"},
 }
 
 MAPA_MOTORISTAS_ANTIGOS = {
@@ -1540,18 +1547,20 @@ def aplicar_css_profissional():
         div[data-testid="stVerticalBlock"] { gap: .55rem; }
         div[data-testid="stHorizontalBlock"] { gap: .55rem; }
         .app-hero {
+            display: flex; align-items: center; gap: .85rem;
             padding: .75rem .95rem; margin-bottom: .55rem;
             border: 1px solid var(--border); border-radius: .9rem;
             background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(17,24,39,0.9));
             box-shadow: 0 10px 28px rgba(0,0,0,0.22);
         }
+        .app-hero img { width: 3.1rem; height: 3.1rem; object-fit: contain; border-radius: .65rem; background: rgba(255,255,255,.92); padding: .25rem; }
         .app-hero h1 { margin: 0; font-size: clamp(1.25rem, 2.5vw, 1.75rem); letter-spacing: -0.04em; line-height: 1.15; }
         .app-hero p { margin: .15rem 0 0; color: var(--muted); font-size: .86rem; }
         .sidebar-logo {
             display: flex; align-items: center; gap: .55rem; margin: .15rem 0 .7rem; padding: .55rem .6rem;
             border: 1px solid var(--border); border-radius: .85rem; background: rgba(15,23,42,.72);
         }
-        .sidebar-logo .mark { display: grid; place-items: center; width: 1.85rem; height: 1.85rem; border-radius: .55rem; background: linear-gradient(135deg, #0284c7, #22c55e); font-size: .95rem; }
+        .sidebar-logo img { width: 1.95rem; height: 1.95rem; object-fit: contain; border-radius: .55rem; background: rgba(255,255,255,.92); padding: .18rem; }
         .sidebar-logo .name { font-weight: 800; font-size: .9rem; line-height: 1; }
         .sidebar-logo .sub { color: var(--muted); font-size: .68rem; margin-top: .12rem; }
         .metric-card, .nav-card {
@@ -1565,6 +1574,10 @@ def aplicar_css_profissional():
         .metric-card .hint { color: #cbd5e1; font-size: .68rem; margin-top: .15rem; line-height: 1.2; }
         .nav-card h3 { font-size: .92rem; margin: .32rem 0 .18rem; }
         .nav-card p { color: var(--muted); font-size: .72rem; line-height: 1.25; margin: 0; min-height: 2.7em; }
+        .dashboard-logo { display: flex; align-items: center; gap: .8rem; padding: .75rem .85rem; border: 1px solid var(--border); border-radius: .85rem; background: linear-gradient(180deg, rgba(30,41,59,0.96), rgba(15,23,42,0.94)); }
+        .dashboard-logo img { width: 4rem; height: 4rem; object-fit: contain; border-radius: .75rem; background: rgba(255,255,255,.92); padding: .28rem; }
+        .dashboard-logo strong { display: block; font-size: 1rem; }
+        .dashboard-logo span { color: var(--muted); font-size: .78rem; }
         .section-card { padding: .75rem; border: 1px solid var(--border); border-radius: .9rem; background: rgba(15,23,42,0.72); }
         div.stButton > button {
             border-radius: .68rem; min-height: 2.25rem; padding: .32rem .62rem; font-size: .86rem; font-weight: 700; border: 1px solid rgba(56,189,248,.22);
@@ -1612,10 +1625,13 @@ def render_header():
     st.markdown(
         """
         <div class="app-hero">
-            <h1>Controle Operacional</h1>
-            <p>Gestão de coletas, entregas, finalizações e observações</p>
+            <img src="{LOGO_DATA_URI}" alt="Logo Controle Operacional">
+            <div>
+                <h1>Controle Operacional</h1>
+                <p>Gestão de coletas, entregas, finalizações e observações</p>
+            </div>
         </div>
-        """,
+        """.format(LOGO_DATA_URI=LOGO_DATA_URI),
         unsafe_allow_html=True,
     )
 
@@ -1625,10 +1641,10 @@ def render_menu(pagina_atual):
         st.markdown(
             """
             <div class="sidebar-logo">
-                <div class="mark">CO</div>
+                <img src="{LOGO_DATA_URI}" alt="Logo Controle Operacional">
                 <div><div class="name">Controle</div><div class="sub">Operacional</div></div>
             </div>
-            """,
+            """.format(LOGO_DATA_URI=LOGO_DATA_URI),
             unsafe_allow_html=True,
         )
         st.markdown("### Navegação")
@@ -1673,6 +1689,11 @@ render_header()
 
 if pagina_atual == "dashboard":
     resumo, total_por_motorista = calcular_resumos(df)
+
+    st.markdown(
+        f'''<div class="dashboard-logo"><img src="{LOGO_DATA_URI}" alt="Logo Controle Operacional"><div><strong>Controle Operacional</strong><span>Dashboard de acompanhamento da operação</span></div></div>''',
+        unsafe_allow_html=True,
+    )
 
     st.markdown("### Visão geral da operação")
     cols = st.columns(5)
