@@ -1555,6 +1555,28 @@ def combinar_observacoes_conversa(*observacoes):
             partes.append(obs_limpa.upper())
     return " | ".join(partes) if partes else None
 
+
+COMANDOS_CONSULTA_CONVERSA = {
+    "RELATORIO",
+    "QUANTOS",
+    "QUAIS",
+    "LISTAR",
+    "MOSTRAR",
+    "TOTAL",
+    "RESUMO",
+}
+
+
+def detectar_modo_conversa(frase):
+    """Classifica a frase da aba conversa sem misturar consulta e atualização."""
+    primeira_palavra = re.match(r"^\s*([\wÀ-ÿ]+)", texto(frase), flags=re.UNICODE)
+    if not primeira_palavra:
+        return "ATUALIZACAO"
+
+    comando = limpar_busca(primeira_palavra.group(1))
+    return "CONSULTA" if comando in COMANDOS_CONSULTA_CONVERSA else "ATUALIZACAO"
+
+
 def parse_atualizacao_conversa(frase):
     original = texto(frase)
     if not original:
@@ -2635,31 +2657,50 @@ if pagina_atual == "conversa":
             "e a atualização só acontece depois da confirmação."
         )
         frase_conversa = st.text_input(
-            "Frase da atualização",
+            "Frase da atualização ou consulta",
             placeholder="Jean finalizou 5422 mercantil às 19:49",
         )
 
-        if st.button("Buscar coleta", type="primary"):
-            parsed, erro = parse_atualizacao_conversa(frase_conversa)
+        if st.button("Executar", type="primary"):
             st.session_state.pop("conversa_parsed", None)
             st.session_state.pop("conversa_resultados", None)
+            st.session_state.pop("conversa_resposta_consulta", None)
+            st.session_state.pop("conversa_modo", None)
 
-            if erro:
-                st.error(erro)
-            else:
-                resultados = buscar_coletas_por_conversa(df, parsed)
-                if resultados.empty:
-                    st.warning(
-                        "Nenhuma coleta encontrada. Informe mais detalhes, como final do delivery, cliente ou data."
-                    )
+            modo_conversa = detectar_modo_conversa(frase_conversa)
+            st.session_state["conversa_modo"] = modo_conversa
+
+            if modo_conversa == "CONSULTA":
+                resposta, erro = responder_conversacao(frase_conversa, df)
+                if erro:
+                    st.error(erro)
                 else:
-                    st.session_state["conversa_parsed"] = parsed
-                    st.session_state["conversa_resultados"] = resultados.to_dict("records")
+                    st.session_state["conversa_resposta_consulta"] = resposta
+            else:
+                parsed, erro = parse_atualizacao_conversa(frase_conversa)
+                if erro:
+                    st.error(erro)
+                else:
+                    resultados = buscar_coletas_por_conversa(df, parsed)
+                    if resultados.empty:
+                        st.warning(
+                            "Nenhuma coleta encontrada. Informe mais detalhes, como final do delivery, cliente ou data."
+                        )
+                    else:
+                        st.session_state["conversa_parsed"] = parsed
+                        st.session_state["conversa_resultados"] = resultados.to_dict("records")
 
         parsed_conversa = st.session_state.get("conversa_parsed")
         resultados_conversa = st.session_state.get("conversa_resultados") or []
+        modo_conversa = st.session_state.get("conversa_modo")
+        resposta_consulta_conversa = st.session_state.get("conversa_resposta_consulta")
+
+        if modo_conversa == "CONSULTA" and resposta_consulta_conversa:
+            st.markdown("### MODO CONSULTA")
+            st.code(resposta_consulta_conversa)
 
         if parsed_conversa and resultados_conversa:
+            st.markdown("### MODO ATUALIZAÇÃO")
             campos_previstos = campos_atualizacao_conversa(parsed_conversa)
             resumo_campos = []
             if campos_previstos.get("motorista"):

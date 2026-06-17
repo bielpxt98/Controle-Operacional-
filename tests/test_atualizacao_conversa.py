@@ -25,6 +25,7 @@ FUNCOES_NECESSARIAS = {
     "extrair_observacao_livre_conversa",
     "remover_observacao_livre_conversa",
     "combinar_observacoes_conversa",
+    "detectar_modo_conversa",
     "parse_atualizacao_conversa",
     "campos_atualizacao_conversa",
     "buscar_coletas_por_conversa",
@@ -43,6 +44,7 @@ CONSTANTES_NECESSARIAS = {
     "MOTORISTAS_FIXOS",
     "ACOES_CONVERSA",
     "PALAVRAS_COMANDO_CONVERSA",
+    "COMANDOS_CONSULTA_CONVERSA",
 }
 
 
@@ -77,6 +79,33 @@ def test_conversa_bloqueio_com_observacao_livre_concatena_o_campo_o():
     campos = app["campos_atualizacao_conversa"](parsed)
     assert campos["f_horario"] == "16:22"
     assert campos["observacoes"] == "BLOQUEIO 16:22 | CLIENTE NAO QUIS CARREGAR"
+
+
+def test_conversa_detecta_consulta_por_comandos_iniciais_sem_confundir_atualizacao():
+    app = carregar_funcoes_app()
+
+    consultas = [
+        "relatório reembolso 16/06",
+        "relatorio deslocamento 10/06 a 17/06",
+        "quantos deslocamentos teve entre 10/06 e 17/06",
+        "quais deslocamentos teve entre 10/06 e 17/06",
+        "listar bloqueios do mês",
+        "mostrar SR do mês",
+        "total reembolsos",
+        "resumo deslocamentos",
+    ]
+    atualizacoes = [
+        "Jean finalizou Mercantil às 19:49",
+        "3787805422 FI 19:49",
+        "3787807939 CL ASSAI URUGUAI",
+        "3787807939 M ARIEL NASCIMENTO",
+    ]
+
+    for frase in consultas:
+        assert app["detectar_modo_conversa"](frase) == "CONSULTA"
+
+    for frase in atualizacoes:
+        assert app["detectar_modo_conversa"](frase) == "ATUALIZACAO"
 
 
 def test_conversa_finalizacao_salva_observacao_livre_ate_fim_da_frase():
