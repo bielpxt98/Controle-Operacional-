@@ -36,6 +36,7 @@ FUNCOES_NECESSARIAS = {
     "calcular_status_automatico",
     "preview_atualizacao_status",
     "resumo_preview_status",
+    "resumo_confirmacao_conversa",
 }
 
 CONSTANTES_NECESSARIAS = {
@@ -214,6 +215,76 @@ def test_ariel_usa_dados_fixos_atualizados_em_novas_coletas():
     assert registro["cavalo"] == "JVL8A44"
     assert registro["carreta"] == "TRUCK"
 
+
+def test_conversa_altera_cliente_por_aliases_e_busca_delivery_completo_final_e_linha_copiada():
+    app = carregar_funcoes_app()
+    df = pd.DataFrame([
+        {"id": 1, "delivery": "3787832285", "motorista": "JONES ROSARIO", "cliente": "ANTIGO", "f_horario": ""},
+        {"id": 2, "delivery": "3787811111", "motorista": "ARIEL NASCIMENTO", "cliente": "OUTRO", "f_horario": ""},
+    ])
+
+    exemplos = [
+        "delivery 3787832285 mudar CL ASSAÍ URUGUAI",
+        "delivery 3787832285 cliente ASSAI URUGUAI",
+        "3787832285 CL ASSAÍ URUGUAI",
+        "3787832285 alterar cliente ASSAI URUGUAI",
+        "32285 CL ASSAÍ URUGUAI",
+        "JONES ROSARIO | 3787832285 | ANTIGO mudar CL ASSAÍ URUGUAI",
+    ]
+
+    for frase in exemplos:
+        parsed, erro = app["parse_atualizacao_conversa"](frase)
+        resultados = app["buscar_coletas_por_conversa"](df, parsed)
+        campos = app["campos_atualizacao_conversa"](parsed)
+
+        assert erro is None
+        assert parsed["tipo_atualizacao"] == "alteracao"
+        assert parsed["novo_cliente"] == "ASSAÍ URUGUAI"
+        assert campos["cliente"] == "ASSAÍ URUGUAI"
+        assert len(resultados) == 1
+        assert resultados.iloc[0]["id"] == 1
+
+
+def test_conversa_altera_motorista_por_aliases_e_alteracao_conjunta():
+    app = carregar_funcoes_app()
+
+    exemplos = [
+        "delivery 3787832285 mudar M ARIEL NASCIMENTO",
+        "delivery 3787832285 motorista ARIEL NASCIMENTO",
+        "3787832285 M ARIEL NASCIMENTO",
+        "3787832285 alterar motorista ARIEL NASCIMENTO",
+    ]
+
+    for frase in exemplos:
+        parsed, erro = app["parse_atualizacao_conversa"](frase)
+        campos = app["campos_atualizacao_conversa"](parsed)
+
+        assert erro is None
+        assert parsed["tipo_atualizacao"] == "alteracao"
+        assert parsed["novo_motorista"] == "ARIEL NASCIMENTO"
+        assert campos["motorista"] == "ARIEL NASCIMENTO"
+
+    parsed, erro = app["parse_atualizacao_conversa"]("delivery 3787832285\nM ARIEL NASCIMENTO\nCL ASSAÍ URUGUAI")
+    campos = app["campos_atualizacao_conversa"](parsed)
+
+    assert erro is None
+    assert parsed["novo_motorista"] == "ARIEL NASCIMENTO"
+    assert parsed["novo_cliente"] == "ASSAÍ URUGUAI"
+    assert campos["motorista"] == "ARIEL NASCIMENTO"
+    assert campos["cliente"] == "ASSAÍ URUGUAI"
+
+
+def test_resumo_confirmacao_conversa_mostra_coleta_encontrada_e_alteracoes_com_seta_textual():
+    app = carregar_funcoes_app()
+    parsed, erro = app["parse_atualizacao_conversa"]("delivery 3787832285 mudar CL ASSAÍ URUGUAI")
+
+    resumo = app["resumo_confirmacao_conversa"]({"delivery": "3787832285", "motorista": "JONES ROSARIO", "cliente": "ANTIGO"}, parsed)
+
+    assert erro is None
+    assert "COLETA ENCONTRADA" in resumo
+    assert "ALTERAÇÕES:" in resumo
+    assert "CL -> ASSAÍ URUGUAI" in resumo
+    assert "CONFIRMAR?" in resumo
 
 def test_status_automatico_regras_observacao():
     app = carregar_funcoes_app()

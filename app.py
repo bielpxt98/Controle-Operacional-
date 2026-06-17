@@ -1450,10 +1450,40 @@ def extrair_contexto_linha_busca(frase, codigo):
 def extrair_valores_alteracao_conversa(frase, codigo):
     original = texto(frase)
     frase_sem_codigo = re.sub(rf"\b{re.escape(codigo)}\b", " ", original) if codigo else original
+    frase_sem_codigo = re.sub(
+        r"(?<!\w)(?:DELIVERY|REMESSA|D(?=\s*:?\s*\d))\s*:?",
+        " ",
+        frase_sem_codigo,
+        flags=re.IGNORECASE | re.UNICODE,
+    )
     texto_limpo = limpar_busca(frase_sem_codigo)
 
     motorista = ""
     cliente = ""
+
+    def limpar_valor_alteracao(valor):
+        valor_limpo = limpar_busca(valor)
+        valor_limpo = re.sub(
+            r"^(?:MUDAR|TROCAR|ALTERAR|CORRIGIR|PARA|DE|DO|DA|DOS|DAS)\s+",
+            "",
+            valor_limpo,
+        ).strip(" :-|\n\t")
+        return valor_limpo
+
+    marcador_re = re.compile(
+        r"(?<!\w)(CL|CLIENTE|MOTORISTA|M)\s*:?\s+(.+?)(?=(?:\n|\s+)(?:CL|CLIENTE|MOTORISTA|M)\s*:?\s+|$)",
+        flags=re.IGNORECASE | re.UNICODE | re.DOTALL,
+    )
+    for marcador in marcador_re.finditer(frase_sem_codigo):
+        chave = limpar_busca(marcador.group(1))
+        valor = limpar_valor_alteracao(marcador.group(2))
+        if not valor:
+            continue
+        if chave in {"M", "MOTORISTA"}:
+            motorista = normalizar_motorista(valor)
+        elif chave in {"CL", "CLIENTE"}:
+            cliente = normalizar_cliente_rapido(valor)
+
 
     m = re.search(r"\bMOTORISTA\s+(?:DA\s+|DO\s+|DE\s+)?(?:\d{4,}\s+)?PARA\s+(.+?)(?:\s+E\s+CLIENTE\s+PARA\s+|\s+NA\s+|\s+NO\s+|$)", texto_limpo)
     if m:
@@ -1542,9 +1572,14 @@ def parse_atualizacao_conversa(frase):
 
     codigo = extrair_codigo_conversa(original_sem_observacao)
     acao = identificar_acao_conversa(original_sem_observacao)
-    eh_alteracao = bool(re.search(r"\b(MUDAR|TROCAR|ALTERAR|CORRIGIR|AGORA)\b", limpar_busca(original)))
+    motorista_alteracao, cliente_alteracao = extrair_valores_alteracao_conversa(original_sem_observacao, codigo)
+    eh_alteracao = bool(
+        re.search(r"\b(MUDAR|TROCAR|ALTERAR|CORRIGIR|AGORA)\b", limpar_busca(original))
+        or (not acao and (motorista_alteracao or cliente_alteracao))
+    )
 
-    motorista_alteracao, cliente_alteracao = extrair_valores_alteracao_conversa(original_sem_observacao, codigo) if eh_alteracao else ("", "")
+    if not eh_alteracao:
+        motorista_alteracao, cliente_alteracao = "", ""
     motorista_linha, cliente_linha = extrair_contexto_linha_busca(original_sem_observacao, codigo)
     motorista = motorista_alteracao or motorista_linha or extrair_motorista_conversa(original_sem_observacao)
 
@@ -1703,8 +1738,7 @@ def atualizar_conversa_no_supabase(id_registro, parsed):
 
 
 def resumo_confirmacao_conversa(item, parsed):
-    titulo = "ALTERAÇÃO ENCONTRADA" if parsed.get("tipo_atualizacao") == "alteracao" else "COLETA ENCONTRADA"
-    linhas = [titulo, "", f"D {texto(item.get('delivery'))}"]
+    linhas = ["COLETA ENCONTRADA", "", f"D {texto(item.get('delivery'))}"]
     if texto(item.get("motorista")):
         linhas.append(f"M {texto(item.get('motorista'))}")
     if texto(item.get("cliente")):
@@ -1712,15 +1746,15 @@ def resumo_confirmacao_conversa(item, parsed):
 
     alteracoes = []
     if parsed.get("novo_motorista"):
-        alteracoes.append(f"M → {normalizar_motorista(parsed['novo_motorista'])}")
+        alteracoes.append(f"M -> {normalizar_motorista(parsed['novo_motorista'])}")
     if parsed.get("novo_cliente"):
-        alteracoes.append(f"CL → {normalizar_cliente_rapido(parsed['novo_cliente'])}")
+        alteracoes.append(f"CL -> {normalizar_cliente_rapido(parsed['novo_cliente'])}")
     if parsed.get("horario"):
-        alteracoes.append(f"FI → {parsed['horario']}")
+        alteracoes.append(f"FI -> {parsed['horario']}")
     if parsed.get("data_finalizacao"):
-        alteracoes.append(f"DF → {parsed['data_finalizacao']}")
+        alteracoes.append(f"DF -> {parsed['data_finalizacao']}")
     if parsed.get("observacoes"):
-        alteracoes.append(f"O → {parsed['observacoes']}")
+        alteracoes.append(f"O -> {parsed['observacoes']}")
     if alteracoes:
         linhas.extend(["", "ALTERAÇÕES:", *alteracoes])
     linhas.extend(["", "CONFIRMAR?"])
