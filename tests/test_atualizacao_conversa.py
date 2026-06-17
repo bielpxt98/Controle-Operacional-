@@ -33,6 +33,9 @@ FUNCOES_NECESSARIAS = {
     "numero",
     "extrair_regra_bloqueio_deslocamento",
     "normalizar_observacao",
+    "calcular_status_automatico",
+    "preview_atualizacao_status",
+    "resumo_preview_status",
 }
 
 CONSTANTES_NECESSARIAS = {
@@ -210,3 +213,35 @@ def test_ariel_usa_dados_fixos_atualizados_em_novas_coletas():
     assert registro["cpf"] == "050.153.565-95"
     assert registro["cavalo"] == "JVL8A44"
     assert registro["carreta"] == "TRUCK"
+
+
+def test_status_automatico_regras_observacao():
+    app = carregar_funcoes_app()
+
+    assert app["calcular_status_automatico"]("bloqueio") == "BLOQUEIO"
+    assert app["calcular_status_automatico"]("O BLOQUEIO") == "BLOQUEIO"
+    assert app["calcular_status_automatico"]("deslocamento sem carga") == "DESLOCAMENTO"
+    assert app["calcular_status_automatico"]("BLOQUEIO e DESLOCAMENTO") == "BLOQUEIO / DESLOCAMENTO"
+    assert app["calcular_status_automatico"]("cliente pediu comprovante") == "FINALIZADO"
+
+
+def test_preview_status_conta_todos_os_status_sem_alterar_outros_campos():
+    app = carregar_funcoes_app()
+    df = pd.DataFrame([
+        {"id": 1, "status": "", "delivery": "D1", "cliente": "A", "observacoes": ""},
+        {"id": 2, "status": "", "delivery": "D2", "cliente": "B", "observacoes": "O BLOQUEIO"},
+        {"id": 3, "status": "", "delivery": "D3", "cliente": "C", "observacoes": "deslocamento sem carga"},
+        {"id": 4, "status": "", "delivery": "D4", "cliente": "D", "observacoes": "bloqueio e deslocamento"},
+    ])
+
+    preview = app["preview_atualizacao_status"](df)
+    resumo = app["resumo_preview_status"](preview)
+
+    assert resumo == {
+        "FINALIZADO": 1,
+        "BLOQUEIO": 1,
+        "DESLOCAMENTO": 1,
+        "BLOQUEIO / DESLOCAMENTO": 1,
+    }
+    assert list(preview["delivery"]) == ["D1", "D2", "D3", "D4"]
+    assert list(preview["cliente"]) == ["A", "B", "C", "D"]
