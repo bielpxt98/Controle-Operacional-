@@ -1074,6 +1074,47 @@ def extrair_codigo_conversa(frase):
     return (completos[-1] if completos else (numeros[-1] if numeros else ""))
 
 
+def extrair_contexto_linha_busca(frase, codigo):
+    """Extrai motorista/cliente de linhas copiadas da busca: M | D | CL | ..."""
+    original = texto(frase)
+    if "|" not in original:
+        return "", ""
+
+    partes = [p.strip() for p in original.split("|") if p.strip()]
+    if not partes:
+        return "", ""
+
+    idx_codigo = -1
+    codigo_limpo = limpar_codigo_delivery(codigo)
+    for i, parte in enumerate(partes):
+        numeros = re.findall(r"\b\d{4,}\b", parte)
+        if codigo_limpo and any(limpar_codigo_delivery(n) == codigo_limpo for n in numeros):
+            idx_codigo = i
+            break
+        if any(parece_delivery_completo(n) for n in numeros):
+            idx_codigo = i
+            break
+
+    motorista = ""
+    cliente = ""
+    if idx_codigo > 0:
+        motorista = normalizar_motorista(partes[idx_codigo - 1])
+    elif partes and not re.search(r"\b\d{4,}\b", partes[0]):
+        motorista = normalizar_motorista(partes[0])
+
+    if idx_codigo >= 0 and idx_codigo + 1 < len(partes):
+        cliente_bruto = partes[idx_codigo + 1]
+        cliente_bruto = re.split(
+            r"\b(?:FI|FINALIZOU|FINALIZADO|FINAL|DF|DT|DATA|BLOQUEIO|BLOQUEADO|DESLOCAMENTO|DESLOCOU)\b",
+            cliente_bruto,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0].strip()
+        cliente = normalizar_cliente_rapido(cliente_bruto)
+
+    return motorista, cliente
+
+
 def extrair_valores_alteracao_conversa(frase, codigo):
     original = texto(frase)
     frase_sem_codigo = re.sub(rf"\b{re.escape(codigo)}\b", " ", original) if codigo else original
@@ -1138,7 +1179,8 @@ def parse_atualizacao_conversa(frase):
     eh_alteracao = bool(re.search(r"\b(MUDAR|TROCAR|ALTERAR|CORRIGIR|AGORA)\b", limpar_busca(original)))
 
     motorista_alteracao, cliente_alteracao = extrair_valores_alteracao_conversa(original, codigo) if eh_alteracao else ("", "")
-    motorista = motorista_alteracao or extrair_motorista_conversa(original)
+    motorista_linha, cliente_linha = extrair_contexto_linha_busca(original, codigo)
+    motorista = motorista_alteracao or motorista_linha or extrair_motorista_conversa(original)
 
     if not acao and horario:
         acao = "FINALIZACAO"
@@ -1148,9 +1190,6 @@ def parse_atualizacao_conversa(frase):
 
     if acao and not horario:
         return None, "Não encontrei horário no formato HH:MM."
-
-    if acao and not motorista:
-        return None, "Não encontrei o motorista na frase."
 
     texto_cliente = re.sub(r"\b[0-2]?\d[:hH][0-5]\d\b", " ", original)
     texto_cliente = re.sub(r"\b\d{4,}\b", " ", texto_cliente)
@@ -1167,7 +1206,7 @@ def parse_atualizacao_conversa(frase):
         for palavra in re.findall(r"[\wÀ-ÿ.]+", texto_cliente, flags=re.UNICODE)
         if limpar_busca(palavra) not in palavras_remover
     ]
-    cliente_contexto = normalizar_cliente_rapido(" ".join(palavras_cliente))
+    cliente_contexto = cliente_linha or normalizar_cliente_rapido(" ".join(palavras_cliente))
     cliente = cliente_alteracao or ("" if eh_alteracao else cliente_contexto)
 
     if not codigo:
@@ -1187,7 +1226,7 @@ def parse_atualizacao_conversa(frase):
         "horario": horario,
         "final_delivery": codigo,
         "cliente": cliente_contexto,
-        "novo_motorista": motorista_alteracao or (motorista if acao and motorista else ""),
+        "novo_motorista": motorista_alteracao,
         "novo_cliente": cliente_alteracao,
         "acao": acao,
         "observacoes": observacoes,
@@ -1253,6 +1292,8 @@ def buscar_coletas_por_conversa(df_base, parsed):
     mascara = mascara_codigo
     if parsed.get("tipo_atualizacao") != "alteracao":
         mascara = mascara & resultado["f_horario"].apply(lambda v: not bool(texto(v)))
+        if parsed.get("motorista"):
+            mascara = mascara & resultado["motorista"].apply(lambda v: motorista_combina(v, parsed["motorista"]))
         if parsed.get("cliente"):
             mascara = mascara & resultado["cliente"].apply(lambda v: cliente_combina(v, parsed["cliente"]))
 
@@ -1284,18 +1325,27 @@ def atualizar_conversa_no_supabase(id_registro, parsed):
 
 
 def resumo_confirmacao_conversa(item, parsed):
-    linhas = ["ALTERAÇÃO ENCONTRADA", "", f"D {texto(item.get('delivery'))}"]
+    titulo = "ALTERAÇÃO ENCONTRADA" if parsed.get("tipo_atualizacao") == "alteracao" else "COLETA ENCONTRADA"
+    linhas = [titulo, "", f"D {texto(item.get('delivery'))}"]
+    if texto(item.get("motorista")):
+        linhas.append(f"M {texto(item.get('motorista'))}")
+    if texto(item.get("cliente")):
+        linhas.append(f"CL {texto(item.get('cliente'))}")
+
+    alteracoes = []
     if parsed.get("novo_motorista"):
-        linhas.append(f"M {texto(item.get('motorista'))} → {normalizar_motorista(parsed['novo_motorista'])}")
+        alteracoes.append(f"M → {normalizar_motorista(parsed['novo_motorista'])}")
     if parsed.get("novo_cliente"):
-        linhas.append(f"CL {texto(item.get('cliente'))} → {normalizar_cliente_rapido(parsed['novo_cliente'])}")
+        alteracoes.append(f"CL → {normalizar_cliente_rapido(parsed['novo_cliente'])}")
     if parsed.get("horario"):
-        linhas.append(f"FI {texto(item.get('f_horario')) or '—'} → {parsed['horario']}")
+        alteracoes.append(f"FI → {parsed['horario']}")
     if parsed.get("data_finalizacao"):
-        linhas.append(f"DT {texto(item.get('data_finalizacao')) or '—'} → {parsed['data_finalizacao']}")
+        alteracoes.append(f"DF → {parsed['data_finalizacao']}")
     if parsed.get("observacoes"):
-        linhas.append(f"O {parsed['observacoes']}")
-    linhas.extend(["", "Confirmar alteração?"])
+        alteracoes.append(f"O → {parsed['observacoes']}")
+    if alteracoes:
+        linhas.extend(["", "ALTERAÇÕES:", *alteracoes])
+    linhas.extend(["", "CONFIRMAR?"])
     return "\n".join(linhas)
 
 
