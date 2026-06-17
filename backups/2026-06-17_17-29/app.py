@@ -473,229 +473,85 @@ def autenticar_admin():
 
 
 
-REGRAS_OPERACIONAIS_PATH = Path(__file__).resolve().parent / "REGRAS_OPERACIONAIS.md"
-REGRAS_OPERACIONAIS_HISTORICO_PATH = Path(__file__).resolve().parent / "REGRAS_OPERACIONAIS_HISTORICO.csv"
+def carregar_regras_operacionais():
+    caminho_regras = "REGRAS_OPERACIONAIS.md"
 
-REGRAS_OPERACIONAIS_INICIAIS = """
-REGRAS OPERACIONAIS
+    try:
+        with open(caminho_regras, "r", encoding="utf-8") as arquivo_regras:
+            regras = arquivo_regras.read().strip()
+    except FileNotFoundError:
+        regras = ""
 
-FORMATAÇÃO
+    if regras:
+        return regras
 
-* TODAS AS INFORMAÇÕES DEVEM SER RETORNADAS EM MAIÚSCULAS.
-* UMA COLETA POR LINHA.
-* NUNCA ALTERAR NÚMEROS INFORMADOS.
-* NUNCA INVENTAR INFORMAÇÕES.
-* NUNCA RESUMIR OU CORTAR NOMES DE CLIENTES.
-* O NOME DO CLIENTE DEVE SER COPIADO EXATAMENTE COMO ESTÁ ESCRITO NA FOLHA.
-* SOMENTE ALTERAR O NOME DE UM CLIENTE QUANDO O USUÁRIO INFORMAR EXPLICITAMENTE UMA REGRA DE SUBSTITUIÇÃO.
+    return """
+Você é um assistente operacional que lê fotos de folhas operacionais.
+Extraia somente os registros operacionais visíveis e devolva uma linha por registro.
+Não invente dados que não estejam legíveis na imagem.
+Quando um campo não estiver legível, omita o campo em vez de chutar.
+Use exatamente as abreviações aceitas pela Atualização rápida:
+DATA = Data no formato dd/mm/aaaa
+DF = Data finalização no formato dd/mm/aaaa
+M = Motorista
+D = Delivery
+SR = SR
+CL = Cliente
+P = Paletes
+V = Valor do frete com vírgula decimal quando houver centavos
+L = Chegada no formato HH:MM
+C = Coleta no formato HH:MM
+FI = Finalização no formato HH:MM
+O = Observação, somente para deslocamento, bloqueio, motivo, remessa, NOK, CS OK, C OK ou L OK
 
-FORMATO PADRÃO
+Regras obrigatórias:
+- Devolva apenas as linhas da Atualização rápida, sem explicações, sem markdown e sem numeração.
+- Cada registro deve ficar em uma única linha.
+- Não use o campo S.
+- S.F e L.F devem ficar dentro do campo CL, junto do cliente.
+- FI deve conter somente horário.
+- Quando aparecer B(HORÁRIO) ou D(HORÁRIO) na folha manuscrita, converta para FI HORÁRIO e gere a observação correspondente: B significa BLOQUEIO e deve gerar O BLOQUEIO HORÁRIO; D significa DESLOCAMENTO e deve gerar O DESLOCAMENTO HORÁRIO.
+- Se existir FI normal e também B(HORÁRIO) ou D(HORÁRIO), priorize o horário de B ou D no FI.
+- O não deve ser usado para HP, última ocorrência, finalizado ou em andamento.
+- Normalize nomes conhecidos quando possível: Jean, Wilson, Luis, Gabriel, Jones, Fabio, Argemiro ou Valdemir.
 
-DATA DD/MM/AAAA M MOTORISTA D DELIVERY/REMESSA P PALLETS CL CLIENTE V VALOR L HH:MM C HH:MM FI HH:MM O OBSERVAÇÃO
+Regras para agrupamento por motorista:
+- Quando aparecer "MOTORISTA: NOME VALOR", todas as coletas abaixo pertencem a esse motorista até aparecer outro "MOTORISTA:".
+- Se o valor aparecer no cabeçalho do motorista, aplique esse mesmo valor em todas as coletas daquele bloco.
+- Se o cabeçalho do motorista trouxer "VALOR x2", "VALORx2" ou "VALOR X 2", trate o valor como valor individual de cada coleta daquele bloco, não como valor total ou valor a dividir.
+- Se houver várias coletas uma embaixo da outra sem repetir o motorista, mantenha o mesmo motorista e o mesmo valor do bloco.
+- Para JEAN na imagem, as 4 coletas abaixo dele pertencem a JEAN e usam o valor 992,17.
+- Para FABIO na imagem, as 2 coletas abaixo dele pertencem a FABIO e usam o valor 1468,13.
+- Sempre devolva uma coleta por linha no formato da Atualização rápida.
+- Não omita coletas. Se alguma informação estiver ilegível, coloque REVISAR no campo correspondente em vez de descartar a coleta.
 
-CAMPOS
+Exemplo de agrupamento:
+Entrada na folha:
+MOTORISTA: FABIO 1468,13x2
+D 3787803355 P 200 CL ASSAÍ TOMBA F.S L 10:50 C 12:40 FI 08:32 DF 16/06
+D 3787807939 P 272 CL C. SEIS IRMÃOS L 12:23 O SEM ACESSO
 
-DATA = DATA DA OPERAÇÃO
+Saída esperada:
+M FABIO D 3787803355 P 200 CL ASSAÍ TOMBA F.S V 1468,13 L 10:50 C 12:40 FI 08:32 DF 16/06
+M FABIO D 3787807939 P 272 CL C. SEIS IRMÃOS V 1468,13 L 12:23 O SEM ACESSO
 
-M = MOTORISTA
+Exemplo de saída:
+DATA 15/06/2026 M JEAN D 3787805566 P 117 CL ASSAÍ PARIPE V 1021,05 L 08:08 C 09:31 FI 13:44
 
-D = DELIVERY OU REMESSA
+Exemplos de B/D manuscrito:
+Entrada na folha:
+3787805422 MERCANTIL L.F L(15:51) B(19:49)
+Saída esperada:
+M JEAN D 3787805422 CL MERCANTIL L.F V 992,17 L 15:51 FI 19:49 O BLOQUEIO 19:49
 
-* DELIVERIES NORMALMENTE INICIAM COM 378
-* REMESSAS NORMALMENTE INICIAM COM 340
-
-P = QUANTIDADE DE PALLETS
-
-CL = CLIENTE
-
-V = VALOR
-
-L = HORÁRIO DE CHEGADA
-
-C = HORÁRIO DE COLETA
-
-FI = HORÁRIO DE FINALIZAÇÃO
-
-O = OBSERVAÇÃO
-
-REGRAS DE DESLOCAMENTO
-
-QUANDO EXISTIR:
-
-D(HH:MM)
-
-CONVERTER PARA:
-
-FI HH:MM
-O DESLOCAMENTO AS HH:MM
-
-EXEMPLO:
-
-D(11:53)
-
-RETORNO:
-
-FI 11:53
-O DESLOCAMENTO AS 11:53
-
-REGRAS DE BLOQUEIO
-
-QUANDO EXISTIR:
-
-B(HH:MM)
-
-CONVERTER PARA:
-
-FI HH:MM
-O BLOQUEIO AS HH:MM
-
-EXEMPLO:
-
-B(16:20)
-
-RETORNO:
-
-FI 16:20
-O BLOQUEIO AS 16:20
-
-OBSERVAÇÕES
-
-TODA FRASE OU ANOTAÇÃO QUE NÃO REPRESENTE:
-
-L
-C
-FI
-B
-D
-
-DEVE SER INSERIDA EM O.
-
-EXEMPLOS:
-
-O MOTORISTA TERCEIRIZADO
-O SEM AGENDAMENTO
-O CS OK
-O AGUARDANDO DESCARGA
-
-REMESSAS
-
-REMESSAS PODEM POSSUIR APENAS FI E OBSERVAÇÕES.
-
-ATUALIZAÇÕES
-
-QUANDO O USUÁRIO ENVIAR UMA ATUALIZAÇÃO DE UMA COLETA JÁ EXISTENTE, RETORNAR APENAS OS DADOS QUE FORAM ALTERADOS.
-
-EXEMPLO:
-
-JEAN FINALIZOU ASSAI PARIPE AS 13:44
-
-RETORNO:
-
-D 378XXXXXXX FI 13:44
-
-NUNCA REPETIR TODA A LINHA QUANDO A SOLICITAÇÃO FOR APENAS UMA ATUALIZAÇÃO.
+Entrada na folha:
+3787807939 C SEIS IRMÃOS L(12:23) D(16:04)
+Saída esperada:
+M FABIO D 3787807939 CL C. SEIS IRMÃOS V 1468,13 L 12:23 FI 16:04 O DESLOCAMENTO 16:04
 """.strip()
 
 
-def carregar_regras_operacionais():
-    if not REGRAS_OPERACIONAIS_PATH.exists():
-        REGRAS_OPERACIONAIS_PATH.write_text(REGRAS_OPERACIONAIS_INICIAIS, encoding="utf-8")
-        registrar_historico_regras("SISTEMA", "VERSÃO INICIAL", REGRAS_OPERACIONAIS_INICIAIS)
 
-    regras = REGRAS_OPERACIONAIS_PATH.read_text(encoding="utf-8").strip()
-    return regras or REGRAS_OPERACIONAIS_INICIAIS
-
-
-def registrar_historico_regras(usuario, acao, conteudo):
-    registro = pd.DataFrame([{
-        "data_hora": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-        "usuario": usuario,
-        "acao": acao,
-        "tamanho": len(conteudo or ""),
-        "conteudo": conteudo or "",
-    }])
-    if REGRAS_OPERACIONAIS_HISTORICO_PATH.exists():
-        historico = pd.read_csv(REGRAS_OPERACIONAIS_HISTORICO_PATH)
-        historico = pd.concat([historico, registro], ignore_index=True)
-    else:
-        historico = registro
-    historico.to_csv(REGRAS_OPERACIONAIS_HISTORICO_PATH, index=False)
-
-
-def salvar_regras_operacionais(conteudo, usuario="ADMIN"):
-    conteudo_final = texto(conteudo).strip()
-    REGRAS_OPERACIONAIS_PATH.write_text(conteudo_final, encoding="utf-8")
-    registrar_historico_regras(usuario, "SALVOU REGRAS OPERACIONAIS", conteudo_final)
-
-
-def carregar_historico_regras():
-    if not REGRAS_OPERACIONAIS_HISTORICO_PATH.exists():
-        return pd.DataFrame(columns=["data_hora", "usuario", "acao", "tamanho", "conteudo"])
-    return pd.read_csv(REGRAS_OPERACIONAIS_HISTORICO_PATH)
-
-
-def restaurar_ultima_versao_regras(usuario="ADMIN"):
-    historico = carregar_historico_regras()
-    if historico.empty:
-        return False, "Nenhuma versão anterior encontrada."
-    versoes = historico[historico["conteudo"].fillna("").astype(str).str.strip() != ""]
-    if len(versoes) < 2:
-        return False, "Não existe uma versão anterior para restaurar."
-    conteudo_anterior = str(versoes.iloc[-2]["conteudo"])
-    REGRAS_OPERACIONAIS_PATH.write_text(conteudo_anterior, encoding="utf-8")
-    registrar_historico_regras(usuario, "RESTAUROU ÚLTIMA VERSÃO", conteudo_anterior)
-    return True, "Última versão anterior restaurada com sucesso."
-
-
-def render_regras_operacionais(admin):
-    st.subheader("Regras Operacionais")
-    st.caption("Regras usadas para interpretar fotos e gerar linhas operacionais, funcionando como o Excel Mestre.")
-    regras_atuais = carregar_regras_operacionais()
-
-    if admin:
-        usuario = st.text_input("Usuário responsável pela alteração", value="ADMIN", key="regras_usuario")
-        conteudo = st.text_area(
-            "Conteúdo das regras operacionais",
-            value=regras_atuais,
-            height=560,
-            key="regras_operacionais_editor",
-            help="Campo preparado para textos longos. A última versão salva é carregada automaticamente.",
-        )
-        col_salvar, col_baixar, col_restaurar = st.columns(3)
-        if col_salvar.button("💾 SALVAR", type="primary", use_container_width=True):
-            salvar_regras_operacionais(conteudo, usuario or "ADMIN")
-            st.success("Regras operacionais salvas como última versão.")
-            st.rerun()
-        col_baixar.download_button(
-            "⬇️ BAIXAR REGRAS",
-            data=conteudo.encode("utf-8"),
-            file_name="regras_operacionais.md",
-            mime="text/markdown",
-            use_container_width=True,
-        )
-        if col_restaurar.button("↩️ RESTAURAR ÚLTIMA VERSÃO", use_container_width=True):
-            ok, mensagem = restaurar_ultima_versao_regras(usuario or "ADMIN")
-            st.success(mensagem) if ok else st.warning(mensagem)
-            if ok:
-                st.rerun()
-    else:
-        st.info("Usuários comuns podem visualizar as regras. Apenas administradores podem editar.")
-        st.download_button(
-            "⬇️ BAIXAR REGRAS",
-            data=regras_atuais.encode("utf-8"),
-            file_name="regras_operacionais.md",
-            mime="text/markdown",
-            use_container_width=True,
-        )
-        st.markdown(f'<div class="section-card"><pre style="white-space: pre-wrap; margin: 0; color: #fff;">{escape(regras_atuais)}</pre></div>', unsafe_allow_html=True)
-
-    st.divider()
-    st.subheader("Histórico de alterações das regras")
-    historico = carregar_historico_regras()
-    if historico.empty:
-        st.info("Nenhuma alteração registrada ainda.")
-    else:
-        st.dataframe(historico.drop(columns=["conteudo"], errors="ignore").tail(50).iloc[::-1], use_container_width=True, hide_index=True)
 
 def redimensionar_imagem_para_cropper(imagem, largura_maxima=900):
     largura, altura = imagem.size
@@ -2137,16 +1993,14 @@ def aplicar_css_profissional():
 
 
 PAGINAS = {
-    "dashboard": {"label": "Dashboard", "icon": "📊", "grupo": "principal"},
-    "busca": {"label": "Buscar / visualizar", "icon": "🔎", "grupo": "principal"},
-    "conversacao": {"label": "Conversação", "icon": "💬", "grupo": "principal"},
-    "rapida": {"label": "Atualização rápida", "icon": "⚡", "grupo": "principal"},
-    "conversa": {"label": "Atualização por conversa", "icon": "🗣️", "grupo": "principal"},
-    "ler_folha": {"label": "Ler folha", "icon": "📄", "grupo": "principal"},
-    "importar": {"label": "Importar Excel mestre", "icon": "📥", "grupo": "principal"},
-    "admin": {"label": "Excel Mestre", "icon": "📥", "grupo": "admin"},
-    "regras_operacionais": {"label": "Regras Operacionais", "icon": "📋", "grupo": "admin"},
-    "historico_alteracoes": {"label": "Histórico de Alterações", "icon": "🕘", "grupo": "admin"},
+    "dashboard": {"label": "Dashboard", "icon": "📊"},
+    "busca": {"label": "Buscar / visualizar", "icon": "🔎"},
+    "conversacao": {"label": "Conversação", "icon": "💬"},
+    "rapida": {"label": "Atualização rápida", "icon": "⚡"},
+    "conversa": {"label": "Atualização por conversa", "icon": "🗣️"},
+    "ler_folha": {"label": "Ler folha", "icon": "📄"},
+    "importar": {"label": "Importar Excel mestre", "icon": "📥"},
+    "admin": {"label": "Administração", "icon": "🛠️"},
 }
 
 
@@ -2173,17 +2027,6 @@ def render_menu(pagina_atual):
     with st.sidebar:
         st.markdown("### Navegação")
         for chave, pagina in PAGINAS.items():
-            if pagina.get("grupo") != "principal":
-                continue
-            prefixo = "● " if chave == pagina_atual else ""
-            if st.button(f"{prefixo}{pagina['icon']} {pagina['label']}", key=f"nav_{chave}", use_container_width=True):
-                ir_para_pagina(chave)
-                st.rerun()
-
-        st.markdown("### ADMIN")
-        for chave, pagina in PAGINAS.items():
-            if pagina.get("grupo") != "admin":
-                continue
             prefixo = "● " if chave == pagina_atual else ""
             if st.button(f"{prefixo}{pagina['icon']} {pagina['label']}", key=f"nav_{chave}", use_container_width=True):
                 ir_para_pagina(chave)
@@ -2247,9 +2090,7 @@ if pagina_atual == "dashboard":
         ("conversa", "🗣️", "Atualização por conversa", "Interpretar frase natural e confirmar alteração."),
         ("ler_folha", "📄", "Ler folha", "Extrair dados de foto da folha operacional."),
         ("importar", "📥", "Importar Excel mestre", "Carregar planilha base para a nuvem."),
-        ("admin", "📥", "Excel Mestre", "Exportação e rotinas administrativas."),
-        ("regras_operacionais", "📋", "Regras Operacionais", "Consultar e manter regras de interpretação."),
-        ("historico_alteracoes", "🕘", "Histórico de Alterações", "Auditar alterações das regras operacionais."),
+        ("admin", "🛠️", "Administração", "Exportação e rotinas administrativas."),
     ]
     for linha in range(0, len(nav_items), 4):
         cols_nav = st.columns(4)
@@ -3011,36 +2852,8 @@ if pagina_atual == "importar":
                 st.info(f"{ignorados} linhas ignoradas sem delivery e sem SR.")
 
 
-if pagina_atual == "regras_operacionais":
-    render_regras_operacionais(admin)
-
-
-if pagina_atual == "historico_alteracoes":
-    st.subheader("Histórico de Alterações")
-    if not admin:
-        st.warning("Entre como administrador para acessar o histórico de alterações.")
-    else:
-        historico_regras = carregar_historico_regras()
-        if historico_regras.empty:
-            st.info("Nenhuma alteração registrada ainda.")
-        else:
-            st.caption("Histórico com data, hora, usuário, ação e tamanho da versão salva.")
-            st.dataframe(
-                historico_regras.drop(columns=["conteudo"], errors="ignore").iloc[::-1],
-                use_container_width=True,
-                hide_index=True,
-            )
-            st.download_button(
-                "⬇️ Baixar histórico completo",
-                data=historico_regras.to_csv(index=False).encode("utf-8"),
-                file_name="historico_regras_operacionais.csv",
-                mime="text/csv",
-                use_container_width=True,
-            )
-
-
 if pagina_atual == "admin":
-    st.subheader("Excel Mestre")
+    st.subheader("Administração")
 
     if not admin:
         st.warning("Entre como administrador para acessar as funções administrativas.")
