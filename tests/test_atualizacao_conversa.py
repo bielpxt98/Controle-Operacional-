@@ -539,7 +539,7 @@ def test_preview_status_conta_todos_os_status_sem_alterar_outros_campos():
     assert list(preview["cliente"]) == ["A", "B", "C", "D"]
 
 
-def test_pc_atualizacao_rapida_e_conversa_sem_substituir_paletes():
+def test_pc_nao_e_enviado_para_deliveries_e_nao_substitui_paletes():
     app = carregar_funcoes_app()
 
     parsed, erro = app["parse_atualizacao_rapida"](
@@ -548,15 +548,46 @@ def test_pc_atualizacao_rapida_e_conversa_sem_substituir_paletes():
 
     assert erro is None
     assert parsed["campos"]["paletes"] == 272
-    assert parsed["campos"]["paletes_coletados"] == 250
-    assert app["resumo_atualizacao_rapida"](parsed, "atualizado").endswith("PC 250")
+    assert "paletes_coletados" not in parsed["campos"]
+    assert "PC 250" not in app["resumo_atualizacao_rapida"](parsed, "atualizado")
 
     conversa, erro = app["parse_atualizacao_conversa"]("JONES 6552 PC 250")
 
     assert erro is None
     assert conversa["final_delivery"] == "6552"
-    assert conversa["paletes_coletados"] == 250
-    assert app["campos_atualizacao_conversa"](conversa)["paletes_coletados"] == 250
+    assert "paletes_coletados" not in app["campos_atualizacao_conversa"](conversa)
+
+
+def test_atualizacao_rapida_cria_registro_com_wms_alagoinhas_e_paletes():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_atualizacao_rapida"](
+        "D 3787850562 M ARGEMIRO P 120 CL WMS ALAGOINHAS V 2473,00 L 13:06"
+    )
+
+    assert erro is None
+    assert parsed["campos"]["delivery"] == "3787850562"
+    assert parsed["campos"]["motorista"] == "ARGEMIRO BORGES"
+    assert parsed["campos"]["paletes"] == 120
+    assert parsed["campos"]["cliente"] == "WMS MAX ATACADO ALAGOINHAS"
+    assert parsed["campos"]["valor_frete"] == 2473.00
+    assert parsed["campos"]["l_horario"] == "13:06"
+    assert parsed["campos"]["status"] == "EM ABERTO"
+    assert "paletes_coletados" not in parsed["campos"]
+
+
+def test_d_horario_vira_deslocamento_com_prioridade_sobre_finalizado():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_atualizacao_rapida"](
+        "D 3787850562 M ARGEMIRO CL ALAGOINHAS L 10:20 D 14:05"
+    )
+
+    assert erro is None
+    assert parsed["campos"]["cliente"] == "WMS MAX ATACADO ALAGOINHAS"
+    assert parsed["campos"]["f_horario"] == "14:05"
+    assert parsed["campos"]["observacoes"] == "O DESLOCAMENTO AS 14:05"
+    assert parsed["campos"]["status"] == "DESLOCAMENTO"
 
 
 def test_conversacao_enriquece_cnpj_da_tabela_clientes_sem_mensagem_de_nao_encontrado():
