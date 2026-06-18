@@ -1,7 +1,12 @@
 import base64
+import hashlib
+import hmac
 import importlib
+import json
 import logging
 import re
+import secrets
+import time
 import traceback
 from html import escape
 from pathlib import Path
@@ -11,7 +16,7 @@ import pandas as pd
 from io import BytesIO
 from PIL import Image, UnidentifiedImageError
 from PIL import Image, ImageOps
-from datetime import datetime
+from datetime import datetime, timedelta
 from supabase import create_client
 from google import genai
 from google.genai import types
@@ -22,11 +27,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ST_CROPPER_DISPONIVEL = importlib.util.find_spec("streamlit_cropper") is not None
+ST_COOKIES_DISPONIVEL = importlib.util.find_spec("extra_streamlit_components") is not None
 st_cropper = (
     importlib.import_module("streamlit_cropper").st_cropper
     if ST_CROPPER_DISPONIVEL
     else None
 )
+stx = importlib.import_module("extra_streamlit_components") if ST_COOKIES_DISPONIVEL else None
 
 LOGO_PATH = Path(__file__).resolve().parent / "logo.png"
 LOGO_IMAGEM = Image.open(LOGO_PATH)
@@ -405,6 +412,111 @@ def senha_admin_configurada():
         return False
 
 
+SESSAO_ADMIN_COOKIE = "controle_operacional_admin_session"
+SESSAO_ADMIN_USUARIO = "ADMIN"
+SESSAO_ADMIN_TTL_SEGUNDOS = 60 * 60
+
+
+@st.cache_resource(show_spinner=False)
+def gerenciador_cookies():
+    if not ST_COOKIES_DISPONIVEL:
+        return None
+    return stx.CookieManager()
+
+
+def chave_assinatura_sessao():
+    senha = texto(st.secrets.get("ADMIN_PASSWORD", "")) if senha_admin_configurada() else ""
+    base = senha or SUPABASE_KEY
+    return hashlib.sha256(base.encode("utf-8")).digest()
+
+
+def assinar_payload_sessao(payload):
+    dados = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hmac.new(chave_assinatura_sessao(), dados, hashlib.sha256).hexdigest()
+
+
+def codificar_payload_sessao(payload):
+    dados = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return base64.urlsafe_b64encode(dados).decode("ascii").rstrip("=")
+
+
+def decodificar_payload_sessao(dados):
+    padding = "=" * (-len(dados) % 4)
+    return json.loads(base64.urlsafe_b64decode((dados + padding).encode("ascii")).decode("utf-8"))
+
+
+def criar_token_sessao_admin(usuario=SESSAO_ADMIN_USUARIO):
+    agora = int(time.time())
+    payload = {
+        "usuario": usuario,
+        "iat": agora,
+        "last_activity": agora,
+        "nonce": secrets.token_urlsafe(16),
+    }
+    corpo = codificar_payload_sessao(payload)
+    return f"{corpo}.{assinar_payload_sessao(payload)}"
+
+
+def validar_token_sessao_admin(token):
+    if not token or "." not in token:
+        return False, None
+    try:
+        corpo, assinatura = token.rsplit(".", 1)
+        payload = decodificar_payload_sessao(corpo)
+        assinatura_esperada = assinar_payload_sessao(payload)
+    except Exception:
+        return False, None
+    if not hmac.compare_digest(assinatura, assinatura_esperada):
+        return False, None
+    ultima_atividade = int(payload.get("last_activity", 0))
+    if int(time.time()) - ultima_atividade > SESSAO_ADMIN_TTL_SEGUNDOS:
+        return False, None
+    return True, payload
+
+
+def renovar_token_sessao_admin(token):
+    valido, payload = validar_token_sessao_admin(token)
+    if not valido:
+        return None
+    payload["last_activity"] = int(time.time())
+    corpo = codificar_payload_sessao(payload)
+    return f"{corpo}.{assinar_payload_sessao(payload)}"
+
+
+def salvar_cookie_sessao(token):
+    cookies = gerenciador_cookies()
+    if not cookies:
+        return
+    cookies.set(
+        SESSAO_ADMIN_COOKIE,
+        token,
+        expires_at=datetime.now() + timedelta(seconds=SESSAO_ADMIN_TTL_SEGUNDOS),
+        key="salvar_sessao_admin",
+    )
+
+
+def remover_cookie_sessao():
+    cookies = gerenciador_cookies()
+    if not cookies:
+        return
+    cookies.delete(SESSAO_ADMIN_COOKIE, key="remover_sessao_admin")
+
+
+def recuperar_sessao_persistente_admin():
+    cookies = gerenciador_cookies()
+    if not cookies:
+        return False, None
+    token = cookies.get(SESSAO_ADMIN_COOKIE)
+    valido, payload = validar_token_sessao_admin(token)
+    if not valido:
+        if token:
+            remover_cookie_sessao()
+        return False, None
+    token_renovado = renovar_token_sessao_admin(token)
+    salvar_cookie_sessao(token_renovado)
+    return True, payload
+
+
 def modal_login_admin():
     @st.dialog("Acesso administrativo")
     def exibir_modal():
@@ -429,7 +541,11 @@ def modal_login_admin():
 
         if entrar:
             if senha == st.secrets["ADMIN_PASSWORD"]:
+                token = criar_token_sessao_admin()
+                salvar_cookie_sessao(token)
                 st.session_state.admin_autenticado = True
+                st.session_state.admin_usuario = SESSAO_ADMIN_USUARIO
+                st.session_state.admin_token = token
                 st.session_state.admin_login_modal_aberto = False
                 st.session_state.admin_menu_aberto = False
                 st.rerun()
@@ -442,10 +558,20 @@ def modal_login_admin():
 def autenticar_admin():
     if "admin_autenticado" not in st.session_state:
         st.session_state.admin_autenticado = False
+    if "admin_usuario" not in st.session_state:
+        st.session_state.admin_usuario = ""
     if "admin_login_modal_aberto" not in st.session_state:
         st.session_state.admin_login_modal_aberto = False
     if "admin_menu_aberto" not in st.session_state:
         st.session_state.admin_menu_aberto = False
+
+    sessao_valida, payload = recuperar_sessao_persistente_admin()
+    if sessao_valida:
+        st.session_state.admin_autenticado = True
+        st.session_state.admin_usuario = payload.get("usuario", SESSAO_ADMIN_USUARIO)
+    elif st.session_state.admin_autenticado:
+        st.session_state.admin_autenticado = False
+        st.session_state.admin_usuario = ""
 
     with st.sidebar:
         st.markdown('<div class="sidebar-auth-anchor">', unsafe_allow_html=True)
@@ -455,12 +581,20 @@ def autenticar_admin():
                 st.session_state.admin_menu_aberto = not st.session_state.admin_menu_aberto
 
             if st.session_state.admin_menu_aberto:
-                st.markdown('<div class="admin-status-card"><strong>Administrador autenticado</strong></div>', unsafe_allow_html=True)
+                st.markdown(
+                    f'<div class="admin-status-card"><strong>{escape(st.session_state.admin_usuario)} autenticado</strong><br><small>Sessão renovada com atividade.</small></div>',
+                    unsafe_allow_html=True,
+                )
                 if st.button("Sair do modo administrador", key="admin_logout", use_container_width=True):
+                    remover_cookie_sessao()
                     st.session_state.admin_autenticado = False
+                    st.session_state.admin_usuario = ""
+                    st.session_state.admin_token = ""
                     st.session_state.admin_menu_aberto = False
                     st.rerun()
         else:
+            if not ST_COOKIES_DISPONIVEL:
+                st.caption("Sessão persistente indisponível: instale extra-streamlit-components.")
             if st.button("🔒", key="admin_login_toggle", help="Entrar como administrador", use_container_width=False):
                 st.session_state.admin_login_modal_aberto = True
 
@@ -2472,6 +2606,16 @@ def aplicar_css_profissional():
         .app-hero img {{ width: 3.2rem; height: 3.2rem; object-fit: contain; border-radius: .75rem; background: rgba(255,255,255,.96); padding: .28rem; box-shadow: 0 8px 22px rgba(3,18,45,.22); }}
         .app-hero h1 {{ margin: 0; font-size: clamp(1.25rem, 2.5vw, 1.75rem); letter-spacing: -0.04em; line-height: 1.15; }}
         .app-hero p {{ margin: .15rem 0 0; color: var(--muted); font-size: .86rem; }}
+        .logged-user {{
+            margin-left: auto;
+            padding: .42rem .62rem;
+            border: 1px solid rgba(49, 208, 124, .30);
+            border-radius: 999px;
+            background: rgba(15, 118, 110, .18);
+            color: #ecfdf5;
+            font-size: .82rem;
+            white-space: nowrap;
+        }}
         .metric-card, .nav-card {{
             height: 100%; padding: .72rem .78rem; border: 1px solid var(--border); border-radius: .85rem;
             background: var(--panel);
@@ -2726,6 +2870,12 @@ def ir_para_pagina(pagina):
 
 
 def render_header():
+    usuario_logado = texto(st.session_state.get("admin_usuario")) if st.session_state.get("admin_autenticado") else ""
+    badge_usuario = (
+        f'<div class="logged-user">Usuário logado: <strong>{escape(usuario_logado)}</strong></div>'
+        if usuario_logado
+        else ""
+    )
     st.markdown(
         """
         <div class="app-hero">
@@ -2734,8 +2884,9 @@ def render_header():
                 <h1>Controle Operacional</h1>
                 <p>Gestão de coletas, entregas, finalizações e observações</p>
             </div>
+            {BADGE_USUARIO}
         </div>
-        """.format(LOGO_DATA_URI=LOGO_DATA_URI),
+        """.format(LOGO_DATA_URI=LOGO_DATA_URI, BADGE_USUARIO=badge_usuario),
         unsafe_allow_html=True,
     )
 
