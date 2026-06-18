@@ -78,6 +78,8 @@ COLUNAS_NECESSARIAS = [
     "observacoes",
     "tipo_veiculo",
     "status",
+    "paletes",
+    "l_horario",
 ]
 
 
@@ -160,7 +162,7 @@ def _valor_vazio(valor: object) -> bool:
     if valor is None or pd.isna(valor):
         return True
     texto = str(valor).strip()
-    return texto == "" or texto.lower() in {"nan", "none", "null", "-", "—"}
+    return texto == "" or texto.lower() in {"nan", "none", "null", "<na>", "-", "—"}
 
 
 def _normalizar_motorista(valor: object) -> str:
@@ -385,6 +387,89 @@ def _aplicar_filtros_pergunta(df: pd.DataFrame, pergunta: str, motorista: str = 
     return base
 
 
+
+def _campo_operacional(rotulo: str, valor: object) -> str:
+    if _valor_vazio(valor):
+        return ""
+    return f"{rotulo} {str(valor).strip()}"
+
+
+def _formatar_valor_operacional(valor: object) -> str:
+    numero = _numero(valor)
+    if not numero:
+        return ""
+    return f"{numero:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _linha_operacional(row: pd.Series) -> str:
+    data = row.get("data")
+    partes = []
+    if not pd.isna(data):
+        partes.append(f"DATA {pd.Timestamp(data).strftime('%d/%m/%Y')}")
+    campos = [
+        ("M", row.get("motorista")),
+        ("D", row.get("delivery")),
+        ("CL", row.get("cliente")),
+        ("P", row.get("paletes")),
+    ]
+    for rotulo, valor in campos:
+        parte = _campo_operacional(rotulo, valor)
+        if parte:
+            partes.append(parte)
+    valor = _formatar_valor_operacional(row.get("valor_frete"))
+    if valor:
+        partes.append(f"V {valor}")
+    for rotulo, coluna in [("L", "l_horario"), ("C", "c_horario"), ("FI", "f_horario")]:
+        parte = _campo_operacional(rotulo, row.get(coluna))
+        if parte:
+            partes.append(parte)
+    obs = _campo_operacional("O", row.get("observacoes"))
+    if obs:
+        partes.append(obs)
+    return " ".join(partes)
+
+
+def _responder_status_delivery(df: pd.DataFrame, pergunta: str) -> str:
+    numeros = re.findall(r"\b\d{4,}\b", pergunta)
+    if not numeros:
+        return ""
+    codigo = numeros[0]
+    base = df[df["delivery"].astype("string").fillna("").str.replace(r"\D", "", regex=True).str.endswith(codigo[-4:])]
+    if len(codigo) >= 8:
+        base_exata = base[base["delivery"].astype("string").fillna("").str.replace(r"\D", "", regex=True) == codigo]
+        if not base_exata.empty:
+            base = base_exata
+    if base.empty:
+        return "Nenhuma coleta encontrada."
+    return "\n".join(_linha_operacional(row) for _, row in base.head(20).iterrows())
+
+
+def _responder_status_hoje(df: pd.DataFrame) -> str:
+    base = _periodo_hoje(df)
+    if base.empty:
+        return "Nenhuma coleta encontrada."
+    return "\n".join(_linha_operacional(row) for _, row in base.iterrows())
+
+
+def _responder_em_aberto(df: pd.DataFrame, pergunta: str) -> str:
+    base = _aplicar_periodo_operacional(df, pergunta)
+    base = base[base["f_horario"].apply(_valor_vazio)]
+    if base.empty:
+        return "Nenhuma coleta em aberto."
+    linhas = []
+    for _, row in base.iterrows():
+        data = row.get("data")
+        partes = []
+        if not pd.isna(data):
+            partes.append(f"DATA {pd.Timestamp(data).strftime('%d/%m/%Y')}")
+        for rotulo, coluna in [("M", "motorista"), ("D", "delivery"), ("CL", "cliente"), ("L", "l_horario")]:
+            parte = _campo_operacional(rotulo, row.get(coluna))
+            if parte:
+                partes.append(parte)
+        linhas.append(" ".join(partes))
+    return "\n".join(linhas)
+
+
 def _linhas_veiculo(df: pd.DataFrame, veiculo: str) -> str:
     linhas = []
     for _, row in df.head(50).iterrows():
@@ -602,8 +687,8 @@ def _linhas_relatorio_especial(df: pd.DataFrame, tipo: str) -> str:
         return "Nenhum registro encontrado para o período informado."
 
     if tipo == "DESLOCAMENTO":
-        cabecalho = "DATA | DELIVERY | CLIENTE | PENDENTE | VALOR PLANILHA | VALOR TOTAL"
-        status_coluna = "PENDENTE"
+        cabecalho = "DATA | DELIVERY | CLIENTE | MOTORISTA | VALOR DIVIDIDO | VALOR TOTAL"
+        status_coluna = ""
     else:
         cabecalho = "DATA | DELIVERY | CLIENTE | STATUS | VALOR"
         status_coluna = "REEMBOLSO"
@@ -627,7 +712,7 @@ def _linhas_relatorio_especial(df: pd.DataFrame, tipo: str) -> str:
                 data=data_txt,
                 delivery="" if _valor_vazio(row.get("delivery")) else str(row.get("delivery")).strip(),
                 cliente="" if _valor_vazio(row.get("cliente")) else str(row.get("cliente")).strip(),
-                status=status_coluna,
+                status=("" if _valor_vazio(row.get("motorista")) else str(row.get("motorista")).strip()) if tipo == "DESLOCAMENTO" else status_coluna,
                 valor=valor_txt,
             )
         )
@@ -685,6 +770,15 @@ def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
     df_mes = _periodo_mes(df)
     motorista = _extrair_motorista(pergunta, df["motorista"].dropna().astype(str))
     veiculo = _extrair_veiculo(pergunta)
+
+    if "STATUS" in pergunta_norm and re.search(r"\b\d{4,}\b", pergunta_norm):
+        return _responder_status_delivery(df, pergunta)
+
+    if pergunta_norm.strip() == "STATUS DE HOJE":
+        return _responder_status_hoje(df)
+
+    if any(termo in pergunta_norm for termo in ["EM ABERTO", "PENDENTES", "COLETAS EM ABERTO", "STATUS DAS ABERTAS"]):
+        return _responder_em_aberto(df, pergunta)
 
     if veiculo:
         return _responder_veiculo(df, pergunta, motorista)

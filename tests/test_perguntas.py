@@ -176,6 +176,32 @@ class PerguntasTest(unittest.TestCase):
         self.assertIn("TOTAL DE DESLOCAMENTOS: 2", resposta)
 
 
+
+    def test_status_delivery_status_hoje_e_em_aberto_operacional(self):
+        hoje = date.today().strftime("%d/%m/%Y")
+        df = pd.DataFrame([
+            {"data": hoje, "motorista": "Fabio", "delivery": "3787849356", "cliente": "GMF FEIRA DE SANTANA", "paletes": 476, "valor_frete": "2189,60", "l_horario": "08:00", "c_horario": "10:00", "f_horario": "", "observacoes": ""},
+            {"data": hoje, "motorista": "Jones", "delivery": "3787849414", "cliente": "DROGARIA SÃO PAULO", "paletes": 272, "valor_frete": "992,17", "l_horario": "08:15", "c_horario": "10:34", "f_horario": "11:00", "observacoes": ""},
+        ])
+        caminho = self.base / "operacional.csv"
+        df.to_csv(caminho, index=False)
+
+        status = responder_pergunta("STATUS DA DELIVERY 3787849414", str(caminho))
+        self.assertIn("DATA", status)
+        self.assertIn("D 3787849414", status)
+        self.assertIn("CL DROGARIA SÃO PAULO", status)
+        self.assertIn("FI 11:00", status)
+
+        hoje_resposta = responder_pergunta("STATUS DE HOJE", str(caminho))
+        self.assertIn("DATA", hoje_resposta)
+        self.assertIn("D 3787849356", hoje_resposta)
+        self.assertIn("D 3787849414", hoje_resposta)
+
+        aberto = responder_pergunta("EM ABERTO", str(caminho))
+        self.assertIn("D 3787849356", aberto)
+        self.assertIn("L 08:00", aberto)
+        self.assertNotIn("3787849414", aberto)
+
     def test_relatorio_deslocamento_intervalo_datas_formato_especial(self):
         ano = date.today().year
         df = pd.DataFrame([
@@ -188,9 +214,9 @@ class PerguntasTest(unittest.TestCase):
 
         resposta = responder_pergunta("relatório deslocamento 10/06 17/06", str(caminho))
 
-        self.assertIn("DATA | DELIVERY | CLIENTE | PENDENTE | VALOR PLANILHA | VALOR TOTAL", resposta)
-        self.assertIn(f"10/06/{ano} | 3787807939 | COMERCIAL SEIS IRMAOS | PENDENTE | R$ 734,07 | R$ 1.468,13", resposta)
-        self.assertIn(f"17/06/{ano} | 2002 | B | PENDENTE | R$ 50,00 | R$ 100,00", resposta)
+        self.assertIn("DATA | DELIVERY | CLIENTE | MOTORISTA | VALOR DIVIDIDO | VALOR TOTAL", resposta)
+        self.assertIn(f"10/06/{ano} | 3787807939 | COMERCIAL SEIS IRMAOS |  | R$ 734,07 | R$ 1.468,13", resposta)
+        self.assertIn(f"17/06/{ano} | 2002 | B |  | R$ 50,00 | R$ 100,00", resposta)
         self.assertIn("TOTAL DE REGISTROS: 2", resposta)
         self.assertIn("TOTAL PLANILHA: R$ 784,07", resposta)
         self.assertIn("TOTAL ORIGINAL: R$ 1.568,13", resposta)
@@ -207,15 +233,15 @@ class PerguntasTest(unittest.TestCase):
 
         resposta = responder_pergunta("deslocamentos 16/06", str(caminho))
 
-        self.assertIn("DATA | DELIVERY | CLIENTE | PENDENTE | VALOR PLANILHA | VALOR TOTAL", resposta)
-        self.assertIn(f"16/06/{ano} | 3787762706 | AMERICANAS S.A F.S | PENDENTE | R$ 496,08 | R$ 992,17", resposta)
+        self.assertIn("DATA | DELIVERY | CLIENTE | MOTORISTA | VALOR DIVIDIDO | VALOR TOTAL", resposta)
+        self.assertIn(f"16/06/{ano} | 3787762706 | AMERICANAS S.A F.S |  | R$ 496,08 | R$ 992,17", resposta)
         self.assertIn("TOTAL DE REGISTROS: 1", resposta)
         self.assertIn("TOTAL PLANILHA: R$ 496,08", resposta)
         self.assertIn("TOTAL ORIGINAL: R$ 992,17", resposta)
         self.assertNotIn("3787762754", resposta)
 
         resposta_periodo = responder_pergunta("me mande os dados dos deslocamentos do dia 16/06 ao dia 17/06", str(caminho))
-        self.assertIn(f"17/06/{ano} | 3787762754 | ASSAI PARIPE | PENDENTE | R$ 510,53 | R$ 1.021,05", resposta_periodo)
+        self.assertIn(f"17/06/{ano} | 3787762754 | ASSAI PARIPE |  | R$ 510,53 | R$ 1.021,05", resposta_periodo)
         self.assertIn("TOTAL DE REGISTROS: 2", resposta_periodo)
         self.assertIn("TOTAL PLANILHA: R$ 1.006,61", resposta_periodo)
         self.assertIn("TOTAL ORIGINAL: R$ 2.013,22", resposta_periodo)

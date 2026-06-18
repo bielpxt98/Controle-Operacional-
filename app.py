@@ -1558,12 +1558,21 @@ def combinar_observacoes_conversa(*observacoes):
 
 COMANDOS_CONSULTA_CONVERSA = {
     "RELATORIO",
+    "RELATÓRIO",
     "QUANTOS",
+    "QUANTAS",
     "QUAIS",
     "LISTAR",
     "MOSTRAR",
     "TOTAL",
     "RESUMO",
+    "STATUS",
+    "PENDENTES",
+    "COLETAS",
+    "EM",
+    "TODAS",
+    "SEM",
+    "DESLOCAMENTOS",
 }
 
 
@@ -1781,6 +1790,107 @@ def resumo_confirmacao_conversa(item, parsed):
         linhas.extend(["", "ALTERAÇÕES:", *alteracoes])
     linhas.extend(["", "CONFIRMAR?"])
     return "\n".join(linhas)
+
+
+
+
+COLUNAS_PRINCIPAIS_VISUAL = [
+    "id", "data", "motorista", "delivery", "cliente", "paletes", "valor_frete",
+    "l_horario", "c_horario", "f_horario", "status", "observacoes",
+]
+ROTULOS_COLUNAS_VISUAL = {"id": "ID", "data": "DATA", "motorista": "MOTORISTA", "delivery": "DELIVERY", "cliente": "CLIENTE", "paletes": "PALETES", "valor_frete": "VALOR", "l_horario": "LOCAL", "c_horario": "COLETADO", "f_horario": "FINALIZADO", "status": "STATUS", "observacoes": "OBSERVAÇÕES"}
+COLUNAS_DETALHES_VISUAL = ["id", "cpf", "cavalo", "carreta", "sr", "data_finalizacao"]
+ROTULOS_DETALHES_VISUAL = {"id": "ID", "cpf": "CPF", "cavalo": "CAVALO", "carreta": "CARRETA", "sr": "SR", "data_finalizacao": "DATA FINALIZAÇÃO"}
+
+def valor_visual(v):
+    return texto(v)
+
+def moeda_visual(v):
+    valor = numero(v)
+    if valor is None:
+        return ""
+    return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+def status_visual(row):
+    status = texto(row.get("status")).upper()
+    fi = texto(row.get("f_horario"))
+    if not status and not fi:
+        return "PENDENTE"
+    if not status and fi:
+        return "FINALIZADO"
+    return status
+
+def preparar_tabela_principal(df_base):
+    if df_base.empty:
+        return pd.DataFrame(columns=list(ROTULOS_COLUNAS_VISUAL.values()))
+    tabela = df_base.copy()
+    for coluna in COLUNAS_PRINCIPAIS_VISUAL:
+        if coluna not in tabela.columns:
+            tabela[coluna] = ""
+    tabela["status"] = tabela.apply(status_visual, axis=1)
+    tabela = tabela[COLUNAS_PRINCIPAIS_VISUAL].copy()
+    for coluna in tabela.columns:
+        tabela[coluna] = tabela[coluna].apply(moeda_visual if coluna == "valor_frete" else valor_visual)
+    return tabela.rename(columns=ROTULOS_COLUNAS_VISUAL)
+
+def preparar_tabela_detalhes(df_base):
+    if df_base.empty:
+        return pd.DataFrame(columns=list(ROTULOS_DETALHES_VISUAL.values()))
+    detalhes = df_base.copy()
+    for coluna in COLUNAS_DETALHES_VISUAL:
+        if coluna not in detalhes.columns:
+            detalhes[coluna] = ""
+    detalhes = detalhes[COLUNAS_DETALHES_VISUAL].copy()
+    for coluna in detalhes.columns:
+        detalhes[coluna] = detalhes[coluna].apply(valor_visual)
+    return detalhes.rename(columns=ROTULOS_DETALHES_VISUAL)
+
+def estilo_tabela_excel(df_visual):
+    status_cores = {
+        "FINALIZADO": "background-color: #dcfce7; color: #166534; font-weight: 800;",
+        "EM ANDAMENTO": "background-color: #dbeafe; color: #1d4ed8; font-weight: 800;",
+        "DESLOCAMENTO": "background-color: #ffedd5; color: #c2410c; font-weight: 800;",
+        "BLOQUEIO": "background-color: #fee2e2; color: #b91c1c; font-weight: 800;",
+        "PENDENTE": "background-color: #e5e7eb; color: #374151; font-weight: 800;",
+    }
+    def pintar_linha(row):
+        return ["background-color: #eef6ff; color: #0f172a; border: 1px solid #cbdff5;"] * len(row)
+    def pintar_status(valor):
+        valor_norm = texto(valor).upper()
+        for chave, estilo in status_cores.items():
+            if chave in valor_norm:
+                return estilo + " border-radius: 999px; text-align: center;"
+        return "background-color: #f1f5f9; color: #334155; font-weight: 800;"
+    styler = df_visual.style.apply(pintar_linha, axis=1)
+    if "STATUS" in df_visual.columns:
+        styler = styler.map(pintar_status, subset=["STATUS"])
+    return styler.set_table_styles([
+        {"selector": "th", "props": [("background-color", "#0f2f5f"), ("color", "#ffffff"), ("font-weight", "900"), ("border", "1px solid #234a7d"), ("text-align", "center")]},
+        {"selector": "td", "props": [("padding", "8px 10px"), ("border", "1px solid #cbdff5")]},
+        {"selector": "tbody tr:nth-child(even) td", "props": [("background-color", "#dbeeff")]},
+    ])
+
+def exibir_tabela_operacional(df_base, key_prefix="operacional"):
+    tabela = preparar_tabela_principal(df_base)
+    st.dataframe(estilo_tabela_excel(tabela), use_container_width=True, hide_index=True, key=f"{key_prefix}_principal")
+    with st.expander("📋 DETALHES", expanded=False):
+        st.dataframe(preparar_tabela_detalhes(df_base), use_container_width=True, hide_index=True, key=f"{key_prefix}_detalhes")
+
+def botao_copiar_resposta(texto_resposta, key):
+    import streamlit.components.v1 as components
+    conteudo = texto(texto_resposta).replace("`", "\\`").replace("$", "\\$")
+    components.html(
+        f"""<button id='copy-{key}' style='padding:10px 14px;border-radius:10px;border:1px solid #38bdf8;background:#075985;color:white;font-weight:800;cursor:pointer;'>📋 COPIAR RESPOSTA</button>
+<script>
+const btn = document.getElementById('copy-{key}');
+btn.onclick = async () => {{
+  await navigator.clipboard.writeText(`{conteudo}`);
+  btn.innerText = '✅ COPIADO';
+  setTimeout(() => btn.innerText = '📋 COPIAR RESPOSTA', 1600);
+}};
+</script>""",
+        height=52,
+    )
 
 
 def excel_bytes(df):
@@ -2364,7 +2474,7 @@ if pagina_atual == "busca":
                 )
             ]
 
-    st.dataframe(resultado, use_container_width=True, hide_index=True)
+    exibir_tabela_operacional(resultado, key_prefix="busca")
 
     if not admin:
         st.info("Entre como administrador para editar ou excluir registros.")
@@ -2535,6 +2645,7 @@ if pagina_atual == "conversacao":
     for item in st.session_state["historico_conversacao"]:
         renderizar_mensagem_conversacao("user", item["pergunta"], item["quando"])
         renderizar_mensagem_conversacao("assistant", item["resposta"])
+        botao_copiar_resposta(item["resposta"], f"conv_{abs(hash(item['quando'] + item['pergunta']))}")
 
 
 if pagina_atual == "rapida":
