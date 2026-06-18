@@ -85,9 +85,9 @@ MAPA_MOTORISTAS_ANTIGOS = {
 
 
 def texto(v):
-    if v is None:
+    if v is None or pd.isna(v):
         return ""
-    if str(v).lower() in ["nan", "none", "null"]:
+    if str(v).strip().lower() in ["", "nan", "none", "null", "<na>"]:
         return ""
     return str(v).strip()
 
@@ -1018,8 +1018,9 @@ def aplicar_cnpjs_clientes_cadastrados(df_base, clientes):
         return df_enriquecido
 
     for idx, row in df_enriquecido.iterrows():
-        if formatar_cnpj_cliente(row.get("cnpj")):
-            df_enriquecido.at[idx, "cnpj"] = formatar_cnpj_cliente(row.get("cnpj"))
+        cnpj_atual = formatar_cnpj_cliente(row.get("cnpj"))
+        if cnpj_atual:
+            df_enriquecido.at[idx, "cnpj"] = cnpj_atual
             continue
         cliente = row.get("cliente")
         cidade = row.get("cidade")
