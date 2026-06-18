@@ -47,6 +47,10 @@ COLUNAS_PADRAO = {
     "tipo veiculo usado": "tipo_veiculo",
     "carreta": "tipo_veiculo",
     "status": "status",
+    "pc": "paletes_coletados",
+    "paletes coletados": "paletes_coletados",
+    "paletes_coletados": "paletes_coletados",
+    "pallets coletados": "paletes_coletados",
     "valor": "valor_frete",
     "frete": "valor_frete",
     "valor frete": "valor_frete",
@@ -83,6 +87,7 @@ COLUNAS_NECESSARIAS = [
     "tipo_veiculo",
     "status",
     "paletes",
+    "paletes_coletados",
     "l_horario",
     "data_finalizacao",
 ]
@@ -414,6 +419,8 @@ def _aplicar_filtros_pergunta(df: pd.DataFrame, pergunta: str, motorista: str = 
 def _campo_operacional(rotulo: str, valor: object) -> str:
     if _valor_vazio(valor):
         return ""
+    if isinstance(valor, float) and valor.is_integer():
+        valor = int(valor)
     return f"{rotulo} {str(valor).strip()}"
 
 
@@ -434,6 +441,7 @@ def _linha_operacional(row: pd.Series) -> str:
         ("D", row.get("delivery")),
         ("CL", row.get("cliente")),
         ("P", row.get("paletes")),
+        ("PC", row.get("paletes_coletados")),
     ]
     for rotulo, valor in campos:
         parte = _campo_operacional(rotulo, valor)
@@ -463,6 +471,7 @@ def _linha_status_individual(row: pd.Series) -> str:
         ("C", row.get("c_horario")),
         ("FI", row.get("f_horario")),
         ("DF", row.get("data_finalizacao")),
+        ("PC", row.get("paletes_coletados")),
         ("O", row.get("observacoes")),
     ]:
         parte = _campo_operacional(rotulo, valor)

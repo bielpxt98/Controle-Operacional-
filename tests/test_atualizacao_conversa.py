@@ -32,6 +32,7 @@ FUNCOES_NECESSARIAS = {
     "buscar_coletas_por_conversa",
     "parse_atualizacao_rapida",
     "resumo_atualizacao_rapida",
+    "numero_operacional_visual",
     "montar_registro",
     "numero",
     "extrair_regra_bloqueio_deslocamento",
@@ -493,3 +494,23 @@ def test_preview_status_conta_todos_os_status_sem_alterar_outros_campos():
     }
     assert list(preview["delivery"]) == ["D1", "D2", "D3", "D4"]
     assert list(preview["cliente"]) == ["A", "B", "C", "D"]
+
+
+def test_pc_atualizacao_rapida_e_conversa_sem_substituir_paletes():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_atualizacao_rapida"](
+        "JONES D 3787816552 P 272 L 12:00 C 14:15 FI 09:06 DF 18/06 PC 250"
+    )
+
+    assert erro is None
+    assert parsed["campos"]["paletes"] == 272
+    assert parsed["campos"]["paletes_coletados"] == 250
+    assert app["resumo_atualizacao_rapida"](parsed, "atualizado").endswith("PC 250")
+
+    conversa, erro = app["parse_atualizacao_conversa"]("JONES 6552 PC 250")
+
+    assert erro is None
+    assert conversa["final_delivery"] == "6552"
+    assert conversa["paletes_coletados"] == 250
+    assert app["campos_atualizacao_conversa"](conversa)["paletes_coletados"] == 250

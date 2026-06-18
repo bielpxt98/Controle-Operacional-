@@ -385,3 +385,18 @@ class PerguntasTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_status_mostra_pc_somente_quando_preenchido(tmp_path):
+    caminho = tmp_path / "status_pc.csv"
+    pd.DataFrame([
+        {"delivery": "3787816552", "motorista": "Jones", "cliente": "ATAKAREJO SIMOES FILHO", "l_horario": "12:00", "c_horario": "14:15", "f_horario": "09:06", "data_finalizacao": "18/06", "paletes": 272, "paletes_coletados": 250},
+        {"delivery": "3787816553", "motorista": "Jones", "cliente": "ATAKAREJO", "l_horario": "12:00", "paletes": 272},
+    ]).to_csv(caminho, index=False)
+
+    resposta_com_pc = responder_pergunta("STATUS 3787816552", str(caminho))
+    resposta_sem_pc = responder_pergunta("STATUS 3787816553", str(caminho))
+
+    assert "PC 250" in resposta_com_pc
+    assert "P 272" not in resposta_com_pc
+    assert "PC" not in resposta_sem_pc
