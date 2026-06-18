@@ -42,6 +42,10 @@ FUNCOES_NECESSARIAS = {
     "preview_atualizacao_status",
     "resumo_preview_status",
     "resumo_confirmacao_conversa",
+    "colunas_reais_deliveries",
+    "resolver_coluna_delivery",
+    "preparar_campos_deliveries_para_salvar",
+    "valor_campo_delivery",
     "normalizar_chave_cliente_cnpj",
     "formatar_cnpj_cliente",
     "aplicar_cnpjs_clientes_cadastrados",
@@ -60,6 +64,8 @@ CONSTANTES_NECESSARIAS = {
     "COMANDOS_CONSULTA_CONVERSA",
     "PADROES_RELATORIO_CONVERSA",
     "CAMPOS_CADASTRO_CLIENTE_CONVERSA",
+    "TABELA_DELIVERIES",
+    "COLUNAS_LOGICAS_DELIVERIES",
 }
 
 
@@ -69,6 +75,25 @@ def carregar_funcoes_app():
     namespace = {"re": re, "datetime": datetime, "logger": logging.getLogger("test_atualizacao_conversa")}
     import pandas as pd
     namespace["pd"] = pd
+
+    class _ExecResult:
+        data = []
+
+    class _SupabaseTabelaFake:
+        def select(self, *args, **kwargs):
+            return self
+
+        def limit(self, *args, **kwargs):
+            return self
+
+        def execute(self):
+            return _ExecResult()
+
+    class _SupabaseFake:
+        def table(self, *args, **kwargs):
+            return _SupabaseTabelaFake()
+
+    namespace["supabase"] = _SupabaseFake()
 
     for node in modulo.body:
         if isinstance(node, ast.Assign) and any(getattr(t, "id", None) in CONSTANTES_NECESSARIAS for t in node.targets):
@@ -614,6 +639,36 @@ def test_pc_e_enviado_para_coluna_pc_e_nao_substitui_paletes():
     assert app["campos_atualizacao_conversa"](conversa)["pc"] == 250
     assert "paletes_coletados" not in app["campos_atualizacao_conversa"](conversa)
 
+
+def test_validacao_salvar_usa_paletes_coletados_quando_pc_nao_existe_fisicamente():
+    app = carregar_funcoes_app()
+
+    campos = {"l_horario": "14:00", "c_horario": "15:25", "pc": 332}
+    registro_atual = {"id": 1, "delivery": "3787816412", "l_horario": "", "c_horario": "", "paletes_coletados": None}
+
+    preparados = app["preparar_campos_deliveries_para_salvar"](campos, registro_atual)
+
+    assert preparados == {"l_horario": "14:00", "c_horario": "15:25", "paletes_coletados": 332}
+    assert "pc" not in preparados
+    assert app["valor_campo_delivery"]({"paletes_coletados": 332}, "pc") == 332
+
+
+def test_exemplo_pc_rapido_e_conversa_mantem_pc_logico_ate_validacao():
+    app = carregar_funcoes_app()
+
+    rapido, erro = app["parse_atualizacao_rapida"](
+        "D 3787816412 CL MULTICOM FEIRA DE SANTANA P 200 V 2189,60 L 14:00 C 15:25 PC 332"
+    )
+    conversa, erro_conversa = app["parse_atualizacao_conversa"](
+        "D 3787816412 CL MULTICOM FEIRA DE SANTANA P 200 V 2189,60 L 14:00 C 15:25 PC 332"
+    )
+
+    assert erro is None
+    assert erro_conversa is None
+    assert rapido["campos"]["l_horario"] == "14:00"
+    assert rapido["campos"]["c_horario"] == "15:25"
+    assert rapido["campos"]["pc"] == 332
+    assert app["campos_atualizacao_conversa"](conversa)["pc"] == 332
 
 def test_atualizacao_rapida_cria_registro_com_wms_alagoinhas_e_paletes():
     app = carregar_funcoes_app()

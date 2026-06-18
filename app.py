@@ -1078,6 +1078,60 @@ TABELA_CLIENTES = "clientes_cnpj"
 TABELA_AUDITORIA = "historico_alteracoes"
 
 
+COLUNAS_LOGICAS_DELIVERIES = {
+    "pc": ["pc", "paletes_coletados"],
+}
+
+
+def colunas_reais_deliveries(registro_atual=None):
+    """Consulta as colunas reais de deliveries antes de montar payloads de gravação."""
+    colunas = set((registro_atual or {}).keys())
+    try:
+        res = supabase.table(TABELA_DELIVERIES).select("*").limit(1).execute()
+        if res.data:
+            colunas.update(res.data[0].keys())
+    except Exception as exc:
+        logger.warning("Não foi possível consultar colunas reais de %s: %s", TABELA_DELIVERIES, exc)
+    return colunas
+
+
+def resolver_coluna_delivery(campo_logico, colunas_reais):
+    candidatos = COLUNAS_LOGICAS_DELIVERIES.get(campo_logico, [campo_logico])
+    for candidato in candidatos:
+        if candidato in colunas_reais:
+            return candidato
+    return campo_logico if campo_logico in colunas_reais else None
+
+
+def preparar_campos_deliveries_para_salvar(campos, registro_atual=None):
+    """Usa exatamente os nomes físicos existentes em deliveries no payload salvo."""
+    colunas_reais = colunas_reais_deliveries(registro_atual)
+    if not colunas_reais:
+        return dict(campos)
+
+    preparados = {}
+    for campo, valor in (campos or {}).items():
+        coluna_real = resolver_coluna_delivery(campo, colunas_reais)
+        if coluna_real:
+            preparados[coluna_real] = valor
+        else:
+            logger.warning(
+                "Campo %s ignorado: coluna não existe fisicamente em %s.",
+                campo,
+                TABELA_DELIVERIES,
+            )
+    return preparados
+
+
+def valor_campo_delivery(registro, campo_logico):
+    if not registro:
+        return ""
+    for coluna in COLUNAS_LOGICAS_DELIVERIES.get(campo_logico, [campo_logico]):
+        if coluna in registro:
+            return registro.get(coluna)
+    return registro.get(campo_logico)
+
+
 def registrar_historico_alteracao(tabela, registro_id, campo, valor_antigo, valor_novo, usuario="SISTEMA"):
     if str(valor_antigo) == str(valor_novo):
         return
@@ -1434,7 +1488,7 @@ def normalizar_colunas(df):
             mapa[c] = "unidade"
         elif k in ["paletes", "pallets", "pallet", "p", "paletes agendados"]:
             mapa[c] = "paletes"
-        elif k in ["pc", "paletes coletados", "pallets coletados", "pallet coletado"]:
+        elif k in ["pc", "paletes coletados", "pallets coletados", "pallet coletado", "paletes_coletados"]:
             mapa[c] = "pc"
         elif k in ["valor", "frete", "valor_frete", "valor frete"]:
             mapa[c] = "valor_frete"
@@ -1788,13 +1842,15 @@ def atualizar_rapido_no_supabase(parsed):
 
     if existente.data:
         antes = supabase.table(TABELA_DELIVERIES).select("*").eq(chave, valor).limit(1).execute().data[0]
-        supabase.table(TABELA_DELIVERIES).update(campos).eq(chave, valor).execute()
-        registrar_historico_campos(TABELA_DELIVERIES, antes.get("id") or valor, antes, campos, "ADMIN")
+        campos_salvar = preparar_campos_deliveries_para_salvar(campos, antes)
+        supabase.table(TABELA_DELIVERIES).update(campos_salvar).eq(chave, valor).execute()
+        registrar_historico_campos(TABELA_DELIVERIES, antes.get("id") or valor, antes, campos_salvar, "ADMIN")
         atualizar_dataframe_principal()
         return "atualizado"
 
-    supabase.table(TABELA_DELIVERIES).insert(campos).execute()
-    registrar_historico_campos(TABELA_DELIVERIES, valor, {}, campos, "ADMIN")
+    campos_salvar = preparar_campos_deliveries_para_salvar(campos)
+    supabase.table(TABELA_DELIVERIES).insert(campos_salvar).execute()
+    registrar_historico_campos(TABELA_DELIVERIES, valor, {}, campos_salvar, "ADMIN")
     atualizar_dataframe_principal()
     return "criado"
 
@@ -2389,8 +2445,7 @@ def campos_atualizacao_conversa(parsed, f_horario_atual=None):
 
 
 def atualizar_conversa_no_supabase(id_registro, parsed):
-    colunas_log = "id,delivery,l_horario,c_horario,f_horario,data_finalizacao"
-    atual = supabase.table(TABELA_DELIVERIES).select(colunas_log).eq("id", int(id_registro)).limit(1).execute()
+    atual = supabase.table(TABELA_DELIVERIES).select("*").eq("id", int(id_registro)).limit(1).execute()
     dados_atuais = atual.data[0] if atual.data else {}
     logger.info(
         "DELIVERY ENCONTRADA\nANTES:\nL=%s\nC=%s\nFI=%s",
@@ -2399,11 +2454,12 @@ def atualizar_conversa_no_supabase(id_registro, parsed):
         texto(dados_atuais.get("f_horario")),
     )
     campos = campos_atualizacao_conversa(parsed, dados_atuais.get("f_horario"))
-    supabase.table(TABELA_DELIVERIES).update(campos).eq(
+    campos_salvar = preparar_campos_deliveries_para_salvar(campos, dados_atuais)
+    supabase.table(TABELA_DELIVERIES).update(campos_salvar).eq(
         "id",
         int(id_registro),
     ).execute()
-    registrar_historico_campos(TABELA_DELIVERIES, id_registro, dados_atuais, campos, "ADMIN")
+    registrar_historico_campos(TABELA_DELIVERIES, id_registro, dados_atuais, campos_salvar, "ADMIN")
     salvo = supabase.table(TABELA_DELIVERIES).select("*").eq("id", int(id_registro)).limit(1).execute()
     dados_salvos = salvo.data[0] if salvo.data else {}
     logger.info(
@@ -2452,7 +2508,7 @@ def resumo_registro_salvo_conversa(item):
         f"D {texto(item.get('delivery'))}\n"
         f"L {texto(item.get('l_horario')) or '—'}\n"
         f"C {texto(item.get('c_horario')) or '—'}\n"
-        f"PC {texto(item.get('pc')) or '—'}\n"
+        f"PC {texto(valor_campo_delivery(item, 'pc')) or '—'}\n"
         f"FI {texto(item.get('f_horario')) or '—'}\n"
         f"DF {texto(item.get('data_finalizacao')) or '—'}"
     )
