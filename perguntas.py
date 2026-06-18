@@ -841,8 +841,11 @@ def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
     motorista = _extrair_motorista(pergunta, df["motorista"].dropna().astype(str))
     veiculo = _extrair_veiculo(pergunta)
 
-    if ("STATUS" in pergunta_norm or re.search(r"\bCOMO\s+(?:ESTA|ESTÁ)\b", pergunta_norm)) and re.search(r"\b\d{4,}\b", pergunta_norm):
-    if _extrair_delivery_solto(pergunta):
+    if (
+        ("STATUS" in pergunta_norm or re.search(r"\bCOMO\s+(?:ESTA|ESTÁ)\b", pergunta_norm))
+        and re.search(r"\b\d{4,}\b", pergunta_norm)
+        and _extrair_delivery_solto(pergunta)
+    ):
         return _responder_status_delivery(df, pergunta)
 
     if any(termo in pergunta_norm for termo in ["EM ABERTO", "PENDENTES", "COLETAS EM ABERTO", "STATUS DAS ABERTAS"]):
