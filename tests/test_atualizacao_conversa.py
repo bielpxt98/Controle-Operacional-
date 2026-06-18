@@ -31,6 +31,7 @@ FUNCOES_NECESSARIAS = {
     "campos_atualizacao_conversa",
     "buscar_coletas_por_conversa",
     "parse_atualizacao_rapida",
+    "resumo_atualizacao_rapida",
     "montar_registro",
     "numero",
     "extrair_regra_bloqueio_deslocamento",
@@ -204,6 +205,75 @@ def test_atualizacao_rapida_preserva_cliente_wms_completo():
 
     assert erro is None
     assert campos["campos"]["cliente"] == "WMS MAX ATACADO AV. SANTOS DUMONT"
+
+
+def test_atualizacao_rapida_processa_todos_campos_da_mesma_linha():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_atualizacao_rapida"](
+        "DATA 17/06/2026 M ARIEL NASCIMENTO D 3787832424 CL WMS MAX ATACADO B.F "
+        "P 200.0 V 664,22 L 11:15 C 16:00 FI 09:20 DF 18/06"
+    )
+
+    assert erro is None
+    assert parsed["chave_busca"] == "delivery"
+    assert parsed["valor_busca"] == "3787832424"
+    assert parsed["campos"]["l_horario"] == "11:15"
+    assert parsed["campos"]["c_horario"] == "16:00"
+    assert parsed["campos"]["f_horario"] == "09:20"
+    assert parsed["campos"]["data_finalizacao"] == "18/06"
+    assert app["resumo_atualizacao_rapida"](parsed, "atualizado") == (
+        "D 3787832424 OK\n"
+        "L 11:15\n"
+        "C 16:00\n"
+        "FI 09:20\n"
+        "DF 18/06"
+    )
+
+
+def test_atualizacao_rapida_processa_linhas_independentes_com_mesmos_campos():
+    app = carregar_funcoes_app()
+    linhas = [
+        (
+            "DATA 17/06/2026 M ARIEL NASCIMENTO D 3787832424 CL WMS MAX ATACADO B.F "
+            "P 200.0 V 664,22 L 11:15 C 16:00 FI 09:20 DF 18/06",
+            "3787832424",
+            "11:15",
+            "16:00",
+        ),
+        (
+            "DATA 17/06/2026 M ARIEL NASCIMENTO D 3787832285 CL ASSAÍ URUGUAI "
+            "P 272.0 V 1021,05 L 10:30 C 11:09 FI 09:20 DF 18/06",
+            "3787832285",
+            "10:30",
+            "11:09",
+        ),
+    ]
+
+    for linha, delivery, l_horario, c_horario in linhas:
+        parsed, erro = app["parse_atualizacao_rapida"](linha)
+
+        assert erro is None
+        assert parsed["valor_busca"] == delivery
+        assert parsed["campos"]["l_horario"] == l_horario
+        assert parsed["campos"]["c_horario"] == c_horario
+        assert parsed["campos"]["f_horario"] == "09:20"
+        assert parsed["campos"]["data_finalizacao"] == "18/06"
+
+
+def test_atualizacao_rapida_nao_confunde_lf_do_cliente_com_campo_l():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_atualizacao_rapida"](
+        "M JONES D 3787780078 CL DROGARIA SÃO PAULO L.F V 992,17 L 07:33 C 09:59 FI 10:10 DF 18/06"
+    )
+
+    assert erro is None
+    assert parsed["campos"]["cliente"] == "DROGARIA SÃO PAULO L.F"
+    assert parsed["campos"]["l_horario"] == "07:33"
+    assert parsed["campos"]["c_horario"] == "09:59"
+    assert parsed["campos"]["f_horario"] == "10:10"
+    assert parsed["campos"]["data_finalizacao"] == "18/06"
 
 
 def test_atualizacao_conversa_preserva_novo_cliente_wms_completo():

@@ -1211,7 +1211,10 @@ def parse_atualizacao_rapida(linha):
     # Aceita FI no lugar de F.
     # Não aceita mais campo S.
     # S.F e L.F devem vir dentro do CL, não no O nem no FI.
-    padrao = re.compile(r"\b(DATA|DF|SR|FI|CL|M|D|P|V|L|C|O)\b\s*:?\s*", re.IGNORECASE)
+    padrao = re.compile(
+        r"(?<!\S)(DATA|DF|SR|FI|CL|M|D|P|V|L|C|O)(?=\s*:|\s+)\s*:?\s*",
+        re.IGNORECASE,
+    )
     matches = list(padrao.finditer(original_parse))
 
     if not matches:
@@ -1302,6 +1305,25 @@ def atualizar_rapido_no_supabase(parsed):
 
     supabase.table("deliveries").insert(campos).execute()
     return "criado"
+
+
+def resumo_atualizacao_rapida(parsed, resultado):
+    campos = parsed.get("campos", {})
+    delivery = campos.get("delivery") or parsed.get("valor_busca", "")
+    status = "OK" if resultado in ["atualizado", "criado"] else texto(resultado).upper()
+    linhas = [f"D {delivery} {status}"]
+
+    for rotulo, coluna in [
+        ("L", "l_horario"),
+        ("C", "c_horario"),
+        ("FI", "f_horario"),
+        ("DF", "data_finalizacao"),
+    ]:
+        valor = campos.get(coluna)
+        if valor:
+            linhas.append(f"{rotulo} {valor}")
+
+    return "\n".join(linhas)
 
 
 
@@ -2866,6 +2888,7 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                 atualizados = 0
                 criados = 0
                 erros = []
+                resumos = []
 
                 for idx, linha in enumerate(linhas, start=1):
                     try:
@@ -2882,6 +2905,8 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                         else:
                             atualizados += 1
 
+                        resumos.append(resumo_atualizacao_rapida(parsed, resultado))
+
                     except Exception as e:
                         erros.append(f"Linha {idx}: {e} — {linha}")
 
@@ -2889,6 +2914,9 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                     st.success(f"{atualizados} registro(s) atualizado(s).")
                 if criados:
                     st.success(f"{criados} registro(s) criado(s).")
+                if resumos:
+                    st.write("Resumo por delivery:")
+                    st.code("\n\n".join(resumos))
                 if erros:
                     st.error("Algumas linhas não foram processadas:")
                     for erro in erros:
@@ -3267,6 +3295,7 @@ if pagina_atual == "ler_folha":
                 criados = 0
                 atualizados = 0
                 erros = []
+                resumos = []
 
                 for idx, linha in enumerate(linhas, start=1):
                     parsed, erro = parse_atualizacao_rapida(linha)
@@ -3285,11 +3314,15 @@ if pagina_atual == "ler_folha":
                         criados += 1
                     else:
                         atualizados += 1
+                    resumos.append(resumo_atualizacao_rapida(parsed, resultado))
 
                 st.success("Processamento concluído.")
                 st.write(f"Registros criados: {criados}")
                 st.write(f"Registros atualizados: {atualizados}")
                 st.write(f"Linhas com erro: {len(erros)}")
+                if resumos:
+                    st.write("Resumo por delivery:")
+                    st.code("\n\n".join(resumos))
 
                 if erros:
                     st.error("Erros encontrados:")
