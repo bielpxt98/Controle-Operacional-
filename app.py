@@ -1224,12 +1224,34 @@ def parse_atualizacao_rapida(linha):
 
     original_parse, horario_bd, observacao_bd = extrair_regra_bloqueio_deslocamento(original)
 
+    # Aceita a linha copiada do status no formato:
+    # DATA | MOTORISTA | DELIVERY | CLIENTE L HH:MM C HH:MM ...
+    # O prefixo com barras verticais é convertido para as abreviações oficiais
+    # antes do parser por marcadores, preservando os demais campos digitados.
+    marcador_operacional = re.search(
+        r"(?<!\S)(FI|DF|PC|F|L|C)\s*:?\s*([0-2]?\d[:hH][0-5]\d|\d{1,2}/\d{1,2}(?:/\d{2,4})?|[0-9]+(?:[,.][0-9]+)?)\b",
+        original_parse,
+        flags=re.IGNORECASE,
+    )
+    prefixo_pipe = original_parse[:marcador_operacional.start()].strip() if marcador_operacional else original_parse.strip()
+    sufixo_pipe = original_parse[marcador_operacional.start():].strip() if marcador_operacional else ""
+    partes_pipe = [parte.strip() for parte in prefixo_pipe.split("|")]
+    if len(partes_pipe) >= 4:
+        data_pipe, motorista_pipe, delivery_pipe = partes_pipe[:3]
+        cliente_pipe = " | ".join(partes_pipe[3:]).strip()
+        delivery_pipe_limpo = limpar_codigo_delivery(delivery_pipe)
+        if re.fullmatch(r"(?:378|340)\d{7}", delivery_pipe_limpo):
+            original_parse = (
+                f"DATA {data_pipe} M {motorista_pipe} D {delivery_pipe_limpo} "
+                f"CL {cliente_pipe} {sufixo_pipe}"
+            ).strip()
+
     # REGRA NOVA:
-    # Aceita FI no lugar de F.
+    # Aceita FI e F para horário de finalização.
     # Não aceita mais campo S.
     # S.F e L.F devem vir dentro do CL, não no O nem no FI.
     padrao = re.compile(
-        r"(?<!\S)(DATA|DF|SR|FI|CL|PC|M|D|P|V|L|C|O)(?=\s*:|\s+)\s*:?\s*",
+        r"(?<!\S)(DATA|DF|SR|FI|F|CL|PC|M|D|P|V|L|C|O)(?=\s*:|\s+)\s*:?\s*",
         re.IGNORECASE,
     )
     matches = list(padrao.finditer(original_parse))
@@ -1250,6 +1272,11 @@ def parse_atualizacao_rapida(linha):
 
     delivery = texto(dados.get("D", ""))
     sr = texto(dados.get("SR", ""))
+
+    if not delivery:
+        delivery_implicita = re.search(r"\b((?:378|340)\d{7})\b", original_parse)
+        if delivery_implicita:
+            delivery = delivery_implicita.group(1)
 
     if not delivery and not sr:
         return None, "sem delivery ou SR"
@@ -1280,8 +1307,8 @@ def parse_atualizacao_rapida(linha):
         campos["l_horario"] = normalizar_horario(dados.get("L")) or None
     if dados.get("C"):
         campos["c_horario"] = normalizar_horario(dados.get("C")) or None
-    if dados.get("FI"):
-        campos["f_horario"] = normalizar_horario(dados.get("FI")) or None
+    if dados.get("FI") or dados.get("F"):
+        campos["f_horario"] = normalizar_horario(dados.get("FI") or dados.get("F")) or None
     if horario_bd:
         campos["f_horario"] = horario_bd
 

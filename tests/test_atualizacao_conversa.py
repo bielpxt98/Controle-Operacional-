@@ -277,6 +277,39 @@ def test_atualizacao_rapida_nao_confunde_lf_do_cliente_com_campo_l():
     assert parsed["campos"]["data_finalizacao"] == "18/06"
 
 
+def test_atualizacao_rapida_aceita_linha_copiada_com_pipe_e_delivery_sem_d():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_atualizacao_rapida"](
+        "18/06/2026 | WILSON REIS | 3787850905 | YOKI DISTRIBUIDORA L 07:30 C 09:55"
+    )
+
+    assert erro is None
+    assert parsed["chave_busca"] == "delivery"
+    assert parsed["valor_busca"] == "3787850905"
+    assert parsed["campos"]["data"] == "18/06/2026"
+    assert parsed["campos"]["motorista"] == "WILSON REIS"
+    assert parsed["campos"]["delivery"] == "3787850905"
+    assert parsed["campos"]["cliente"] == "YOKI DISTRIBUIDORA"
+    assert parsed["campos"]["l_horario"] == "07:30"
+    assert parsed["campos"]["c_horario"] == "09:55"
+
+
+def test_atualizacao_rapida_infer_delivery_378_ou_340_sem_marcador_d():
+    app = carregar_funcoes_app()
+
+    for delivery in ["3787850905", "3407850905"]:
+        parsed, erro = app["parse_atualizacao_rapida"](f"{delivery} L 07:30 C 09:55 F 10:20")
+
+        assert erro is None
+        assert parsed["chave_busca"] == "delivery"
+        assert parsed["valor_busca"] == delivery
+        assert parsed["campos"]["delivery"] == delivery
+        assert parsed["campos"]["l_horario"] == "07:30"
+        assert parsed["campos"]["c_horario"] == "09:55"
+        assert parsed["campos"]["f_horario"] == "10:20"
+
+
 def test_atualizacao_conversa_preserva_novo_cliente_wms_completo():
     app = carregar_funcoes_app()
 
