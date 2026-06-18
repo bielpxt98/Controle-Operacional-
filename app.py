@@ -932,9 +932,23 @@ def numero(v):
         return None
 
 
+TABELA_DELIVERIES = "deliveries"
+
+
 def listar():
-    res = supabase.table("deliveries").select("*").execute()
+    res = supabase.table(TABELA_DELIVERIES).select("*").execute()
     return ordenar_visualizacao(pd.DataFrame(res.data or []))
+
+
+def atualizar_dataframe_principal():
+    """Recarrega a base principal usada por Buscar/visualizar e Conversação."""
+    df_atualizado = listar()
+    if "st" in globals():
+        st.session_state["df_principal"] = df_atualizado
+        st.session_state["excel_mestre_bytes"] = excel_bytes(df_atualizado)
+        st.session_state["excel_mestre_atualizado_em"] = datetime.now().isoformat()
+    globals()["df"] = df_atualizado
+    return df_atualizado
 
 
 def ordenar_visualizacao(df):
@@ -1302,13 +1316,15 @@ def atualizar_rapido_no_supabase(parsed):
     chave = parsed["chave_busca"]
     valor = parsed["valor_busca"]
 
-    existente = supabase.table("deliveries").select("id").eq(chave, valor).limit(1).execute()
+    existente = supabase.table(TABELA_DELIVERIES).select("id").eq(chave, valor).limit(1).execute()
 
     if existente.data:
-        supabase.table("deliveries").update(campos).eq(chave, valor).execute()
+        supabase.table(TABELA_DELIVERIES).update(campos).eq(chave, valor).execute()
+        atualizar_dataframe_principal()
         return "atualizado"
 
-    supabase.table("deliveries").insert(campos).execute()
+    supabase.table(TABELA_DELIVERIES).insert(campos).execute()
+    atualizar_dataframe_principal()
     return "criado"
 
 
@@ -1877,14 +1893,30 @@ def campos_atualizacao_conversa(parsed, f_horario_atual=None):
 
 
 def atualizar_conversa_no_supabase(id_registro, parsed):
-    atual = supabase.table("deliveries").select("f_horario").eq("id", int(id_registro)).limit(1).execute()
+    colunas_log = "id,delivery,l_horario,c_horario,f_horario,data_finalizacao"
+    atual = supabase.table(TABELA_DELIVERIES).select(colunas_log).eq("id", int(id_registro)).limit(1).execute()
     dados_atuais = atual.data[0] if atual.data else {}
-    supabase.table("deliveries").update(
-        campos_atualizacao_conversa(parsed, dados_atuais.get("f_horario"))
-    ).eq(
+    logger.info(
+        "DELIVERY ENCONTRADA\nANTES:\nL=%s\nC=%s\nFI=%s",
+        texto(dados_atuais.get("l_horario")),
+        texto(dados_atuais.get("c_horario")),
+        texto(dados_atuais.get("f_horario")),
+    )
+    campos = campos_atualizacao_conversa(parsed, dados_atuais.get("f_horario"))
+    supabase.table(TABELA_DELIVERIES).update(campos).eq(
         "id",
         int(id_registro),
     ).execute()
+    salvo = supabase.table(TABELA_DELIVERIES).select("*").eq("id", int(id_registro)).limit(1).execute()
+    dados_salvos = salvo.data[0] if salvo.data else {}
+    logger.info(
+        "DEPOIS:\nL=%s\nC=%s\nFI=%s\nREGISTRO SALVO COM SUCESSO",
+        texto(dados_salvos.get("l_horario")),
+        texto(dados_salvos.get("c_horario")),
+        texto(dados_salvos.get("f_horario")),
+    )
+    atualizar_dataframe_principal()
+    return dados_salvos
 
 
 def resumo_confirmacao_conversa(item, parsed):
@@ -1915,6 +1947,17 @@ def resumo_confirmacao_conversa(item, parsed):
         linhas.extend(["", "ALTERAÇÕES:", *alteracoes])
     linhas.extend(["", "CONFIRMAR?"])
     return "\n".join(linhas)
+
+
+def resumo_registro_salvo_conversa(item):
+    return (
+        "REGISTRO SALVO NO BANCO PRINCIPAL\n"
+        f"D {texto(item.get('delivery'))}\n"
+        f"L {texto(item.get('l_horario')) or '—'}\n"
+        f"C {texto(item.get('c_horario')) or '—'}\n"
+        f"FI {texto(item.get('f_horario')) or '—'}\n"
+        f"DF {texto(item.get('data_finalizacao')) or '—'}"
+    )
 
 
 
@@ -2958,6 +3001,9 @@ if pagina_atual == "conversa":
             "Digite uma frase natural. A interpretação usa somente regras locais "
             "e a atualização só acontece depois da confirmação."
         )
+        if st.session_state.get("conversa_registro_salvo"):
+            st.success("Coleta atualizada com dados confirmados no banco principal.")
+            st.code(st.session_state.pop("conversa_registro_salvo"))
         frase_conversa = st.text_input(
             "Frase da atualização ou consulta",
             placeholder="Jean finalizou 5422 mercantil às 19:49",
@@ -3009,10 +3055,14 @@ if pagina_atual == "conversa":
                 resumo_campos.append(f"M → {campos_previstos['motorista']}")
             if campos_previstos.get("cliente"):
                 resumo_campos.append(f"CL → {campos_previstos['cliente']}")
+            if campos_previstos.get("l_horario"):
+                resumo_campos.append(f"L → {campos_previstos['l_horario']}")
+            if campos_previstos.get("c_horario"):
+                resumo_campos.append(f"C → {campos_previstos['c_horario']}")
             if campos_previstos.get("f_horario"):
                 resumo_campos.append(f"FI → {campos_previstos['f_horario']}")
             if campos_previstos.get("data_finalizacao"):
-                resumo_campos.append(f"DT → {campos_previstos['data_finalizacao']}")
+                resumo_campos.append(f"DF → {campos_previstos['data_finalizacao']}")
             if campos_previstos.get("paletes_coletados") is not None and campos_previstos.get("paletes_coletados") != "":
                 resumo_campos.append(f"PC → {numero_operacional_visual(campos_previstos['paletes_coletados'])}")
             st.write(
@@ -3028,8 +3078,8 @@ if pagina_atual == "conversa":
                     st.caption(f"Observações: {parsed_conversa['observacoes']}")
 
                 if st.button("Confirmar alteração", key="confirmar_conversa_unica"):
-                    atualizar_conversa_no_supabase(item["id"], parsed_conversa)
-                    st.success("Coleta atualizada.")
+                    registro_salvo = atualizar_conversa_no_supabase(item["id"], parsed_conversa)
+                    st.session_state["conversa_registro_salvo"] = resumo_registro_salvo_conversa(registro_salvo)
                     st.session_state.pop("conversa_parsed", None)
                     st.session_state.pop("conversa_resultados", None)
                     st.rerun()
@@ -3065,8 +3115,8 @@ if pagina_atual == "conversa":
                     st.caption(f"Observações: {parsed_conversa['observacoes']}")
 
                 if st.button("Confirmar alteração", key="confirmar_conversa_multipla"):
-                    atualizar_conversa_no_supabase(item_escolhido["id"], parsed_conversa)
-                    st.success("Coleta atualizada.")
+                    registro_salvo = atualizar_conversa_no_supabase(item_escolhido["id"], parsed_conversa)
+                    st.session_state["conversa_registro_salvo"] = resumo_registro_salvo_conversa(registro_salvo)
                     st.session_state.pop("conversa_parsed", None)
                     st.session_state.pop("conversa_resultados", None)
                     st.rerun()
