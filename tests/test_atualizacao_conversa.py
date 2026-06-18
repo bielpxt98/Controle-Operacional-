@@ -44,6 +44,12 @@ FUNCOES_NECESSARIAS = {
     "normalizar_chave_cliente_cnpj",
     "formatar_cnpj_cliente",
     "aplicar_cnpjs_clientes_cadastrados",
+    "normalizar_rotulo_cadastro_cliente",
+    "parse_cadastro_cliente_conversa",
+    "parece_cadastro_cliente_conversa",
+    "observacao_cadastro_cliente_conversa",
+    "payload_cadastro_cliente_conversa",
+    "resumo_cadastro_cliente_conversa",
 }
 
 CONSTANTES_NECESSARIAS = {
@@ -52,6 +58,7 @@ CONSTANTES_NECESSARIAS = {
     "PALAVRAS_COMANDO_CONVERSA",
     "COMANDOS_CONSULTA_CONVERSA",
     "PADROES_RELATORIO_CONVERSA",
+    "CAMPOS_CADASTRO_CLIENTE_CONVERSA",
 }
 
 
@@ -566,3 +573,56 @@ def test_conversacao_enriquece_cnpj_da_tabela_clientes_sem_mensagem_de_nao_encon
 
     assert enriquecido.loc[0, "cnpj"] == "61.412.110/0620-02"
     assert enriquecido.loc[1, "cnpj"] == ""
+
+
+def test_conversa_reconhece_cadastro_assistido_cliente():
+    app = carregar_funcoes_app()
+
+    texto_cadastro = """CLIENTE: ASSAÍ
+NOME_EXIBICAO: ASSAÍ
+RAZÃO_SOCIAL: SENDAS DISTRIBUIDORA S/A
+UNIDADE: PAU DA LIMA
+ENDEREÇO_REFERÊNCIA: RUA GENARO DE CARVALHO
+CIDADE: SALVADOR
+CNPJ: 06.057.223/0381-44
+STATUS: CONFIRMADO"""
+
+    assert app["detectar_modo_conversa"](texto_cadastro) == "CADASTRO_CLIENTE"
+    parsed, erro = app["parse_cadastro_cliente_conversa"](texto_cadastro)
+
+    assert erro is None
+    assert parsed["cliente_operacao"] == "ASSAÍ"
+    assert parsed["nome_exibicao"] == "ASSAÍ"
+    assert parsed["razao_social"] == "SENDAS DISTRIBUIDORA S/A"
+    assert parsed["cnpj"] == "06.057.223/0381-44"
+
+    payload = app["payload_cadastro_cliente_conversa"](parsed)
+    assert payload["cliente"] == "ASSAÍ"
+    assert payload["razao_social"] == "SENDAS DISTRIBUIDORA S/A"
+    assert payload["cidade"] == "SALVADOR"
+    assert payload["endereco"] == "RUA GENARO DE CARVALHO"
+
+
+def test_conversa_cadastro_cliente_exige_razao_social():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_cadastro_cliente_conversa"](
+        "CLIENTE: WMS\nNOME_EXIBICAO: WMS MAX ATACADO CABULA\nCNPJ: 93.209.765/0529-31"
+    )
+
+    assert parsed is None
+    assert "RAZÃO_SOCIAL" in erro
+
+
+def test_resumo_cadastro_cliente_avisa_atualizacao_sem_sobrescrever():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_cadastro_cliente_conversa"](
+        "CLIENTE: WMS\nNOME_EXIBICAO: WMS MAX ATACADO CABULA\n"
+        "RAZÃO_SOCIAL: WMS SUPERMERCADOS DO BRASIL LTDA.\nCNPJ: 93.209.765/0529-31"
+    )
+    resumo = app["resumo_cadastro_cliente_conversa"](parsed, {"id": 7, "cliente": "WMS MAX ATACADO CABULA"})
+
+    assert erro is None
+    assert "CLIENTE JÁ CADASTRADO" in resumo
+    assert "DESEJA ATUALIZAR?" in resumo
