@@ -1483,21 +1483,24 @@ def extrair_regra_bloqueio_deslocamento(linha):
         return original, None, None
 
     padrao_bd = re.compile(
-        r"(?<!\w)([BD])\s*\(\s*([0-2]?\d[:hH][0-5]\d)\s*\)",
+        r"(?<!\w)([BD])\s*(?:\(\s*([0-2]?\d[:hH][0-5]\d)\s*\)|\s+([0-2]?\d[:hH][0-5]\d)\b)",
         re.IGNORECASE,
     )
     ocorrencias = list(padrao_bd.finditer(original))
     if not ocorrencias:
         return original, None, None
 
-    horario = normalizar_horario(ocorrencias[-1].group(2))
+    ultima = ocorrencias[-1]
+    tipo = ultima.group(1).upper()
+    horario = normalizar_horario(ultima.group(2) or ultima.group(3))
     linha_sem_marcadores = padrao_bd.sub(" ", original).strip(" :-")
     motivo = normalizar_observacao(linha_sem_marcadores)
     if motivo and motivo.startswith("O "):
         motivo = motivo[2:]
     else:
         motivo = linha_sem_marcadores.upper().strip()
-    observacao = f"F {horario} O {motivo + ' ' if motivo else ''}BLOQUEIO ÀS {horario}" if horario else None
+    acao = "DESLOCAMENTO" if tipo == "D" else "BLOQUEIO"
+    observacao = f"O {acao} AS {horario}" if horario else None
     return linha_sem_marcadores, horario or None, observacao
 
 
@@ -1534,6 +1537,8 @@ def normalizar_cliente_rapido(v):
             base = "RAIA DROGASIL SALVADOR"
         else:
             base = "RAIA DROGASIL"
+    elif s_limpo_sem_local in {"WMS ALAGOINHAS", "ALAGOINHAS"}:
+        base = "WMS MAX ATACADO ALAGOINHAS"
     elif "ASSAI" in s_limpo_sem_local:
         base = s_limpo_sem_local.replace("ASSAI", "ASSAÍ").strip()
     elif "WMS" in s_sem_local or "WMX" in s_sem_local or "ATAKADO" in s_sem_local:
@@ -1575,13 +1580,19 @@ def normalizar_observacao(v):
     if re.search(r"\bS\.?R\b", obs_limpo) or "REEMB" in obs_limpo or "SOLICITACAO DE REEMBOLSO" in obs_limpo:
         return "O SR/REEMBOLSO"
 
+    if "DESLOC" in obs_limpo:
+        for motivo in motivos_deslocamento:
+            if motivo in obs_limpo:
+                return f"O DESLOCAMENTO {motivo}"
+        return "O DESLOCAMENTO"
+
     if re.search(r"\bBLOQ(?:UEIO)?\b", obs_limpo) or any(m in obs_limpo for m in motivos_bloqueio):
         for motivo in motivos_bloqueio:
             if motivo in obs_limpo:
                 return f"O BLOQUEIO {motivo}"
         return "O BLOQUEIO"
 
-    if "DESLOC" in obs_limpo or any(m in obs_limpo for m in motivos_deslocamento):
+    if any(m in obs_limpo for m in motivos_deslocamento):
         for motivo in motivos_deslocamento:
             if motivo in obs_limpo:
                 return f"O DESLOCAMENTO {motivo}"
@@ -1616,7 +1627,6 @@ def montar_registro(row):
         "cliente": normalizar_cliente_rapido(row.get("cliente", "")) or None,
         "unidade": texto(row.get("unidade", "")) or None,
         "paletes": numero(row.get("paletes", "")),
-        "paletes_coletados": numero(row.get("paletes_coletados", "")),
         "valor_frete": numero(row.get("valor_frete", "")),
         "l_horario": normalizar_horario(row.get("l_horario", "")) or None,
         "c_horario": normalizar_horario(row.get("c_horario", "")) or None,
@@ -1730,8 +1740,6 @@ def parse_atualizacao_rapida(linha):
         campos["cliente"] = normalizar_cliente_rapido(dados.get("CL")) or None
     if dados.get("P"):
         campos["paletes"] = numero(dados.get("P"))
-    if dados.get("PC"):
-        campos["paletes_coletados"] = numero(dados.get("PC"))
     if dados.get("V"):
         campos["valor_frete"] = numero(dados.get("V"))
     if dados.get("L"):
@@ -1806,7 +1814,6 @@ def resumo_atualizacao_rapida(parsed, resultado):
         ("C", "c_horario"),
         ("FI", "f_horario"),
         ("DF", "data_finalizacao"),
-        ("PC", "paletes_coletados"),
     ]:
         valor = campos.get(coluna)
         if valor:
@@ -2340,8 +2347,6 @@ def campos_atualizacao_conversa(parsed, f_horario_atual=None):
         campos["f_horario"] = parsed["horario"]
     if parsed.get("data_finalizacao"):
         campos["data_finalizacao"] = parsed["data_finalizacao"]
-    if parsed.get("paletes_coletados") is not None and parsed.get("paletes_coletados") != "":
-        campos["paletes_coletados"] = parsed["paletes_coletados"]
     if parsed.get("novo_motorista"):
         campos["motorista"] = normalizar_motorista(parsed["novo_motorista"])
     if parsed.get("novo_cliente"):
@@ -2404,8 +2409,6 @@ def resumo_confirmacao_conversa(item, parsed):
         alteracoes.append(f"FI -> {parsed['horario']}")
     if parsed.get("data_finalizacao"):
         alteracoes.append(f"DF -> {parsed['data_finalizacao']}")
-    if parsed.get("paletes_coletados") is not None and parsed.get("paletes_coletados") != "":
-        alteracoes.append(f"PC -> {numero_operacional_visual(parsed['paletes_coletados'])}")
     if parsed.get("observacoes"):
         alteracoes.append(f"O -> {parsed['observacoes']}")
     if alteracoes:
@@ -3221,7 +3224,6 @@ if pagina_atual == "busca":
                     cliente = c6.text_input("Cliente", texto(item.get("cliente")))
                     unidade = c7.text_input("Unidade", texto(item.get("unidade")))
                     paletes = c8.text_input("Paletes", texto(item.get("paletes")))
-                    paletes_coletados = c8.text_input("PC", texto(item.get("paletes_coletados")), help="Paletes coletados")
 
                     c9, c10, c11, c12 = st.columns(4)
 
@@ -3262,7 +3264,6 @@ if pagina_atual == "busca":
                             "cliente": normalizar_cliente_rapido(cliente) or None,
                             "unidade": unidade or None,
                             "paletes": numero(paletes),
-                            "paletes_coletados": numero(paletes_coletados),
                             "valor_frete": numero(valor),
                             "l_horario": normalizar_horario(l_h) or None,
                             "c_horario": normalizar_horario(c_h) or None,
@@ -3590,8 +3591,6 @@ if pagina_atual == "conversa":
                 resumo_campos.append(f"FI → {campos_previstos['f_horario']}")
             if campos_previstos.get("data_finalizacao"):
                 resumo_campos.append(f"DF → {campos_previstos['data_finalizacao']}")
-            if campos_previstos.get("paletes_coletados") is not None and campos_previstos.get("paletes_coletados") != "":
-                resumo_campos.append(f"PC → {numero_operacional_visual(campos_previstos['paletes_coletados'])}")
             st.write(
                 "**Interpretação:** "
                 f"delivery/remessa {parsed_conversa['final_delivery']} | "
