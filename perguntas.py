@@ -223,15 +223,54 @@ def _sigla_motorista(valor: object) -> str:
     return SIGLAS_MOTORISTAS.get(nome, f"@{nome[:2]}" if nome else "@--")
 
 
-def _cliente_cidade_formatado(row: pd.Series) -> str:
-    cliente = _sem_acentos(row.get("cliente"))
-    cidade = _sem_acentos(row.get("cidade"))
+ABREVIACOES_LOCALIDADE = {
+    "L.F": "LAURO DE FREITAS",
+    "LF": "LAURO DE FREITAS",
+    "S.F": "SIMOES FILHO",
+    "SF": "SIMOES FILHO",
+    "F.S": "FEIRA DE SANTANA",
+    "FS": "FEIRA DE SANTANA",
+    "S.G": "SAO GONCALO",
+    "SG": "SAO GONCALO",
+}
+
+LOCALIDADES_WMS_COM_PARENTES = ("BARROS REIS", "LAURO DE FREITAS")
+
+
+def _expandir_abreviacoes_localidade(texto: str) -> str:
+    for abreviacao, localidade in ABREVIACOES_LOCALIDADE.items():
+        texto = re.sub(rf"(?<!\w){re.escape(abreviacao)}(?!\w)", localidade, texto)
+    return texto
+
+
+def _normalizar_nome_exibicao_cliente(cliente: str, cidade: str = "") -> str:
+    cliente = _expandir_abreviacoes_localidade(re.sub(r"\s+", " ", cliente).strip())
+    cidade = _expandir_abreviacoes_localidade(re.sub(r"\s+", " ", cidade).strip())
+
+    if cliente.startswith("WMS"):
+        cliente = re.sub(r"^WMS\s*\((MAX\s+ATACADO)(?:\s+(.+?))?\)$", r"WMS \1 (\2)", cliente).strip()
+        cliente = re.sub(r"\s+\)", ")", cliente)
+        cliente = re.sub(r"\(\s*([^()]+?)\s*\)", lambda m: f"({_expandir_abreviacoes_localidade(m.group(1).strip())})", cliente)
+        if cidade and f"({cidade})" not in cliente:
+            return f"{cliente} ({cidade})"
+        for localidade in LOCALIDADES_WMS_COM_PARENTES:
+            sufixo = f" {localidade}"
+            if cliente.endswith(sufixo) and f"({localidade})" not in cliente:
+                return f"{cliente[:-len(sufixo)]} ({localidade})"
+        return cliente
+
     if not cidade and cliente:
         partes = cliente.split()
-        bases = {"ASSAI", "ATAKAREJO", "GMF", "WMS", "MERCANTIL"}
+        bases = {"ASSAI", "ATAKAREJO", "GMF", "MERCANTIL"}
         if len(partes) > 1 and partes[0] in bases:
             cliente, cidade = partes[0], " ".join(partes[1:])
     return f"{cliente} ({cidade})" if cidade else cliente
+
+
+def _cliente_cidade_formatado(row: pd.Series) -> str:
+    cliente = _sem_acentos(row.get("cliente"))
+    cidade = _sem_acentos(row.get("cidade"))
+    return _normalizar_nome_exibicao_cliente(cliente, cidade)
 
 
 def _texto_valido(valor: object) -> str:
