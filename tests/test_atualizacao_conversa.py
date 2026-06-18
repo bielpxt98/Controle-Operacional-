@@ -45,6 +45,7 @@ CONSTANTES_NECESSARIAS = {
     "ACOES_CONVERSA",
     "PALAVRAS_COMANDO_CONVERSA",
     "COMANDOS_CONSULTA_CONVERSA",
+    "PADROES_RELATORIO_CONVERSA",
 }
 
 
@@ -93,6 +94,11 @@ def test_conversa_detecta_consulta_por_comandos_iniciais_sem_confundir_atualizac
         "mostrar SR do mês",
         "total reembolsos",
         "resumo deslocamentos",
+        "DESLOCAMENTO DO DIA 13/06 AO DIA 18/06",
+        "DESLOCAMENTOS DE 13/06 A 18/06",
+        "DESLOCAMENTO DO DIA 13/06",
+        "BLOQUEIOS DO DIA 15/06",
+        "SEM FI DO DIA 18/06",
     ]
     atualizacoes = [
         "Jean finalizou Mercantil às 19:49",

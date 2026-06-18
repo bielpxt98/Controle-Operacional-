@@ -658,9 +658,10 @@ def _responder_observacao(
 
 
 
-def _formatar_moeda_brasileira(valor: float | Decimal) -> str:
+def _formatar_moeda_brasileira(valor: float | Decimal, com_prefixo: bool = True) -> str:
     valor_decimal = Decimal(str(valor)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return f"R$ {valor_decimal:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    valor_formatado = f"{valor_decimal:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"R$ {valor_formatado}" if com_prefixo else valor_formatado
 
 
 def _tem_data_na_pergunta(pergunta: str) -> bool:
@@ -676,7 +677,7 @@ def _valor_planilha_deslocamento(valor_original: Decimal) -> Decimal:
 
 def _eh_pedido_relatorio_especial(pergunta_norm: str, tipo: str) -> bool:
     if tipo != "DESLOCAMENTO":
-        return "RELATORIO" in pergunta_norm and tipo in pergunta_norm
+        return ("RELATORIO" in pergunta_norm or _tem_data_na_pergunta(pergunta_norm)) and tipo in pergunta_norm
     if "DESLOC" not in pergunta_norm or "QUANT" in pergunta_norm:
         return False
     return "RELATORIO" in pergunta_norm or _tem_data_na_pergunta(pergunta_norm)
@@ -704,7 +705,7 @@ def _linhas_relatorio_especial(df: pd.DataFrame, tipo: str) -> str:
         if tipo == "DESLOCAMENTO":
             valor_planilha = _valor_planilha_deslocamento(valor_original)
             total_planilha += valor_planilha
-            valor_txt = f"{_formatar_moeda_brasileira(valor_planilha)} | {_formatar_moeda_brasileira(valor_original)}"
+            valor_txt = f"{_formatar_moeda_brasileira(valor_planilha, com_prefixo=False)} | {_formatar_moeda_brasileira(valor_original, com_prefixo=False)}"
         else:
             valor_txt = _formatar_moeda_brasileira(valor_original)
         linhas.append(
