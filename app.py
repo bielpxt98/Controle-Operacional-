@@ -417,7 +417,6 @@ SESSAO_ADMIN_USUARIO = "ADMIN"
 SESSAO_ADMIN_TTL_SEGUNDOS = 60 * 60
 
 
-@st.cache_resource(show_spinner=False)
 def gerenciador_cookies():
     if not ST_COOKIES_DISPONIVEL:
         return None
