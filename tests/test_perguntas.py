@@ -418,3 +418,37 @@ class ConsultaAdministrativaTest(unittest.TestCase):
             self.assertIn("3787849414 - DROGARIA SAO PAULO (LAURO DE FREITAS) - @JO", resposta)
             self.assertIn("CNPJ: XX.XXX.XXX/XXXX-XX", resposta)
             self.assertNotIn("GMF - FEIRA DE SANTANA", resposta)
+
+    def test_coletas_de_hoje_sem_cnpj_ignora_valores_vazios_e_na(self):
+        hoje = date.today().strftime("%d/%m/%Y")
+        df = pd.DataFrame([
+            {"data": hoje, "motorista": "Fabio", "delivery": "3787849356", "cliente": "GMF", "cidade": "FEIRA DE SANTANA", "cnpj": pd.NA},
+            {"data": hoje, "motorista": "Argemiro", "delivery": "3787849367", "cliente": "WMS MAX ATACADO CABULA", "cidade": None, "cnpj": float("nan")},
+        ])
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "coletas_hoje_sem_cnpj.csv"
+            df.to_csv(caminho, index=False)
+
+            resposta = responder_pergunta("COLETAS DE HOJE", str(caminho))
+
+            self.assertIn("3787849356 - GMF (FEIRA DE SANTANA) - @FA", resposta)
+            self.assertIn("3787849367 - WMS (MAX ATACADO CABULA) - @AR", resposta)
+            self.assertNotIn("CLIENTE NÃO CADASTRADO", resposta)
+            self.assertNotIn("CNPJ NÃO ENCONTRADO", resposta)
+            self.assertNotIn("CNPJ:", resposta)
+
+    def test_coletas_de_ontem_e_do_dia_usam_formato_admin(self):
+        ontem = date.today() - timedelta(days=1)
+        df = pd.DataFrame([
+            {"data": ontem.strftime("%d/%m/%Y"), "motorista": "Jones", "delivery": "3787849414", "cliente": "DROGARIA SÃO PAULO", "cidade": "LAURO DE FREITAS", "cnpj": "61412110062002"},
+        ])
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "coletas_ontem.csv"
+            df.to_csv(caminho, index=False)
+
+            resposta_ontem = responder_pergunta("COLETAS DE ONTEM", str(caminho))
+            resposta_dia = responder_pergunta(f"COLETAS DO DIA {ontem.strftime('%d/%m')}", str(caminho))
+
+            self.assertIn("3787849414 - DROGARIA SAO PAULO (LAURO DE FREITAS) - @JO", resposta_ontem)
+            self.assertIn("CNPJ: 61412110062002", resposta_ontem)
+            self.assertIn("3787849414 - DROGARIA SAO PAULO (LAURO DE FREITAS) - @JO", resposta_dia)

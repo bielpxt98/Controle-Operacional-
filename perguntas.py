@@ -98,7 +98,7 @@ COLUNAS_NECESSARIAS = [
 
 
 def _sem_acentos(texto: object) -> str:
-    valor = "" if texto is None else str(texto)
+    valor = "" if texto is None or pd.isna(texto) else str(texto)
     valor = unicodedata.normalize("NFKD", valor)
     valor = "".join(c for c in valor if not unicodedata.combining(c))
     return valor.upper().strip()
@@ -234,13 +234,25 @@ def _cliente_cidade_formatado(row: pd.Series) -> str:
     return f"{cliente} ({cidade})" if cidade else cliente
 
 
+def _texto_valido(valor: object) -> str:
+    """Converte valores escalares opcionais para texto sem avaliar pandas.NA como booleano."""
+    return "" if _valor_vazio(valor) else str(valor).strip()
+
+
 def _linha_coleta_admin(row: pd.Series, incluir_cnpj: bool = False) -> str:
-    delivery = str(row.get("delivery") or row.get("sr") or "").strip()
+    delivery = _texto_valido(row.get("delivery")) or _texto_valido(row.get("sr"))
     linha = f"{delivery} - {_cliente_cidade_formatado(row)} - {_sigla_motorista(row.get('motorista'))}"
-    cnpj = str(row.get("cnpj") or "").strip()
-    if incluir_cnpj and cnpj and cnpj.lower() not in {"nan", "none", "null"}:
+    cnpj = _texto_valido(row.get("cnpj"))
+    if incluir_cnpj and cnpj:
         linha += f"\nCNPJ: {cnpj}"
     return linha
+
+
+def _responder_coletas_admin_periodo(df: pd.DataFrame, pergunta: str) -> str:
+    base = _aplicar_periodo_operacional(df, pergunta)
+    if base.empty:
+        return "Nenhuma coleta encontrada para o período informado."
+    return "\n\n".join(_linha_coleta_admin(row, incluir_cnpj=True) for _, row in base.iterrows())
 
 
 def _responder_coletas_hoje_admin(df: pd.DataFrame) -> str:
@@ -917,6 +929,9 @@ def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
 
     if re.fullmatch(r"\s*COLETAS\s+DE\s+HOJE\s*", pergunta_norm):
         return _responder_coletas_hoje_admin(df)
+
+    if re.fullmatch(r"\s*COLETAS\s+(?:DE\s+ONTEM|DO\s+DIA\s+\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\s*", pergunta_norm):
+        return _responder_coletas_admin_periodo(df, pergunta)
 
     if (
         ("STATUS" in pergunta_norm or "CONSULTAR" in pergunta_norm or re.search(r"\bCOMO\s+(?:ESTA|ESTÁ)\b", pergunta_norm))
