@@ -47,10 +47,9 @@ COLUNAS_PADRAO = {
     "tipo veiculo usado": "tipo_veiculo",
     "carreta": "tipo_veiculo",
     "status": "status",
-    "pc": "paletes_coletados",
-    "paletes coletados": "paletes_coletados",
-    "paletes_coletados": "paletes_coletados",
-    "pallets coletados": "paletes_coletados",
+    "pc": "pc",
+    "paletes coletados": "pc",
+    "pallets coletados": "pc",
     "valor": "valor_frete",
     "frete": "valor_frete",
     "valor frete": "valor_frete",
@@ -89,7 +88,7 @@ COLUNAS_NECESSARIAS = [
     "tipo_veiculo",
     "status",
     "paletes",
-    "paletes_coletados",
+    "pc",
     "l_horario",
     "data_finalizacao",
     "cidade",
@@ -548,7 +547,7 @@ def _linha_operacional(row: pd.Series) -> str:
         ("D", row.get("delivery")),
         ("CL", row.get("cliente")),
         ("P", row.get("paletes")),
-        ("PC", row.get("paletes_coletados")),
+        ("PC", row.get("pc")),
     ]
     for rotulo, valor in campos:
         parte = _campo_operacional(rotulo, valor)
@@ -578,7 +577,7 @@ def _linha_status_individual(row: pd.Series) -> str:
         ("C", row.get("c_horario")),
         ("FI", row.get("f_horario")),
         ("DF", row.get("data_finalizacao")),
-        ("PC", row.get("paletes_coletados")),
+        ("PC", row.get("pc")),
         ("O", row.get("observacoes")),
     ]:
         parte = _campo_operacional(rotulo, valor)

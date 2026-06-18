@@ -640,17 +640,16 @@ def test_pc_e_enviado_para_coluna_pc_e_nao_substitui_paletes():
     assert "paletes_coletados" not in app["campos_atualizacao_conversa"](conversa)
 
 
-def test_validacao_salvar_usa_paletes_coletados_quando_pc_nao_existe_fisicamente():
+def test_validacao_salvar_usa_coluna_pc_mesmo_quando_registro_nao_tem_valor():
     app = carregar_funcoes_app()
 
     campos = {"l_horario": "14:00", "c_horario": "15:25", "pc": 332}
-    registro_atual = {"id": 1, "delivery": "3787816412", "l_horario": "", "c_horario": "", "paletes_coletados": None}
+    registro_atual = {"id": 1, "delivery": "3787816412", "l_horario": "", "c_horario": ""}
 
     preparados = app["preparar_campos_deliveries_para_salvar"](campos, registro_atual)
 
-    assert preparados == {"l_horario": "14:00", "c_horario": "15:25", "paletes_coletados": 332}
-    assert "pc" not in preparados
-    assert app["valor_campo_delivery"]({"paletes_coletados": 332}, "pc") == 332
+    assert preparados == {"l_horario": "14:00", "c_horario": "15:25", "pc": 332}
+    assert app["valor_campo_delivery"]({"pc": 332}, "pc") == 332
 
 
 def test_exemplo_pc_rapido_e_conversa_mantem_pc_logico_ate_validacao():

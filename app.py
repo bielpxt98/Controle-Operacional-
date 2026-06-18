@@ -1079,7 +1079,7 @@ TABELA_AUDITORIA = "historico_alteracoes"
 
 
 COLUNAS_LOGICAS_DELIVERIES = {
-    "pc": ["pc", "paletes_coletados"],
+    "pc": ["pc"],
 }
 
 
@@ -1100,6 +1100,8 @@ def resolver_coluna_delivery(campo_logico, colunas_reais):
     for candidato in candidatos:
         if candidato in colunas_reais:
             return candidato
+    if campo_logico == "pc":
+        return "pc"
     return campo_logico if campo_logico in colunas_reais else None
 
 
@@ -1488,7 +1490,7 @@ def normalizar_colunas(df):
             mapa[c] = "unidade"
         elif k in ["paletes", "pallets", "pallet", "p", "paletes agendados"]:
             mapa[c] = "paletes"
-        elif k in ["pc", "paletes coletados", "pallets coletados", "pallet coletado", "paletes_coletados"]:
+        elif k in ["pc", "paletes coletados", "pallets coletados", "pallet coletado"]:
             mapa[c] = "pc"
         elif k in ["valor", "frete", "valor_frete", "valor frete"]:
             mapa[c] = "valor_frete"
@@ -3313,16 +3315,19 @@ if pagina_atual == "busca":
 
                     c9, c10, c11, c12 = st.columns(4)
 
-                    valor = c9.text_input("Valor Frete", texto(item.get("valor_frete")))
-                    l_h = c10.text_input("L", texto(item.get("l_horario")))
-                    c_h = c11.text_input("C", texto(item.get("c_horario")))
-                    f_h = c12.text_input("FI", texto(item.get("f_horario")))
+                    pc = c9.text_input("PC", texto(valor_campo_delivery(item, "pc")))
+                    valor = c10.text_input("Valor Frete", texto(item.get("valor_frete")))
+                    l_h = c11.text_input("L", texto(item.get("l_horario")))
+                    c_h = c12.text_input("C", texto(item.get("c_horario")))
 
-                    c13, c14, c15 = st.columns(3)
+                    c13a, c13b = st.columns(2)
+                    f_h = c13a.text_input("FI", texto(item.get("f_horario")))
 
-                    tipo = c13.text_input("Tipo", texto(item.get("tipo")))
-                    status = c14.text_input("Status", texto(item.get("status")))
-                    confianca = c15.text_input("Confiança", texto(item.get("confianca")))
+                    c14, c15, c16 = st.columns(3)
+
+                    tipo = c14.text_input("Tipo", texto(item.get("tipo")))
+                    status = c15.text_input("Status", texto(item.get("status")))
+                    confianca = c16.text_input("Confiança", texto(item.get("confianca")))
 
                     cpf = st.text_input("CPF", texto(item.get("cpf")))
                     cavalo = st.text_input("Cavalo", texto(item.get("cavalo")))
@@ -3350,6 +3355,7 @@ if pagina_atual == "busca":
                             "cliente": normalizar_cliente_rapido(cliente) or None,
                             "unidade": unidade or None,
                             "paletes": numero(paletes),
+                            "pc": numero(pc),
                             "valor_frete": numero(valor),
                             "l_horario": normalizar_horario(l_h) or None,
                             "c_horario": normalizar_horario(c_h) or None,
@@ -3366,12 +3372,13 @@ if pagina_atual == "busca":
                         }
 
                         registro = completar_dados_motorista(registro)
+                        registro_salvar = preparar_campos_deliveries_para_salvar(registro, item)
 
-                        supabase.table("deliveries").update(registro).eq(
+                        supabase.table("deliveries").update(registro_salvar).eq(
                             "id",
                             id_selecionado
                         ).execute()
-                        registrar_historico_campos(TABELA_DELIVERIES, id_selecionado, item, registro, "ADMIN")
+                        registrar_historico_campos(TABELA_DELIVERIES, id_selecionado, item, registro_salvar, "ADMIN")
 
                         st.success("Registro atualizado.")
 
