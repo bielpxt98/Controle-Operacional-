@@ -933,6 +933,92 @@ def numero(v):
 
 
 TABELA_DELIVERIES = "deliveries"
+TABELA_CLIENTES = "clientes_cnpj"
+TABELA_AUDITORIA = "historico_alteracoes"
+
+
+def registrar_historico_alteracao(tabela, registro_id, campo, valor_antigo, valor_novo, usuario="SISTEMA"):
+    if str(valor_antigo) == str(valor_novo):
+        return
+    payload = {
+        "tabela": tabela,
+        "registro_id": str(registro_id or ""),
+        "campo": campo,
+        "valor_antigo": None if valor_antigo is None else str(valor_antigo),
+        "valor_novo": None if valor_novo is None else str(valor_novo),
+        "usuario": usuario or "SISTEMA",
+        "data_hora": datetime.now().isoformat(),
+    }
+    try:
+        supabase.table(TABELA_AUDITORIA).insert(payload).execute()
+    except Exception as exc:
+        logger.warning("Não foi possível gravar auditoria em %s: %s", TABELA_AUDITORIA, exc)
+
+
+def registrar_historico_campos(tabela, registro_id, antes, depois, usuario="SISTEMA"):
+    antes = antes or {}
+    for campo, valor_novo in (depois or {}).items():
+        registrar_historico_alteracao(tabela, registro_id, campo, antes.get(campo), valor_novo, usuario)
+
+
+def listar_clientes():
+    try:
+        res = supabase.table(TABELA_CLIENTES).select("*").order("cliente").execute()
+        return pd.DataFrame(res.data or [])
+    except Exception as exc:
+        logger.warning("Tabela de clientes indisponível: %s", exc)
+        return pd.DataFrame(columns=["id", "cliente", "cidade", "endereco", "cnpj", "razao_social", "observacao", "data_cadastro", "data_ultima_atualizacao"])
+
+
+def render_clientes_cnpj(admin):
+    st.subheader("Clientes e CNPJ")
+    clientes = listar_clientes()
+    q_cliente = st.text_input("Pesquisar por cliente")
+    q_cnpj = st.text_input("Pesquisar por CNPJ")
+    q_cidade = st.text_input("Pesquisar por cidade")
+    q_endereco = st.text_input("Pesquisar por endereço")
+    filtrado = clientes.copy()
+    for coluna, valor in [("cliente", q_cliente), ("cnpj", q_cnpj), ("cidade", q_cidade), ("endereco", q_endereco)]:
+        if valor and coluna in filtrado.columns:
+            filtrado = filtrado[filtrado[coluna].fillna("").astype(str).str.upper().str.contains(valor.upper(), na=False)]
+    st.dataframe(filtrado, use_container_width=True, hide_index=True)
+    if not admin:
+        st.info("Entre como administrador para adicionar, editar ou excluir clientes.")
+        return
+    with st.form("form_cliente_cnpj"):
+        st.markdown("### Adicionar / editar cliente")
+        id_cliente = st.text_input("ID para editar (deixe vazio para adicionar)")
+        c1, c2 = st.columns(2)
+        cliente = c1.text_input("Cliente")
+        cidade = c2.text_input("Cidade")
+        endereco = st.text_input("Endereço")
+        cnpj = c1.text_input("CNPJ")
+        razao = c2.text_input("Razão Social")
+        observacao = st.text_area("Observação")
+        salvar_cliente = st.form_submit_button("Salvar cliente", type="primary")
+    if salvar_cliente:
+        agora = datetime.now().isoformat()
+        payload = {"cliente": cliente.upper(), "cidade": cidade.upper(), "endereco": endereco.upper(), "cnpj": cnpj, "razao_social": razao.upper(), "observacao": observacao, "data_ultima_atualizacao": agora}
+        if id_cliente.strip():
+            atual = supabase.table(TABELA_CLIENTES).select("*").eq("id", int(id_cliente)).limit(1).execute()
+            antes = atual.data[0] if atual.data else {}
+            supabase.table(TABELA_CLIENTES).update(payload).eq("id", int(id_cliente)).execute()
+            registrar_historico_campos(TABELA_CLIENTES, id_cliente, antes, payload, "ADMIN")
+        else:
+            payload["data_cadastro"] = agora
+            supabase.table(TABELA_CLIENTES).insert(payload).execute()
+            registrar_historico_campos(TABELA_CLIENTES, payload.get("cnpj"), {}, payload, "ADMIN")
+        st.success("Cliente salvo.")
+        st.rerun()
+    excluir_id = st.text_input("ID do cliente para excluir")
+    if st.button("Excluir cliente") and excluir_id.strip():
+        atual = supabase.table(TABELA_CLIENTES).select("*").eq("id", int(excluir_id)).limit(1).execute()
+        antes = atual.data[0] if atual.data else {}
+        supabase.table(TABELA_CLIENTES).delete().eq("id", int(excluir_id)).execute()
+        registrar_historico_campos(TABELA_CLIENTES, excluir_id, antes, {"excluido": True}, "ADMIN")
+        st.warning("Cliente excluído.")
+        st.rerun()
+
 
 
 def listar():
@@ -1346,11 +1432,14 @@ def atualizar_rapido_no_supabase(parsed):
     existente = supabase.table(TABELA_DELIVERIES).select("id").eq(chave, valor).limit(1).execute()
 
     if existente.data:
+        antes = supabase.table(TABELA_DELIVERIES).select("*").eq(chave, valor).limit(1).execute().data[0]
         supabase.table(TABELA_DELIVERIES).update(campos).eq(chave, valor).execute()
+        registrar_historico_campos(TABELA_DELIVERIES, antes.get("id") or valor, antes, campos, "ADMIN")
         atualizar_dataframe_principal()
         return "atualizado"
 
     supabase.table(TABELA_DELIVERIES).insert(campos).execute()
+    registrar_historico_campos(TABELA_DELIVERIES, valor, {}, campos, "ADMIN")
     atualizar_dataframe_principal()
     return "criado"
 
@@ -1934,6 +2023,7 @@ def atualizar_conversa_no_supabase(id_registro, parsed):
         "id",
         int(id_registro),
     ).execute()
+    registrar_historico_campos(TABELA_DELIVERIES, id_registro, dados_atuais, campos, "ADMIN")
     salvo = supabase.table(TABELA_DELIVERIES).select("*").eq("id", int(id_registro)).limit(1).execute()
     dados_salvos = salvo.data[0] if salvo.data else {}
     logger.info(
@@ -2564,7 +2654,8 @@ PAGINAS = {
     "importar": {"label": "Importar Excel mestre", "icon": "📥", "grupo": "principal"},
     "admin": {"label": "Excel Mestre", "icon": "📥", "grupo": "admin"},
     "regras_operacionais": {"label": "Regras Operacionais", "icon": "📋", "grupo": "admin"},
-    "historico_alteracoes": {"label": "Histórico de Alterações", "icon": "🕘", "grupo": "admin"},
+    "historico_alteracoes": {"label": "Backup / Histórico", "icon": "🕘", "grupo": "admin"},
+    "clientes_cnpj": {"label": "Clientes e CNPJ", "icon": "🏢", "grupo": "admin"},
 }
 
 
@@ -2827,6 +2918,7 @@ if pagina_atual == "busca":
                             "id",
                             id_selecionado
                         ).execute()
+                        registrar_historico_campos(TABELA_DELIVERIES, id_selecionado, item, registro, "ADMIN")
 
                         st.success("Registro atualizado.")
 
@@ -2835,6 +2927,7 @@ if pagina_atual == "busca":
                         "id",
                         id_selecionado
                     ).execute()
+                    registrar_historico_campos(TABELA_DELIVERIES, id_selecionado, item, {"excluido": True}, "ADMIN")
 
                     st.warning("Registro excluído.")
 
@@ -3477,15 +3570,19 @@ if pagina_atual == "regras_operacionais":
 
 
 if pagina_atual == "historico_alteracoes":
-    st.subheader("Histórico de Alterações")
+    st.subheader("Backup / Histórico")
     if not admin:
         st.warning("Entre como administrador para acessar o histórico de alterações.")
     else:
+        historico_sistema = pd.DataFrame(supabase.table(TABELA_AUDITORIA).select("*").execute().data or [])
+        if not historico_sistema.empty:
+            st.caption("Alterações do sistema com usuário, data/hora, valor antigo e valor novo.")
+            st.dataframe(historico_sistema.iloc[::-1], use_container_width=True, hide_index=True)
         historico_regras = carregar_historico_regras()
-        if historico_regras.empty:
+        if historico_regras.empty and historico_sistema.empty:
             st.info("Nenhuma alteração registrada ainda.")
-        else:
-            st.caption("Histórico com data, hora, usuário, ação e tamanho da versão salva.")
+        if not historico_regras.empty:
+            st.caption("Histórico de regras com data, hora, usuário, ação e tamanho da versão salva.")
             st.dataframe(
                 historico_regras.drop(columns=["conteudo"], errors="ignore").iloc[::-1],
                 use_container_width=True,
@@ -3500,6 +3597,10 @@ if pagina_atual == "historico_alteracoes":
             )
 
 
+if pagina_atual == "clientes_cnpj":
+    render_clientes_cnpj(admin)
+
+
 if pagina_atual == "admin":
     st.subheader("Excel Mestre")
 
@@ -3509,10 +3610,21 @@ if pagina_atual == "admin":
         df_atual = listar()
 
         st.write(f"Registros na nuvem: {len(df_atual)}")
+        st.markdown("### Visualizar e pesquisar registros")
+        f1, f2, f3, f4 = st.columns(4)
+        filtro_data = f1.text_input("Pesquisar por data", key="admin_filtro_data")
+        filtro_motorista = f2.text_input("Pesquisar por motorista", key="admin_filtro_motorista")
+        filtro_cliente = f3.text_input("Pesquisar por cliente", key="admin_filtro_cliente")
+        filtro_delivery = f4.text_input("Pesquisar por delivery", key="admin_filtro_delivery")
+        df_filtrado = df_atual.copy()
+        for coluna, valor in [("data", filtro_data), ("motorista", filtro_motorista), ("cliente", filtro_cliente), ("delivery", filtro_delivery)]:
+            if valor and coluna in df_filtrado.columns:
+                df_filtrado = df_filtrado[df_filtrado[coluna].fillna("").astype(str).str.upper().str.contains(valor.upper(), na=False)]
+        st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
 
         st.download_button(
             "⬇️ Baixar Excel mestre",
-            data=excel_bytes(df_atual),
+            data=excel_bytes(df_filtrado),
             file_name="excel_mestre_operacional.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
