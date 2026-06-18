@@ -10,7 +10,7 @@ import logging
 import re
 import sqlite3
 import unicodedata
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Iterable
@@ -311,6 +311,11 @@ def _periodo_hoje(df: pd.DataFrame) -> pd.DataFrame:
     return df[df["data"].dt.date == hoje.date()]
 
 
+def _periodo_ontem(df: pd.DataFrame) -> pd.DataFrame:
+    ontem = pd.Timestamp(date.today() - timedelta(days=1))
+    return df[df["data"].dt.date == ontem.date()]
+
+
 def _periodo_mes(df: pd.DataFrame) -> pd.DataFrame:
     hoje = pd.Timestamp(date.today())
     return df[(df["data"].dt.year == hoje.year) & (df["data"].dt.month == hoje.month)]
@@ -371,6 +376,8 @@ def _aplicar_filtros_pergunta(df: pd.DataFrame, pergunta: str, motorista: str = 
         base = base[base["data"].dt.date == data_especifica.date()]
     elif "HOJE" in pergunta_norm:
         base = _periodo_hoje(base)
+    elif "ONTEM" in pergunta_norm:
+        base = _periodo_ontem(base)
     elif "MES" in pergunta_norm or "MÊS" in pergunta_norm:
         base = _periodo_mes(base)
 
@@ -574,6 +581,8 @@ def _aplicar_periodo_operacional(df: pd.DataFrame, pergunta: str) -> pd.DataFram
         return df[df["data"].dt.date == data_especifica.date()]
     if "HOJE" in pergunta_norm:
         return _periodo_hoje(df)
+    if "ONTEM" in pergunta_norm:
+        return _periodo_ontem(df)
     if "MES" in pergunta_norm or "MÊS" in pergunta_norm:
         return _periodo_mes(df)
     return df
@@ -745,6 +754,50 @@ def _responder_relatorio_especial(df: pd.DataFrame, pergunta: str, tipo: str) ->
     return _linhas_relatorio_especial(base, tipo)
 
 
+def _linhas_operacionais(df: pd.DataFrame, limite: int = 200) -> str:
+    if df.empty:
+        return "Nenhuma coleta encontrada."
+    linhas = [_linha_operacional(row) for _, row in df.head(limite).iterrows()]
+    if len(df) > limite:
+        linhas.append(f"... e mais {len(df) - limite} coleta(s).")
+    return "\n".join(linhas)
+
+
+def _responder_coletas_operacionais(df: pd.DataFrame, pergunta: str, motorista: str = "") -> str:
+    base = _aplicar_periodo_operacional(df, pergunta)
+    base = _filtrar_motorista(base, motorista)
+    return _linhas_operacionais(base)
+
+
+def _extrair_delivery_solto(pergunta: str) -> str:
+    """Extrai consulta por delivery com palavra-chave ou por final numérico solto.
+
+    Datas como 17/06 não entram aqui porque a expressão exige grupos de dígitos
+    isolados sem barras.
+    """
+    pergunta_norm = _sem_acentos(pergunta)
+    if re.search(r"\b(DIA|DATA)\b", pergunta_norm):
+        return ""
+    numeros = re.findall(r"\b\d{4,}\b", pergunta_norm)
+    if not numeros:
+        return ""
+    if any(termo in pergunta_norm for termo in ["STATUS", "DELIVERY", "REMESSA", "DOCUMENTO", "CONSULTAR", "COMO ESTA", "COMO ESTÁ"]):
+        return numeros[0]
+    return ""
+
+
+def _eh_pedido_lista_operacional(pergunta_norm: str, pergunta: str, motorista: str) -> bool:
+    if "QUANT" in pergunta_norm or "TOTAL" in pergunta_norm or "VALOR" in pergunta_norm:
+        return False
+    if _tem_data_na_pergunta(pergunta) and any(termo in pergunta_norm for termo in ["STATUS", "COLETA", "DIA", "DATA"]):
+        return True
+    if any(termo in pergunta_norm for termo in ["STATUS", "COLETA", "COLETAS"]):
+        return True
+    if motorista and ("HOJE" in pergunta_norm or "ONTEM" in pergunta_norm):
+        return True
+    return False
+
+
 def _responder_cliente(df: pd.DataFrame, pergunta: str, motorista: str) -> str:
     pergunta_norm = _sem_acentos(pergunta)
     cliente = _extrair_termo_apos(pergunta_norm, ["CLIENTE"])
@@ -772,11 +825,8 @@ def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
     motorista = _extrair_motorista(pergunta, df["motorista"].dropna().astype(str))
     veiculo = _extrair_veiculo(pergunta)
 
-    if "STATUS" in pergunta_norm and re.search(r"\b\d{4,}\b", pergunta_norm):
+    if _extrair_delivery_solto(pergunta):
         return _responder_status_delivery(df, pergunta)
-
-    if pergunta_norm.strip() == "STATUS DE HOJE":
-        return _responder_status_hoje(df)
 
     if any(termo in pergunta_norm for termo in ["EM ABERTO", "PENDENTES", "COLETAS EM ABERTO", "STATUS DAS ABERTAS"]):
         return _responder_em_aberto(df, pergunta)
@@ -845,6 +895,9 @@ def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
         coluna = "delivery" if base["delivery"].notna().any() else "sr"
         total = base[coluna].dropna().astype(str).str.strip().replace("", pd.NA).dropna().nunique()
         return f"Remessas no mês atual: {total}."
+
+    if _eh_pedido_lista_operacional(pergunta_norm, pergunta, motorista):
+        return _responder_coletas_operacionais(df, pergunta, motorista)
 
     if "HOJE" in pergunta_norm:
         base = _filtrar_motorista(_periodo_hoje(df), motorista)
