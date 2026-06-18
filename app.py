@@ -1165,6 +1165,145 @@ def aplicar_cnpjs_clientes_cadastrados(df_base, clientes):
 
     return df_enriquecido
 
+
+
+CAMPOS_CADASTRO_CLIENTE_CONVERSA = {
+    "CLIENTE": "cliente_operacao",
+    "NOME_EXIBICAO": "nome_exibicao",
+    "NOME EXIBICAO": "nome_exibicao",
+    "RAZAO_SOCIAL": "razao_social",
+    "RAZÃO_SOCIAL": "razao_social",
+    "RAZAO SOCIAL": "razao_social",
+    "RAZÃO SOCIAL": "razao_social",
+    "UNIDADE": "unidade",
+    "ENDERECO_REFERENCIA": "endereco",
+    "ENDEREÇO_REFERÊNCIA": "endereco",
+    "ENDERECO REFERENCIA": "endereco",
+    "ENDEREÇO REFERÊNCIA": "endereco",
+    "BAIRRO": "bairro",
+    "CIDADE": "cidade",
+    "CNPJ": "cnpj",
+    "OBSERVACAO": "observacao",
+    "OBSERVAÇÃO": "observacao",
+    "STATUS": "status",
+}
+
+
+def normalizar_rotulo_cadastro_cliente(rotulo):
+    return limpar_busca(rotulo).replace(" ", "_")
+
+
+def parse_cadastro_cliente_conversa(frase):
+    original = texto(frase)
+    if not original:
+        return None, "Cole o cadastro do cliente para interpretar."
+
+    campos = {}
+    for linha in original.splitlines():
+        if ":" not in linha:
+            continue
+        rotulo, valor = linha.split(":", 1)
+        chave_rotulo = normalizar_rotulo_cadastro_cliente(rotulo)
+        campo = CAMPOS_CADASTRO_CLIENTE_CONVERSA.get(chave_rotulo)
+        if campo:
+            campos[campo] = texto(valor).upper()
+
+    indicadores = ["cliente_operacao", "nome_exibicao", "razao_social", "cnpj"]
+    if sum(1 for chave in indicadores if campos.get(chave)) < 3:
+        return None, "O texto não parece um cadastro de cliente válido."
+
+    if not campos.get("nome_exibicao"):
+        campos["nome_exibicao"] = campos.get("cliente_operacao", "")
+    if not campos.get("cliente_operacao"):
+        campos["cliente_operacao"] = campos.get("nome_exibicao", "")
+    campos["cnpj"] = formatar_cnpj_cliente(campos.get("cnpj"))
+
+    obrigatorios = {
+        "CLIENTE": campos.get("cliente_operacao"),
+        "NOME_EXIBICAO": campos.get("nome_exibicao"),
+        "RAZÃO_SOCIAL": campos.get("razao_social"),
+        "CNPJ": campos.get("cnpj"),
+    }
+    faltantes = [nome for nome, valor in obrigatorios.items() if not texto(valor)]
+    if faltantes:
+        return None, "Campos obrigatórios ausentes: " + ", ".join(faltantes) + "."
+
+    return campos, None
+
+
+def parece_cadastro_cliente_conversa(frase):
+    parsed, _ = parse_cadastro_cliente_conversa(frase)
+    return parsed is not None
+
+
+def observacao_cadastro_cliente_conversa(parsed):
+    partes = []
+    for rotulo, chave in [
+        ("CLIENTE OPERAÇÃO", "cliente_operacao"),
+        ("UNIDADE", "unidade"),
+        ("BAIRRO", "bairro"),
+        ("STATUS", "status"),
+        ("OBSERVAÇÃO", "observacao"),
+    ]:
+        valor = texto(parsed.get(chave))
+        if valor:
+            partes.append(f"{rotulo}: {valor}")
+    return " | ".join(partes)
+
+
+def payload_cadastro_cliente_conversa(parsed):
+    agora = datetime.now().isoformat()
+    return {
+        "cliente": texto(parsed.get("nome_exibicao")).upper(),
+        "cidade": texto(parsed.get("cidade")).upper(),
+        "endereco": texto(parsed.get("endereco")).upper(),
+        "cnpj": formatar_cnpj_cliente(parsed.get("cnpj")),
+        "razao_social": texto(parsed.get("razao_social")).upper(),
+        "observacao": observacao_cadastro_cliente_conversa(parsed),
+        "data_ultima_atualizacao": agora,
+    }
+
+
+def buscar_cliente_por_nome_exibicao(nome_exibicao):
+    nome = texto(nome_exibicao).upper()
+    if not nome:
+        return None
+    res = supabase.table(TABELA_CLIENTES).select("*").eq("cliente", nome).limit(1).execute()
+    return res.data[0] if res.data else None
+
+
+def salvar_cadastro_cliente_conversa(parsed, existente=None):
+    payload = payload_cadastro_cliente_conversa(parsed)
+    if not payload.get("razao_social"):
+        raise ValueError("RAZÃO_SOCIAL é obrigatória para salvar o cliente.")
+    if existente:
+        supabase.table(TABELA_CLIENTES).update(payload).eq("id", int(existente["id"])).execute()
+        return {**existente, **payload}
+    payload["data_cadastro"] = datetime.now().isoformat()
+    res = supabase.table(TABELA_CLIENTES).insert(payload).execute()
+    return (res.data or [payload])[0]
+
+
+def resumo_cadastro_cliente_conversa(parsed, existente=None):
+    titulo = "CLIENTE JÁ CADASTRADO\n\nDESEJA ATUALIZAR?" if existente else "CONFIRMAR CADASTRO?"
+    linhas = [titulo, ""]
+    for rotulo, chave in [
+        ("CLIENTE", "cliente_operacao"),
+        ("NOME EXIBIÇÃO", "nome_exibicao"),
+        ("RAZÃO SOCIAL", "razao_social"),
+        ("UNIDADE", "unidade"),
+        ("ENDEREÇO REFERÊNCIA", "endereco"),
+        ("BAIRRO", "bairro"),
+        ("CIDADE", "cidade"),
+        ("CNPJ", "cnpj"),
+        ("STATUS", "status"),
+        ("OBSERVAÇÃO", "observacao"),
+    ]:
+        valor = texto(parsed.get(chave))
+        if valor:
+            linhas.extend([f"{rotulo}:", valor, ""])
+    return "\n".join(linhas).strip()
+
 def render_clientes_cnpj(admin):
     st.subheader("Clientes e CNPJ")
     clientes = listar_clientes()
@@ -1192,6 +1331,9 @@ def render_clientes_cnpj(admin):
         observacao = st.text_area("Observação")
         salvar_cliente = st.form_submit_button("Salvar cliente", type="primary")
     if salvar_cliente:
+        if not texto(razao):
+            st.error("Razão Social é obrigatória.")
+            return
         agora = datetime.now().isoformat()
         payload = {"cliente": cliente.upper(), "cidade": cidade.upper(), "endereco": endereco.upper(), "cnpj": cnpj, "razao_social": razao.upper(), "observacao": observacao, "data_ultima_atualizacao": agora}
         if id_cliente.strip():
@@ -1997,6 +2139,9 @@ def detectar_modo_conversa(frase):
     """Classifica a frase da aba conversa sem misturar consulta e atualização."""
     frase_texto = texto(frase)
     frase_norm = limpar_busca(frase_texto)
+
+    if parece_cadastro_cliente_conversa(frase_texto):
+        return "CADASTRO_CLIENTE"
 
     # Pedidos explícitos de relatório por data não são atualização e não devem
     # exigir HH:MM, mesmo quando contêm termos operacionais como DESLOCAMENTO.
@@ -3335,11 +3480,12 @@ if pagina_atual == "conversa":
             "e a atualização só acontece depois da confirmação."
         )
         if st.session_state.get("conversa_registro_salvo"):
-            st.success("Coleta atualizada com dados confirmados no banco principal.")
+            st.success("Registro confirmado e salvo no banco principal.")
             st.code(st.session_state.pop("conversa_registro_salvo"))
-        frase_conversa = st.text_input(
-            "Frase da atualização ou consulta",
-            placeholder="Jean finalizou 5422 mercantil às 19:49",
+        frase_conversa = st.text_area(
+            "Frase da atualização, consulta ou cadastro de cliente",
+            placeholder="CLIENTE: ASSAÍ\nNOME_EXIBICAO: ASSAÍ\nRAZÃO_SOCIAL: SENDAS DISTRIBUIDORA S/A\nCNPJ: 06.057.223/0381-44",
+            height=180,
         )
 
         if st.button("Executar", type="primary"):
@@ -3347,11 +3493,21 @@ if pagina_atual == "conversa":
             st.session_state.pop("conversa_resultados", None)
             st.session_state.pop("conversa_resposta_consulta", None)
             st.session_state.pop("conversa_modo", None)
+            st.session_state.pop("conversa_cadastro_cliente", None)
+            st.session_state.pop("conversa_cliente_existente", None)
 
             modo_conversa = detectar_modo_conversa(frase_conversa)
             st.session_state["conversa_modo"] = modo_conversa
 
-            if modo_conversa == "CONSULTA":
+            if modo_conversa == "CADASTRO_CLIENTE":
+                parsed_cliente, erro = parse_cadastro_cliente_conversa(frase_conversa)
+                if erro:
+                    st.error(erro)
+                else:
+                    existente = buscar_cliente_por_nome_exibicao(parsed_cliente.get("nome_exibicao"))
+                    st.session_state["conversa_cadastro_cliente"] = parsed_cliente
+                    st.session_state["conversa_cliente_existente"] = existente
+            elif modo_conversa == "CONSULTA":
                 resposta, erro = responder_conversacao(frase_conversa, df)
                 if erro:
                     st.error(erro)
@@ -3375,10 +3531,40 @@ if pagina_atual == "conversa":
         resultados_conversa = st.session_state.get("conversa_resultados") or []
         modo_conversa = st.session_state.get("conversa_modo")
         resposta_consulta_conversa = st.session_state.get("conversa_resposta_consulta")
+        cadastro_cliente_conversa = st.session_state.get("conversa_cadastro_cliente")
+        cliente_existente_conversa = st.session_state.get("conversa_cliente_existente")
 
         if modo_conversa == "CONSULTA" and resposta_consulta_conversa:
             st.markdown("### MODO CONSULTA")
             renderizar_resposta_operacional(resposta_consulta_conversa, "consulta_conversa")
+
+        if modo_conversa == "CADASTRO_CLIENTE" and cadastro_cliente_conversa:
+            st.markdown("### CADASTRO ASSISTIDO DE CLIENTE")
+            st.code(resumo_cadastro_cliente_conversa(cadastro_cliente_conversa, cliente_existente_conversa))
+            if cliente_existente_conversa:
+                col_atualizar, col_cancelar = st.columns(2)
+                if col_atualizar.button("Atualizar", key="atualizar_cadastro_cliente_conversa"):
+                    salvar_cadastro_cliente_conversa(cadastro_cliente_conversa, cliente_existente_conversa)
+                    st.session_state["conversa_registro_salvo"] = "CLIENTE ATUALIZADO NA BASE DE CLIENTES."
+                    st.session_state.pop("conversa_cadastro_cliente", None)
+                    st.session_state.pop("conversa_cliente_existente", None)
+                    st.rerun()
+                if col_cancelar.button("Cancelar", key="cancelar_atualizacao_cliente_conversa"):
+                    st.session_state.pop("conversa_cadastro_cliente", None)
+                    st.session_state.pop("conversa_cliente_existente", None)
+                    st.rerun()
+            else:
+                col_confirmar, col_cancelar = st.columns(2)
+                if col_confirmar.button("Confirmar cadastro", key="confirmar_cadastro_cliente_conversa"):
+                    salvar_cadastro_cliente_conversa(cadastro_cliente_conversa)
+                    st.session_state["conversa_registro_salvo"] = "CLIENTE SALVO NA BASE DE CLIENTES."
+                    st.session_state.pop("conversa_cadastro_cliente", None)
+                    st.session_state.pop("conversa_cliente_existente", None)
+                    st.rerun()
+                if col_cancelar.button("Cancelar", key="cancelar_cadastro_cliente_conversa"):
+                    st.session_state.pop("conversa_cadastro_cliente", None)
+                    st.session_state.pop("conversa_cliente_existente", None)
+                    st.rerun()
 
         if parsed_conversa and resultados_conversa:
             st.markdown("### MODO ATUALIZAÇÃO")
