@@ -6,6 +6,7 @@ import traceback
 from html import escape
 from pathlib import Path
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from io import BytesIO
 from PIL import Image, UnidentifiedImageError
@@ -1561,6 +1562,7 @@ COMANDOS_CONSULTA_CONVERSA = {
     "QUANTOS",
     "QUANTAS",
     "QUAIS",
+    "COMO",
     "LISTAR",
     "MOSTRAR",
     "TOTAL",
@@ -1948,10 +1950,73 @@ def responder_conversacao(pergunta, dados):
 
 
 
+def renderizar_resposta_operacional(texto_mensagem: str, chave: str = "resposta_operacional") -> None:
+    """Renderiza resposta operacional em caixa clara com botão para copiar."""
+    texto_resposta = str(texto_mensagem or "")
+    linhas_html = []
+    for linha in texto_resposta.splitlines() or [""]:
+        classe_linha = "operational-line"
+        if re.match(r"^D\s", linha):
+            classe_linha += " operational-delivery"
+        elif re.match(r"^(L|C|FI)\s", linha):
+            classe_linha += " operational-time-line"
+        linhas_html.append(f'<div class="{classe_linha}">{escape(linha) or "&nbsp;"}</div>')
+    texto_html = "".join(linhas_html)
+    texto_js = texto_resposta.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
+    altura = max(170, min(520, 120 + 30 * max(1, texto_resposta.count("\n") + 1)))
+    components.html(
+        f"""
+        <div class="operational-answer-box" id="{escape(chave)}">
+            <button class="copy-operational-answer" type="button" onclick="navigator.clipboard.writeText(`{texto_js}`); this.textContent='✅ COPIADO'; setTimeout(() => this.textContent='📋 COPIAR', 1400);">📋 COPIAR</button>
+            <div class="operational-answer-text">{texto_html}</div>
+        </div>
+        <style>
+            .operational-answer-box {{
+                box-sizing: border-box;
+                width: 100%;
+                margin: 0 0 10px;
+                padding: 18px 18px 16px;
+                border: 1px solid #D7E2F0;
+                border-left: 6px solid #0B3A75;
+                border-radius: 14px;
+                background: #FFFFFF;
+                color: #111827;
+                box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+                font-family: Arial, Helvetica, sans-serif;
+            }}
+            .operational-answer-text {{
+                margin: 12px 0 0;
+                color: #111827;
+                font-family: Arial, Helvetica, sans-serif;
+                font-size: 20px;
+                font-weight: 800;
+                line-height: 1.55;
+            }}
+            .operational-line {{ color: #111827; white-space: pre-wrap; overflow-wrap: anywhere; }}
+            .operational-delivery, .operational-time-line {{ color: #0B3A75; }}
+            .copy-operational-answer {{
+                cursor: pointer;
+                border: 0;
+                border-radius: 10px;
+                background: #0B3A75;
+                color: #FFFFFF;
+                padding: 10px 16px;
+                font-size: 14px;
+                font-weight: 900;
+                letter-spacing: .02em;
+            }}
+        </style>
+        """,
+        height=altura,
+    )
+
 def renderizar_mensagem_conversacao(tipo: str, texto_mensagem: str, quando: str = "") -> None:
-    """Renderiza perguntas e respostas em caixas escuras com quebra de linha preservada."""
-    titulo = "Pergunta" if tipo == "user" else "Resposta"
-    classe = "conversation-question" if tipo == "user" else "conversation-answer"
+    """Renderiza perguntas e respostas com quebra de linha preservada."""
+    if tipo != "user":
+        renderizar_resposta_operacional(texto_mensagem, f"resposta_{abs(hash(str(texto_mensagem)))}")
+        return
+    titulo = "Pergunta"
+    classe = "conversation-question"
     horario = f'<div class="conversation-time">{escape(quando)}</div>' if quando else ""
     st.markdown(
         f"""
@@ -2836,7 +2901,7 @@ if pagina_atual == "conversa":
 
         if modo_conversa == "CONSULTA" and resposta_consulta_conversa:
             st.markdown("### MODO CONSULTA")
-            st.code(resposta_consulta_conversa)
+            renderizar_resposta_operacional(resposta_consulta_conversa, "consulta_conversa")
 
         if parsed_conversa and resultados_conversa:
             st.markdown("### MODO ATUALIZAÇÃO")

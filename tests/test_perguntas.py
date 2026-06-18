@@ -187,10 +187,16 @@ class PerguntasTest(unittest.TestCase):
         df.to_csv(caminho, index=False)
 
         status = responder_pergunta("STATUS DA DELIVERY 3787849414", str(caminho))
-        self.assertIn("DATA", status)
-        self.assertIn("D 3787849414", status)
-        self.assertIn("CL DROGARIA SÃO PAULO", status)
-        self.assertIn("FI 11:00", status)
+        self.assertNotIn("DATA", status)
+        self.assertNotIn("P 272", status)
+        self.assertNotIn("V 992,17", status)
+        self.assertEqual(
+            status,
+            "D 3787849414\nM JONES ROSARIO\nCL DROGARIA SÃO PAULO\nL 08:15\nC 10:34\nFI 11:00",
+        )
+
+        status_como_esta = responder_pergunta("COMO ESTÁ A 9414", str(caminho))
+        self.assertEqual(status_como_esta, status)
 
         hoje_resposta = responder_pergunta("STATUS DE HOJE", str(caminho))
         self.assertIn("DATA", hoje_resposta)

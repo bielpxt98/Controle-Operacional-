@@ -429,6 +429,22 @@ def _linha_operacional(row: pd.Series) -> str:
     return " ".join(partes)
 
 
+def _linha_status_individual(row: pd.Series) -> str:
+    partes = []
+    for rotulo, valor in [
+        ("D", row.get("delivery")),
+        ("M", row.get("motorista")),
+        ("CL", row.get("cliente")),
+        ("L", row.get("l_horario")),
+        ("C", row.get("c_horario")),
+        ("FI", row.get("f_horario")),
+    ]:
+        parte = _campo_operacional(rotulo, valor)
+        if parte:
+            partes.append(parte)
+    return "\n".join(partes)
+
+
 def _responder_status_delivery(df: pd.DataFrame, pergunta: str) -> str:
     numeros = re.findall(r"\b\d{4,}\b", pergunta)
     if not numeros:
@@ -441,7 +457,7 @@ def _responder_status_delivery(df: pd.DataFrame, pergunta: str) -> str:
             base = base_exata
     if base.empty:
         return "Nenhuma coleta encontrada."
-    return "\n".join(_linha_operacional(row) for _, row in base.head(20).iterrows())
+    return "\n\n".join(_linha_status_individual(row) for _, row in base.head(20).iterrows())
 
 
 def _responder_status_hoje(df: pd.DataFrame) -> str:
@@ -772,7 +788,7 @@ def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
     motorista = _extrair_motorista(pergunta, df["motorista"].dropna().astype(str))
     veiculo = _extrair_veiculo(pergunta)
 
-    if "STATUS" in pergunta_norm and re.search(r"\b\d{4,}\b", pergunta_norm):
+    if ("STATUS" in pergunta_norm or re.search(r"\bCOMO\s+(?:ESTA|ESTÁ)\b", pergunta_norm)) and re.search(r"\b\d{4,}\b", pergunta_norm):
         return _responder_status_delivery(df, pergunta)
 
     if pergunta_norm.strip() == "STATUS DE HOJE":
