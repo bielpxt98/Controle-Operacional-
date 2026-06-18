@@ -1,7 +1,7 @@
 import sqlite3
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -95,6 +95,78 @@ class PerguntasTest(unittest.TestCase):
     def test_consulta_tipo_veiculo_por_motorista(self):
         resposta = responder_pergunta("Separar por motorista as coletas feitas com TRUCK", str(self.csv))
         self.assertIn("MOTORISTA JEAN ROBSON (2 coleta(s))", resposta)
+
+    def test_status_por_data_aceita_variacoes_e_retorna_linhas_operacionais(self):
+        data_consulta = date(2026, 6, 17)
+        caminho = self.base / "status_data.csv"
+        pd.DataFrame(
+            [
+                {"data": "17/06/2026", "motorista": "Fabio", "delivery": "3787807939", "cliente": "COMERCIAL SEIS IRMÃOS", "paletes": 272, "valor_frete": "1468,13", "l_horario": "12:23", "f_horario": "16:04"},
+                {"data": "18/06/2026", "motorista": "Jean", "delivery": "3787805566", "cliente": "ASSAÍ PARIPE", "paletes": 117, "valor_frete": "992,17", "l_horario": "08:08", "c_horario": "09:31", "f_horario": "13:44"},
+            ]
+        ).to_csv(caminho, index=False)
+
+        for pergunta in ["STATUS 17/06", "STATUS DE 17/06", "STATUS DIA 17/06", "COLETAS DE 17/06", "STATUS DO DIA 17/06/2026"]:
+            resposta = responder_pergunta(pergunta, str(caminho))
+            self.assertIn(f"DATA {data_consulta.strftime('%d/%m/%Y')} M FABIO SOUZA D 3787807939", resposta)
+            self.assertIn("P 272", resposta)
+            self.assertIn("V 1.468,13", resposta)
+            self.assertNotIn("3787805566", resposta)
+
+    def test_status_por_periodo_hoje_ontem_e_em_aberto_hoje(self):
+        hoje = date.today()
+        ontem = hoje - timedelta(days=1)
+        caminho = self.base / "status_periodo.csv"
+        pd.DataFrame(
+            [
+                {"data": ontem.strftime("%d/%m/%Y"), "motorista": "Fabio", "delivery": "3787807939", "cliente": "A", "f_horario": "16:04"},
+                {"data": hoje.strftime("%d/%m/%Y"), "motorista": "Jean", "delivery": "3787805566", "cliente": "B", "f_horario": ""},
+                {"data": hoje.strftime("%d/%m/%Y"), "motorista": "Luis", "delivery": "3787805454", "cliente": "C", "f_horario": "13:44"},
+            ]
+        ).to_csv(caminho, index=False)
+
+        resposta_hoje = responder_pergunta("STATUS DE HOJE", str(caminho))
+        self.assertIn("3787805566", resposta_hoje)
+        self.assertIn("3787805454", resposta_hoje)
+        self.assertNotIn("3787807939", resposta_hoje)
+
+        resposta_ontem = responder_pergunta("STATUS DE ONTEM", str(caminho))
+        self.assertIn("3787807939", resposta_ontem)
+        self.assertNotIn("3787805566", resposta_ontem)
+
+        resposta_aberto = responder_pergunta("STATUS EM ABERTO DE HOJE", str(caminho))
+        self.assertIn("3787805566", resposta_aberto)
+        self.assertNotIn("3787805454", resposta_aberto)
+
+        resposta_periodo = responder_pergunta(
+            f"STATUS DE {ontem.strftime('%d/%m')} A {hoje.strftime('%d/%m')}",
+            str(caminho),
+        )
+        self.assertIn("3787807939", resposta_periodo)
+        self.assertIn("3787805454", resposta_periodo)
+
+    def test_consulta_por_motorista_e_delivery_com_variacoes(self):
+        caminho = self.base / "status_motorista_delivery.csv"
+        pd.DataFrame(
+            [
+                {"data": date.today().strftime("%d/%m/%Y"), "motorista": "Jean", "delivery": "3787805454", "cliente": "ASSAÍ PARIPE", "f_horario": ""},
+                {"data": date.today().strftime("%d/%m/%Y"), "motorista": "Fabio", "delivery": "3787807939", "cliente": "COMERCIAL SEIS IRMÃOS", "f_horario": "16:04"},
+            ]
+        ).to_csv(caminho, index=False)
+
+        resposta_motorista = responder_pergunta("JEAN HOJE", str(caminho))
+        self.assertIn("M JEAN ROBSON D 3787805454", resposta_motorista)
+        self.assertNotIn("3787807939", resposta_motorista)
+
+        resposta_status_motorista = responder_pergunta("STATUS FABIO", str(caminho))
+        self.assertIn("M FABIO SOUZA D 3787807939", resposta_status_motorista)
+        self.assertNotIn("3787805454", resposta_status_motorista)
+
+        for pergunta in ["STATUS 5454", "STATUS DELIVERY 3787805454", "COMO ESTÁ A 5454", "CONSULTAR 5454"]:
+            resposta_delivery = responder_pergunta(pergunta, str(caminho))
+            self.assertIn("D 3787805454", resposta_delivery)
+            self.assertIn("CL ASSAÍ PARIPE", resposta_delivery)
+            self.assertNotIn("3787807939", resposta_delivery)
 
     def test_pergunta_quantas_coletas_motorista_mes_dataframe(self):
         resposta = responder_pergunta("Quantas coletas Jean fez este mês?", str(self.csv))
