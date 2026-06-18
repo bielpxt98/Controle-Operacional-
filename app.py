@@ -417,10 +417,18 @@ SESSAO_ADMIN_USUARIO = "ADMIN"
 SESSAO_ADMIN_TTL_SEGUNDOS = 60 * 60
 
 
+COOKIE_MANAGER_SESSION_KEY = "cookie_manager"
+COOKIE_MANAGER_COMPONENT_KEY = "controle_operacional_cookie_manager"
+
+
 def gerenciador_cookies():
     if not ST_COOKIES_DISPONIVEL:
         return None
-    return stx.CookieManager()
+    if COOKIE_MANAGER_SESSION_KEY not in st.session_state:
+        st.session_state[COOKIE_MANAGER_SESSION_KEY] = stx.CookieManager(
+            key=COOKIE_MANAGER_COMPONENT_KEY
+        )
+    return st.session_state[COOKIE_MANAGER_SESSION_KEY]
 
 
 def chave_assinatura_sessao():
