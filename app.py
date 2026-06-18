@@ -970,6 +970,67 @@ def listar_clientes():
         return pd.DataFrame(columns=["id", "cliente", "cidade", "endereco", "cnpj", "razao_social", "observacao", "data_cadastro", "data_ultima_atualizacao"])
 
 
+
+def normalizar_chave_cliente_cnpj(*partes):
+    """Gera chave comparável para localizar CNPJ sem alterar o fluxo operacional."""
+    return " ".join(limpar_busca(parte) for parte in partes if texto(parte)).strip()
+
+
+def formatar_cnpj_cliente(valor):
+    cnpj = texto(valor)
+    if not cnpj:
+        return ""
+    digitos = re.sub(r"\D", "", cnpj)
+    if len(digitos) == 14:
+        return f"{digitos[:2]}.{digitos[2:5]}.{digitos[5:8]}/{digitos[8:12]}-{digitos[12:]}"
+    return cnpj
+
+
+def aplicar_cnpjs_clientes_cadastrados(df_base, clientes):
+    """Preenche CNPJ nas consultas usando a tabela existente clientes_cnpj.
+
+    Quando não há cadastro correspondente, mantém o campo vazio para que a
+    resposta operacional oculte o CNPJ sem mensagens extras.
+    """
+    if df_base is None or df_base.empty or clientes is None or clientes.empty:
+        return df_base
+
+    df_enriquecido = df_base.copy()
+    if "cnpj" not in df_enriquecido.columns:
+        df_enriquecido["cnpj"] = ""
+
+    mapa_cliente_cidade = {}
+    mapa_cliente = {}
+    for _, cliente_row in clientes.iterrows():
+        cnpj = formatar_cnpj_cliente(cliente_row.get("cnpj"))
+        if not cnpj:
+            continue
+        cliente = cliente_row.get("cliente")
+        cidade = cliente_row.get("cidade")
+        chave_cliente = normalizar_chave_cliente_cnpj(cliente)
+        chave_cliente_cidade = normalizar_chave_cliente_cnpj(cliente, cidade)
+        if chave_cliente_cidade:
+            mapa_cliente_cidade.setdefault(chave_cliente_cidade, cnpj)
+        if chave_cliente:
+            mapa_cliente.setdefault(chave_cliente, cnpj)
+
+    if not mapa_cliente_cidade and not mapa_cliente:
+        return df_enriquecido
+
+    for idx, row in df_enriquecido.iterrows():
+        if formatar_cnpj_cliente(row.get("cnpj")):
+            df_enriquecido.at[idx, "cnpj"] = formatar_cnpj_cliente(row.get("cnpj"))
+            continue
+        cliente = row.get("cliente")
+        cidade = row.get("cidade")
+        chave_cliente_cidade = normalizar_chave_cliente_cnpj(cliente, cidade)
+        chave_cliente = normalizar_chave_cliente_cnpj(cliente)
+        cnpj = mapa_cliente_cidade.get(chave_cliente_cidade) or mapa_cliente.get(chave_cliente)
+        if cnpj:
+            df_enriquecido.at[idx, "cnpj"] = cnpj
+
+    return df_enriquecido
+
 def render_clientes_cnpj(admin):
     st.subheader("Clientes e CNPJ")
     clientes = listar_clientes()
@@ -2190,7 +2251,8 @@ def responder_conversacao(pergunta, dados):
 
     try:
         logger.info("Consulta da Conversação iniciada: %s", pergunta)
-        return responder_pergunta_df(pergunta, dados), None
+        dados_consulta = aplicar_cnpjs_clientes_cadastrados(dados, listar_clientes())
+        return responder_pergunta_df(pergunta, dados_consulta), None
     except Exception:
         tb = traceback.format_exc()
         logger.error("Consulta da Conversação falhou: %s\n%s", pergunta, tb)
