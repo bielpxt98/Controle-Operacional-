@@ -376,6 +376,20 @@ def test_conversa_processa_l_c_fi_df_individualmente():
             assert campos["data_finalizacao"] == valor
 
 
+def test_numero_preserva_centavos_e_decimal_do_banco():
+    app = carregar_funcoes_app()
+
+    assert app["numero"]("2189,60") == 2189.60
+    assert app["numero"]("992,17") == 992.17
+    assert app["numero"]("1021,05") == 1021.05
+    assert app["numero"]("664,22") == 664.22
+    assert app["numero"]("1468,13") == 1468.13
+    assert app["numero"]("R$ 2.189,60") == 2189.60
+    assert app["numero"]("1.021,05") == 1021.05
+    assert app["numero"]("2189.6") == 2189.60
+    assert app["numero"]("1021.05") == 1021.05
+
+
 def test_status_automatico_regras_observacao():
     app = carregar_funcoes_app()
 
@@ -384,6 +398,7 @@ def test_status_automatico_regras_observacao():
     assert app["calcular_status_automatico"]("deslocamento sem carga") == "DESLOCAMENTO"
     assert app["calcular_status_automatico"]("BLOQUEIO e DESLOCAMENTO") == "DESLOCAMENTO"
     assert app["calcular_status_automatico"]("cliente pediu comprovante") == "EM ABERTO"
+    assert app["calcular_status_automatico"]("", "") == "EM ABERTO"
     assert app["calcular_status_automatico"]("cliente pediu comprovante", "13:44") == "FINALIZADO"
     assert app["calcular_status_automatico"]("deslocamento", "13:44") == "DESLOCAMENTO"
 
