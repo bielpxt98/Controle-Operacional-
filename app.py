@@ -183,35 +183,34 @@ def aplicar_padronizacao_motoristas(df_preview):
     return total
 
 
-def calcular_status_automatico(observacoes):
-    """Calcula STATUS exclusivamente a partir do campo O/observações."""
+def calcular_status_automatico(observacoes, f_horario=None):
+    """Calcula STATUS pela prioridade oficial: O, BLOQUEIO, FI e EM ABERTO."""
     obs = limpar_busca(observacoes)
-    tem_bloqueio = bool(re.search(r"\bBLOQ(?:UEIO)?\b", obs))
-    tem_deslocamento = "DESLOC" in obs
 
-    if tem_bloqueio and tem_deslocamento:
-        return "BLOQUEIO / DESLOCAMENTO"
-    if tem_bloqueio:
-        return "BLOQUEIO"
-    if tem_deslocamento:
+    if "DESLOC" in obs:
         return "DESLOCAMENTO"
-    return "FINALIZADO"
+    if re.search(r"\bBLOQ(?:UEIO)?\b", obs):
+        return "BLOQUEIO"
+    if texto(f_horario):
+        return "FINALIZADO"
+    return "EM ABERTO"
 
 
 def preview_atualizacao_status(df_base):
-    colunas = ["id", "status_atual", "status_novo", "delivery", "cliente", "observacoes"]
+    colunas = ["id", "status_atual", "status_novo", "delivery", "cliente", "f_horario", "observacoes"]
     if df_base.empty:
         return pd.DataFrame(columns=colunas)
 
     registros = []
     for _, row in df_base.iterrows():
-        novo_status = calcular_status_automatico(row.get("observacoes", ""))
+        novo_status = calcular_status_automatico(row.get("observacoes", ""), row.get("f_horario", ""))
         registros.append({
             "id": row.get("id"),
             "status_atual": texto(row.get("status")),
             "status_novo": novo_status,
             "delivery": row.get("delivery", ""),
             "cliente": row.get("cliente", ""),
+            "f_horario": row.get("f_horario", ""),
             "observacoes": row.get("observacoes", ""),
         })
 
@@ -219,7 +218,7 @@ def preview_atualizacao_status(df_base):
 
 
 def resumo_preview_status(df_preview):
-    status_possiveis = ["FINALIZADO", "BLOQUEIO", "DESLOCAMENTO", "BLOQUEIO / DESLOCAMENTO"]
+    status_possiveis = ["DESLOCAMENTO", "BLOQUEIO", "FINALIZADO", "EM ABERTO"]
     contagem = df_preview["status_novo"].value_counts() if not df_preview.empty else pd.Series(dtype=int)
     return {status: int(contagem.get(status, 0)) for status in status_possiveis}
 
@@ -1164,7 +1163,7 @@ def montar_registro(row):
         "c_horario": normalizar_horario(row.get("c_horario", "")) or None,
         "f_horario": normalizar_horario(row.get("f_horario", "")) or None,
         "tipo": texto(row.get("tipo", "")) or None,
-        "status": calcular_status_automatico(row.get("observacoes", "")),
+        "status": calcular_status_automatico(row.get("observacoes", ""), row.get("f_horario", "")),
         "observacoes": normalizar_observacao(row.get("observacoes", "")),
         "inconsistencias": texto(row.get("inconsistencias", "")) or None,
         "confianca": texto(row.get("confianca", "")) or None,
@@ -1259,7 +1258,7 @@ def parse_atualizacao_rapida(linha):
     if observacao_bd:
         campos["observacoes"] = observacao_bd
 
-    campos["status"] = calcular_status_automatico(campos.get("observacoes", ""))
+    campos["status"] = calcular_status_automatico(campos.get("observacoes", ""), campos.get("f_horario"))
 
     if campos.get("observacoes"):
         obs_lower = campos["observacoes"].lower()
@@ -1743,7 +1742,7 @@ def buscar_coletas_por_conversa(df_base, parsed):
     return resultado[mascara].copy()
 
 
-def campos_atualizacao_conversa(parsed):
+def campos_atualizacao_conversa(parsed, f_horario_atual=None):
     campos = {
         "atualizado_em": datetime.now().isoformat(),
     }
@@ -1757,12 +1756,20 @@ def campos_atualizacao_conversa(parsed):
         campos["cliente"] = normalizar_cliente_rapido(parsed["novo_cliente"])
     if parsed.get("observacoes"):
         campos["observacoes"] = parsed["observacoes"]
-        campos["status"] = calcular_status_automatico(parsed["observacoes"])
+    if parsed.get("observacoes") or parsed.get("horario"):
+        campos["status"] = calcular_status_automatico(
+            campos.get("observacoes", ""),
+            campos.get("f_horario") or f_horario_atual,
+        )
     return completar_dados_motorista(campos) if campos.get("motorista") else campos
 
 
 def atualizar_conversa_no_supabase(id_registro, parsed):
-    supabase.table("deliveries").update(campos_atualizacao_conversa(parsed)).eq(
+    atual = supabase.table("deliveries").select("f_horario").eq("id", int(id_registro)).limit(1).execute()
+    dados_atuais = atual.data[0] if atual.data else {}
+    supabase.table("deliveries").update(
+        campos_atualizacao_conversa(parsed, dados_atuais.get("f_horario"))
+    ).eq(
         "id",
         int(id_registro),
     ).execute()
@@ -1815,7 +1822,7 @@ def status_visual(row):
     status = texto(row.get("status")).upper()
     fi = texto(row.get("f_horario"))
     if not status and not fi:
-        return "PENDENTE"
+        return "EM ABERTO"
     if not status and fi:
         return "FINALIZADO"
     return status
@@ -2557,7 +2564,7 @@ if pagina_atual == "busca":
                             "c_horario": normalizar_horario(c_h) or None,
                             "f_horario": normalizar_horario(f_h) or None,
                             "tipo": tipo or None,
-                            "status": calcular_status_automatico(observacoes),
+                            "status": calcular_status_automatico(observacoes, f_h),
                             "confianca": confianca or None,
                             "cpf": cpf or None,
                             "cavalo": cavalo or None,
@@ -3282,17 +3289,17 @@ if pagina_atual == "admin":
         st.divider()
         st.subheader("Atualizar status automaticamente")
         st.caption(
-            "Recalcula somente o campo STATUS a partir do campo O/observações: "
-            "BLOQUEIO, DESLOCAMENTO, BLOQUEIO / DESLOCAMENTO ou FINALIZADO."
+            "Recalcula somente o campo STATUS pela regra oficial: "
+            "DESLOCAMENTO, BLOQUEIO, FINALIZADO ou EM ABERTO."
         )
 
         preview_status = preview_atualizacao_status(df_atual)
         resumo_status = resumo_preview_status(preview_status)
         c_status1, c_status2, c_status3, c_status4 = st.columns(4)
-        c_status1.metric("FINALIZADO", resumo_status["FINALIZADO"])
+        c_status1.metric("DESLOCAMENTO", resumo_status["DESLOCAMENTO"])
         c_status2.metric("BLOQUEIO", resumo_status["BLOQUEIO"])
-        c_status3.metric("DESLOCAMENTO", resumo_status["DESLOCAMENTO"])
-        c_status4.metric("BLOQUEIO / DESLOCAMENTO", resumo_status["BLOQUEIO / DESLOCAMENTO"])
+        c_status3.metric("FINALIZADO", resumo_status["FINALIZADO"])
+        c_status4.metric("EM ABERTO", resumo_status["EM ABERTO"])
 
         alteracoes_status = preview_status[
             preview_status["status_atual"].fillna("") != preview_status["status_novo"].fillna("")
@@ -3307,6 +3314,7 @@ if pagina_atual == "admin":
                     "status_novo": "STATUS novo",
                     "delivery": "Delivery",
                     "cliente": "Cliente",
+                    "f_horario": "FINALIZADO",
                     "observacoes": "O/Observações",
                 }),
                 use_container_width=True,
