@@ -30,6 +30,7 @@ FUNCOES_NECESSARIAS = {
     "parse_atualizacao_conversa",
     "campos_atualizacao_conversa",
     "buscar_coletas_por_conversa",
+    "cliente_combina",
     "parse_atualizacao_rapida",
     "resumo_atualizacao_rapida",
     "numero_operacional_visual",
@@ -88,11 +89,65 @@ def test_conversa_bloqueio_com_observacao_livre_concatena_o_campo_o():
     assert erro is None
     assert parsed["horario"] == "16:22"
     assert parsed["acao"] == "BLOQUEIO"
-    assert parsed["observacoes"] == "BLOQUEIO 16:22 | CLIENTE NAO QUIS CARREGAR"
+    assert parsed["observacoes"] == "BLOQUEIO AS 16:22 | CLIENTE NAO QUIS CARREGAR"
 
     campos = app["campos_atualizacao_conversa"](parsed)
     assert campos["f_horario"] == "16:22"
-    assert campos["observacoes"] == "BLOQUEIO 16:22 | CLIENTE NAO QUIS CARREGAR"
+    assert campos["observacoes"] == "BLOQUEIO AS 16:22 | CLIENTE NAO QUIS CARREGAR"
+
+
+def test_conversa_atualiza_l_c_pc_por_frase_natural_e_confirma_sem_setas():
+    app = carregar_funcoes_app()
+    df = pd.DataFrame([
+        {"id": 1, "delivery": "3787849356", "cliente": "GMF", "motorista": "FABIO", "l_horario": "", "c_horario": "", "f_horario": ""},
+    ])
+
+    parsed, erro = app["parse_atualizacao_conversa"](
+        "fabio chegou a GMF 9356 as 08:02 e coletou as 09:24 PC 76"
+    )
+    resultados = app["buscar_coletas_por_conversa"](df, parsed)
+    campos = app["campos_atualizacao_conversa"](parsed)
+    resumo = app["resumo_confirmacao_conversa"](resultados.iloc[0].to_dict(), parsed)
+
+    assert erro is None
+    assert len(resultados) == 1
+    assert campos["l_horario"] == "08:02"
+    assert campos["c_horario"] == "09:24"
+    assert campos["pc"] == 76
+    assert "paletes_coletados" not in campos
+    assert "D 3787849356\nM FABIO\nCL GMF\n\nALTERAÇÕES:\nL 08:02\nC 09:24\nPC 76" in resumo
+
+
+def test_conversa_filtra_por_cliente_quando_final_tem_mais_de_um_resultado():
+    app = carregar_funcoes_app()
+    df = pd.DataFrame([
+        {"id": 1, "delivery": "3787849356", "cliente": "OUTRO", "motorista": "FABIO", "f_horario": ""},
+        {"id": 2, "delivery": "3400009356", "cliente": "GMF", "motorista": "FABIO", "f_horario": ""},
+    ])
+
+    parsed, erro = app["parse_atualizacao_conversa"]("fabio chegou a GMF 9356 as 08:02 PC 76")
+    resultados = app["buscar_coletas_por_conversa"](df, parsed)
+
+    assert erro is None
+    assert resultados["id"].tolist() == [2]
+
+
+def test_conversa_deslocamento_e_bloqueio_salvam_fi_observacao_e_status():
+    app = carregar_funcoes_app()
+
+    deslocamento, erro = app["parse_atualizacao_conversa"]("D 3787849356 deslocamento as 14:05")
+    campos_deslocamento = app["campos_atualizacao_conversa"](deslocamento)
+    bloqueio, erro_bloqueio = app["parse_atualizacao_conversa"]("D 3787849356 bloqueio as 16:20")
+    campos_bloqueio = app["campos_atualizacao_conversa"](bloqueio)
+
+    assert erro is None
+    assert campos_deslocamento["f_horario"] == "14:05"
+    assert campos_deslocamento["observacoes"] == "DESLOCAMENTO AS 14:05"
+    assert campos_deslocamento["status"] == "DESLOCAMENTO"
+    assert erro_bloqueio is None
+    assert campos_bloqueio["f_horario"] == "16:20"
+    assert campos_bloqueio["observacoes"] == "BLOQUEIO AS 16:20"
+    assert campos_bloqueio["status"] == "BLOQUEIO"
 
 
 def test_conversa_detecta_consulta_por_comandos_iniciais_sem_confundir_atualizacao():
@@ -424,7 +479,7 @@ def test_conversa_altera_motorista_por_aliases_e_alteracao_conjunta():
     assert campos["cliente"] == "ASSAÍ URUGUAI"
 
 
-def test_resumo_confirmacao_conversa_mostra_coleta_encontrada_e_alteracoes_com_seta_textual():
+def test_resumo_confirmacao_conversa_mostra_coleta_encontrada_e_alteracoes_sem_seta():
     app = carregar_funcoes_app()
     parsed, erro = app["parse_atualizacao_conversa"]("delivery 3787832285 mudar CL ASSAÍ URUGUAI")
 
@@ -433,7 +488,7 @@ def test_resumo_confirmacao_conversa_mostra_coleta_encontrada_e_alteracoes_com_s
     assert erro is None
     assert "COLETA ENCONTRADA" in resumo
     assert "ALTERAÇÕES:" in resumo
-    assert "CL -> ASSAÍ URUGUAI" in resumo
+    assert "CL ASSAÍ URUGUAI" in resumo
     assert "CONFIRMAR?" in resumo
 
 
@@ -456,20 +511,20 @@ def test_conversa_processa_l_c_fi_df_simultaneamente_em_qualquer_ordem():
     assert campos["c_horario"] == "14:58"
     assert campos["f_horario"] == "15:40"
     assert campos["data_finalizacao"] == "17/06"
-    assert "L -> 11:50" in resumo
-    assert "C -> 14:58" in resumo
-    assert "FI -> 15:40" in resumo
-    assert "DF -> 17/06" in resumo
+    assert "L 11:50" in resumo
+    assert "C 14:58" in resumo
+    assert "FI 15:40" in resumo
+    assert "DF 17/06" in resumo
 
 
 def test_conversa_processa_l_c_fi_df_individualmente():
     app = carregar_funcoes_app()
 
     casos = [
-        ("6565 L 11:50", "l_horario", "11:50", "L -> 11:50"),
-        ("6565 C 14:58", "c_horario", "14:58", "C -> 14:58"),
-        ("6565 FI 15:40", "horario", "15:40", "FI -> 15:40"),
-        ("6565 DF 17/06", "data_finalizacao", "17/06", "DF -> 17/06"),
+        ("6565 L 11:50", "l_horario", "11:50", "L 11:50"),
+        ("6565 C 14:58", "c_horario", "14:58", "C 14:58"),
+        ("6565 FI 15:40", "horario", "15:40", "FI 15:40"),
+        ("6565 DF 17/06", "data_finalizacao", "17/06", "DF 17/06"),
     ]
 
     for frase, chave, valor, linha_resumo in casos:
@@ -539,7 +594,7 @@ def test_preview_status_conta_todos_os_status_sem_alterar_outros_campos():
     assert list(preview["cliente"]) == ["A", "B", "C", "D"]
 
 
-def test_pc_nao_e_enviado_para_deliveries_e_nao_substitui_paletes():
+def test_pc_e_enviado_para_coluna_pc_e_nao_substitui_paletes():
     app = carregar_funcoes_app()
 
     parsed, erro = app["parse_atualizacao_rapida"](
@@ -548,13 +603,15 @@ def test_pc_nao_e_enviado_para_deliveries_e_nao_substitui_paletes():
 
     assert erro is None
     assert parsed["campos"]["paletes"] == 272
+    assert parsed["campos"]["pc"] == 250
     assert "paletes_coletados" not in parsed["campos"]
-    assert "PC 250" not in app["resumo_atualizacao_rapida"](parsed, "atualizado")
+    assert "PC 250" in app["resumo_atualizacao_rapida"](parsed, "atualizado")
 
     conversa, erro = app["parse_atualizacao_conversa"]("JONES 6552 PC 250")
 
     assert erro is None
     assert conversa["final_delivery"] == "6552"
+    assert app["campos_atualizacao_conversa"](conversa)["pc"] == 250
     assert "paletes_coletados" not in app["campos_atualizacao_conversa"](conversa)
 
 
