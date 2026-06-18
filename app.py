@@ -1434,8 +1434,8 @@ def normalizar_colunas(df):
             mapa[c] = "unidade"
         elif k in ["paletes", "pallets", "pallet", "p", "paletes agendados"]:
             mapa[c] = "paletes"
-        elif k in ["pc", "paletes_coletados", "paletes coletados", "pallets coletados", "pallet coletado"]:
-            mapa[c] = "paletes_coletados"
+        elif k in ["pc", "paletes coletados", "pallets coletados", "pallet coletado"]:
+            mapa[c] = "pc"
         elif k in ["valor", "frete", "valor_frete", "valor frete"]:
             mapa[c] = "valor_frete"
         elif k in ["l", "l_horario", "chegada"]:
@@ -1740,6 +1740,8 @@ def parse_atualizacao_rapida(linha):
         campos["cliente"] = normalizar_cliente_rapido(dados.get("CL")) or None
     if dados.get("P"):
         campos["paletes"] = numero(dados.get("P"))
+    if dados.get("PC"):
+        campos["pc"] = numero(dados.get("PC"))
     if dados.get("V"):
         campos["valor_frete"] = numero(dados.get("V"))
     if dados.get("L"):
@@ -1812,6 +1814,7 @@ def resumo_atualizacao_rapida(parsed, resultado):
     for rotulo, coluna in [
         ("L", "l_horario"),
         ("C", "c_horario"),
+        ("PC", "pc"),
         ("FI", "f_horario"),
         ("DF", "data_finalizacao"),
     ]:
@@ -1835,6 +1838,7 @@ PALAVRAS_COMANDO_CONVERSA = {
     "A", "AS", "ÀS", "O", "OS", "DE", "DO", "DA", "DOS", "DAS", "EM", "NO", "NA",
     "NOS", "NAS", "AO", "AOS", "ATE", "ATÉ", "PARA", "POR", "NA", "NO", "E", "AGORA",
     "MUDAR", "TROCAR", "ALTERAR", "CORRIGIR", "MOTORISTA", "CLIENTE", "CL", "M",
+    "CHEGOU", "CHEGADA", "COLETOU", "COLETA", "COLETADO", "PC",
 }
 
 
@@ -1865,7 +1869,7 @@ def normalizar_data_conversa(v):
 def extrair_campos_operacionais_conversa(frase):
     """Extrai marcadores operacionais L, C, FI, DF e PC da conversa em qualquer ordem."""
     original = texto(frase)
-    campos = {"l_horario": "", "c_horario": "", "f_horario": "", "data_finalizacao": "", "paletes_coletados": ""}
+    campos = {"l_horario": "", "c_horario": "", "f_horario": "", "data_finalizacao": "", "pc": ""}
 
     for marcador, valor in re.findall(
         r"(?<!\w)(L|C|FI|PC)\s*:?\s*([0-2]?\d[:hH][0-5]\d|[0-9]+(?:[,.][0-9]+)?)\b",
@@ -1875,7 +1879,7 @@ def extrair_campos_operacionais_conversa(frase):
         chave = limpar_busca(marcador)
         horario = normalizar_horario(valor)
         if chave == "PC":
-            campos["paletes_coletados"] = numero(valor)
+            campos["pc"] = numero(valor)
             continue
         if chave == "L":
             campos["l_horario"] = horario
@@ -1883,6 +1887,22 @@ def extrair_campos_operacionais_conversa(frase):
             campos["c_horario"] = horario
         elif chave == "FI":
             campos["f_horario"] = horario
+
+    chegada_match = re.search(
+        r"\b(?:CHEGOU|CHEGADA)\b.*?\b(?:AS|ÀS|A)\s*([0-2]?\d[:hH][0-5]\d)\b",
+        original,
+        flags=re.IGNORECASE | re.UNICODE,
+    )
+    if chegada_match and not campos["l_horario"]:
+        campos["l_horario"] = normalizar_horario(chegada_match.group(1))
+
+    coleta_match = re.search(
+        r"\b(?:COLETOU|COLETA|COLETADO)\b.*?\b(?:AS|ÀS|A)\s*([0-2]?\d[:hH][0-5]\d)\b",
+        original,
+        flags=re.IGNORECASE | re.UNICODE,
+    )
+    if coleta_match and not campos["c_horario"]:
+        campos["c_horario"] = normalizar_horario(coleta_match.group(1))
 
     data_match = re.search(
         r"\b(?:DT|DF|DATA)\s*:?\s*(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\b",
@@ -2198,14 +2218,14 @@ def parse_atualizacao_conversa(frase):
     motorista_linha, cliente_linha = extrair_contexto_linha_busca(original_sem_observacao, codigo)
     motorista = motorista_alteracao or motorista_linha or extrair_motorista_conversa(original_sem_observacao)
 
-    tem_campos_operacionais = any(campos_operacionais.get(chave) for chave in ["l_horario", "c_horario", "f_horario", "data_finalizacao", "paletes_coletados"])
+    tem_campos_operacionais = any(campos_operacionais.get(chave) for chave in ["l_horario", "c_horario", "f_horario", "data_finalizacao", "pc"])
 
     if not acao and campos_operacionais.get("f_horario"):
         acao = "FINALIZACAO"
     elif not acao and horario_generico and not tem_campos_operacionais:
         acao = "FINALIZACAO"
 
-    if not acao and not eh_alteracao and not codigo and not campos_operacionais.get("paletes_coletados"):
+    if not acao and not eh_alteracao and not codigo and not campos_operacionais.get("pc"):
         return None, "Não encontrei ação válida: finalizou, bloqueio, deslocamento, mudar, trocar ou PC."
 
     if acao and not horario:
@@ -2238,9 +2258,9 @@ def parse_atualizacao_conversa(frase):
 
     observacao_acao = None
     if acao == "BLOQUEIO":
-        observacao_acao = f"BLOQUEIO {horario}"
+        observacao_acao = f"BLOQUEIO AS {horario}"
     elif acao == "DESLOCAMENTO":
-        observacao_acao = f"DESLOCAMENTO {horario}"
+        observacao_acao = f"DESLOCAMENTO AS {horario}"
     observacoes = combinar_observacoes_conversa(observacao_acao, observacao_livre)
 
     return {
@@ -2255,7 +2275,7 @@ def parse_atualizacao_conversa(frase):
         "acao": acao,
         "observacoes": observacoes,
         "data_finalizacao": data_finalizacao,
-        "paletes_coletados": campos_operacionais.get("paletes_coletados"),
+        "pc": campos_operacionais.get("pc"),
         "tipo_atualizacao": "alteracao" if eh_alteracao and not acao else "finalizacao",
     }, None
 
@@ -2322,7 +2342,12 @@ def buscar_coletas_por_conversa(df_base, parsed):
     logger.info("DELIVERY UTILIZADO: %s", codigo_busca)
 
     if codigo_busca and mascara_codigo.any():
-        return resultado[mascara_codigo].copy()
+        encontrados = resultado[mascara_codigo].copy()
+        if parsed.get("cliente") and len(encontrados) > 1:
+            por_cliente = encontrados[encontrados["cliente"].apply(lambda v: cliente_combina(v, parsed["cliente"]))]
+            if not por_cliente.empty:
+                return por_cliente.copy()
+        return encontrados
 
     mascara = mascara_codigo
     if parsed.get("tipo_atualizacao") != "alteracao":
@@ -2347,6 +2372,8 @@ def campos_atualizacao_conversa(parsed, f_horario_atual=None):
         campos["f_horario"] = parsed["horario"]
     if parsed.get("data_finalizacao"):
         campos["data_finalizacao"] = parsed["data_finalizacao"]
+    if parsed.get("pc") not in (None, ""):
+        campos["pc"] = parsed["pc"]
     if parsed.get("novo_motorista"):
         campos["motorista"] = normalizar_motorista(parsed["novo_motorista"])
     if parsed.get("novo_cliente"):
@@ -2398,19 +2425,21 @@ def resumo_confirmacao_conversa(item, parsed):
 
     alteracoes = []
     if parsed.get("novo_motorista"):
-        alteracoes.append(f"M -> {normalizar_motorista(parsed['novo_motorista'])}")
+        alteracoes.append(f"M {normalizar_motorista(parsed['novo_motorista'])}")
     if parsed.get("novo_cliente"):
-        alteracoes.append(f"CL -> {normalizar_cliente_rapido(parsed['novo_cliente'])}")
+        alteracoes.append(f"CL {normalizar_cliente_rapido(parsed['novo_cliente'])}")
     if parsed.get("l_horario"):
-        alteracoes.append(f"L -> {parsed['l_horario']}")
+        alteracoes.append(f"L {parsed['l_horario']}")
     if parsed.get("c_horario"):
-        alteracoes.append(f"C -> {parsed['c_horario']}")
+        alteracoes.append(f"C {parsed['c_horario']}")
+    if parsed.get("pc") not in (None, ""):
+        alteracoes.append(f"PC {parsed['pc']}")
     if parsed.get("horario"):
-        alteracoes.append(f"FI -> {parsed['horario']}")
+        alteracoes.append(f"FI {parsed['horario']}")
     if parsed.get("data_finalizacao"):
-        alteracoes.append(f"DF -> {parsed['data_finalizacao']}")
+        alteracoes.append(f"DF {parsed['data_finalizacao']}")
     if parsed.get("observacoes"):
-        alteracoes.append(f"O -> {parsed['observacoes']}")
+        alteracoes.append(f"O {parsed['observacoes']}")
     if alteracoes:
         linhas.extend(["", "ALTERAÇÕES:", *alteracoes])
     linhas.extend(["", "CONFIRMAR?"])
@@ -2423,6 +2452,7 @@ def resumo_registro_salvo_conversa(item):
         f"D {texto(item.get('delivery'))}\n"
         f"L {texto(item.get('l_horario')) or '—'}\n"
         f"C {texto(item.get('c_horario')) or '—'}\n"
+        f"PC {texto(item.get('pc')) or '—'}\n"
         f"FI {texto(item.get('f_horario')) or '—'}\n"
         f"DF {texto(item.get('data_finalizacao')) or '—'}"
     )
@@ -2431,10 +2461,10 @@ def resumo_registro_salvo_conversa(item):
 
 
 COLUNAS_PRINCIPAIS_VISUAL = [
-    "id", "data", "motorista", "delivery", "cliente", "paletes", "paletes_coletados", "valor_frete",
+    "id", "data", "motorista", "delivery", "cliente", "paletes", "pc", "valor_frete",
     "l_horario", "c_horario", "f_horario", "status", "observacoes",
 ]
-ROTULOS_COLUNAS_VISUAL = {"id": "ID", "data": "DATA", "motorista": "MOTORISTA", "delivery": "DELIVERY", "cliente": "CLIENTE", "paletes": "PALETES", "paletes_coletados": "PC", "valor_frete": "VALOR", "l_horario": "LOCAL", "c_horario": "COLETADO", "f_horario": "FINALIZADO", "status": "STATUS", "observacoes": "OBSERVAÇÕES"}
+ROTULOS_COLUNAS_VISUAL = {"id": "ID", "data": "DATA", "motorista": "MOTORISTA", "delivery": "DELIVERY", "cliente": "CLIENTE", "paletes": "PALETES", "pc": "PC", "valor_frete": "VALOR", "l_horario": "LOCAL", "c_horario": "COLETADO", "f_horario": "FINALIZADO", "status": "STATUS", "observacoes": "OBSERVAÇÕES"}
 COLUNAS_DETALHES_VISUAL = ["id", "cpf", "cavalo", "carreta", "sr", "data_finalizacao"]
 ROTULOS_DETALHES_VISUAL = {"id": "ID", "cpf": "CPF", "cavalo": "CAVALO", "carreta": "CARRETA", "sr": "SR", "data_finalizacao": "DATA FINALIZAÇÃO"}
 
