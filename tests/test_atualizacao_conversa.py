@@ -41,6 +41,9 @@ FUNCOES_NECESSARIAS = {
     "preview_atualizacao_status",
     "resumo_preview_status",
     "resumo_confirmacao_conversa",
+    "normalizar_chave_cliente_cnpj",
+    "formatar_cnpj_cliente",
+    "aplicar_cnpjs_clientes_cadastrados",
 }
 
 CONSTANTES_NECESSARIAS = {
@@ -547,3 +550,19 @@ def test_pc_atualizacao_rapida_e_conversa_sem_substituir_paletes():
     assert conversa["final_delivery"] == "6552"
     assert conversa["paletes_coletados"] == 250
     assert app["campos_atualizacao_conversa"](conversa)["paletes_coletados"] == 250
+
+
+def test_conversacao_enriquece_cnpj_da_tabela_clientes_sem_mensagem_de_nao_encontrado():
+    app = carregar_funcoes_app()
+    coletas = pd.DataFrame([
+        {"delivery": "3787849414", "cliente": "DROGARIA SÃO PAULO", "cidade": "LAURO DE FREITAS", "motorista": "JONES ROSARIO"},
+        {"delivery": "3787849356", "cliente": "GMF", "cidade": "FEIRA DE SANTANA", "motorista": "FABIO SOUZA"},
+    ])
+    clientes = pd.DataFrame([
+        {"cliente": "DROGARIA SAO PAULO", "cidade": "LAURO DE FREITAS", "cnpj": "61412110062002"},
+    ])
+
+    enriquecido = app["aplicar_cnpjs_clientes_cadastrados"](coletas, clientes)
+
+    assert enriquecido.loc[0, "cnpj"] == "61.412.110/0620-02"
+    assert enriquecido.loc[1, "cnpj"] == ""
