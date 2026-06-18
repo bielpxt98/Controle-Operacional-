@@ -400,3 +400,21 @@ def test_status_mostra_pc_somente_quando_preenchido(tmp_path):
     assert "PC 250" in resposta_com_pc
     assert "P 272" not in resposta_com_pc
     assert "PC" not in resposta_sem_pc
+
+class ConsultaAdministrativaTest(unittest.TestCase):
+    def test_coletas_de_hoje_formato_cliente_cidade_sigla_e_cnpj(self):
+        hoje = date.today().strftime("%d/%m/%Y")
+        df = pd.DataFrame([
+            {"data": hoje, "motorista": "Fabio", "delivery": "3787849356", "cliente": "GMF", "cidade": "FEIRA DE SANTANA", "cnpj": "XX.XXX.XXX/XXXX-XX"},
+            {"data": hoje, "motorista": "Jones", "delivery": "3787849414", "cliente": "DROGARIA SÃO PAULO", "cidade": "LAURO DE FREITAS", "cnpj": "YY.YYY.YYY/YYYY-YY"},
+        ])
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "coletas_hoje.csv"
+            df.to_csv(caminho, index=False)
+
+            resposta = responder_pergunta("COLETAS DE HOJE", str(caminho))
+
+            self.assertIn("3787849356 - GMF (FEIRA DE SANTANA) - @FA", resposta)
+            self.assertIn("3787849414 - DROGARIA SAO PAULO (LAURO DE FREITAS) - @JO", resposta)
+            self.assertIn("CNPJ: XX.XXX.XXX/XXXX-XX", resposta)
+            self.assertNotIn("GMF - FEIRA DE SANTANA", resposta)

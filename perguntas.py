@@ -70,6 +70,8 @@ COLUNAS_PADRAO = {
     "observação": "observacoes",
     "observacoes": "observacoes",
     "observações": "observacoes",
+    "cidade": "cidade",
+    "cnpj": "cnpj",
     "obs": "observacoes",
     "o": "observacoes",
 }
@@ -90,6 +92,8 @@ COLUNAS_NECESSARIAS = [
     "paletes_coletados",
     "l_horario",
     "data_finalizacao",
+    "cidade",
+    "cnpj",
 ]
 
 
@@ -192,6 +196,58 @@ def _normalizar_motorista(valor: object) -> str:
             return nome_completo
     return nome
 
+
+
+SIGLAS_MOTORISTAS = {
+    "JONES": "@JO",
+    "JONES ROSARIO": "@JO",
+    "JEAN": "@JE",
+    "JEAN ROBSON": "@JE",
+    "GABRIEL": "@GA",
+    "GABRIEL BORGES": "@GA",
+    "FABIO": "@FA",
+    "FABIO SOUZA": "@FA",
+    "ARGEMIRO": "@AR",
+    "ARGEMIRO BORGES": "@AR",
+    "ARIEL": "@AI",
+    "ARIEL NASCIMENTO": "@AI",
+    "WILSON": "@WI",
+    "WILSON REIS": "@WI",
+    "LUIS": "@LU",
+    "LUIS CARLOS": "@LU",
+}
+
+
+def _sigla_motorista(valor: object) -> str:
+    nome = _normalizar_motorista(valor)
+    return SIGLAS_MOTORISTAS.get(nome, f"@{nome[:2]}" if nome else "@--")
+
+
+def _cliente_cidade_formatado(row: pd.Series) -> str:
+    cliente = _sem_acentos(row.get("cliente"))
+    cidade = _sem_acentos(row.get("cidade"))
+    if not cidade and cliente:
+        partes = cliente.split()
+        bases = {"ASSAI", "ATAKAREJO", "GMF", "WMS", "MERCANTIL"}
+        if len(partes) > 1 and partes[0] in bases:
+            cliente, cidade = partes[0], " ".join(partes[1:])
+    return f"{cliente} ({cidade})" if cidade else cliente
+
+
+def _linha_coleta_admin(row: pd.Series, incluir_cnpj: bool = False) -> str:
+    delivery = str(row.get("delivery") or row.get("sr") or "").strip()
+    linha = f"{delivery} - {_cliente_cidade_formatado(row)} - {_sigla_motorista(row.get('motorista'))}"
+    cnpj = str(row.get("cnpj") or "").strip()
+    if incluir_cnpj and cnpj and cnpj.lower() not in {"nan", "none", "null"}:
+        linha += f"\nCNPJ: {cnpj}"
+    return linha
+
+
+def _responder_coletas_hoje_admin(df: pd.DataFrame) -> str:
+    base = _periodo_hoje(df)
+    if base.empty:
+        return "Nenhuma coleta encontrada para hoje."
+    return "\n\n".join(_linha_coleta_admin(row, incluir_cnpj=True) for _, row in base.iterrows())
 
 def _normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
     logger.debug("Normalizando dataframe para perguntas. Colunas originais: %s", list(df.columns))
@@ -858,6 +914,9 @@ def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
     df_mes = _periodo_mes(df)
     motorista = _extrair_motorista(pergunta, df["motorista"].dropna().astype(str))
     veiculo = _extrair_veiculo(pergunta)
+
+    if re.fullmatch(r"\s*COLETAS\s+DE\s+HOJE\s*", pergunta_norm):
+        return _responder_coletas_hoje_admin(df)
 
     if (
         ("STATUS" in pergunta_norm or "CONSULTAR" in pergunta_norm or re.search(r"\bCOMO\s+(?:ESTA|ESTÁ)\b", pergunta_norm))
