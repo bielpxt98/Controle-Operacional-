@@ -6,3 +6,5 @@ xlsxwriter
 google-genai
 Pillow
 streamlit-cropper
+
+extra-streamlit-components
