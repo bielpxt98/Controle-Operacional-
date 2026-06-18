@@ -17,6 +17,7 @@ FUNCOES_NECESSARIAS = {
     "limpar_codigo_delivery",
     "parece_delivery_completo",
     "normalizar_data_conversa",
+    "extrair_campos_operacionais_conversa",
     "identificar_acao_conversa",
     "extrair_motorista_conversa",
     "extrair_codigo_conversa",
@@ -320,6 +321,60 @@ def test_resumo_confirmacao_conversa_mostra_coleta_encontrada_e_alteracoes_com_s
     assert "ALTERAÇÕES:" in resumo
     assert "CL -> ASSAÍ URUGUAI" in resumo
     assert "CONFIRMAR?" in resumo
+
+
+def test_conversa_processa_l_c_fi_df_simultaneamente_em_qualquer_ordem():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_atualizacao_conversa"]("ARGEMIRO 6565 L 11:50 C 14:58 FI 15:40 DF 17/06")
+    campos = app["campos_atualizacao_conversa"](parsed)
+    resumo = app["resumo_confirmacao_conversa"](
+        {"delivery": "3787816565", "motorista": "ARGEMIRO", "cliente": "DIST SÃO ROQUE F.S"},
+        parsed,
+    )
+
+    assert erro is None
+    assert parsed["l_horario"] == "11:50"
+    assert parsed["c_horario"] == "14:58"
+    assert parsed["horario"] == "15:40"
+    assert parsed["data_finalizacao"] == "17/06"
+    assert campos["l_horario"] == "11:50"
+    assert campos["c_horario"] == "14:58"
+    assert campos["f_horario"] == "15:40"
+    assert campos["data_finalizacao"] == "17/06"
+    assert "L -> 11:50" in resumo
+    assert "C -> 14:58" in resumo
+    assert "FI -> 15:40" in resumo
+    assert "DF -> 17/06" in resumo
+
+
+def test_conversa_processa_l_c_fi_df_individualmente():
+    app = carregar_funcoes_app()
+
+    casos = [
+        ("6565 L 11:50", "l_horario", "11:50", "L -> 11:50"),
+        ("6565 C 14:58", "c_horario", "14:58", "C -> 14:58"),
+        ("6565 FI 15:40", "horario", "15:40", "FI -> 15:40"),
+        ("6565 DF 17/06", "data_finalizacao", "17/06", "DF -> 17/06"),
+    ]
+
+    for frase, chave, valor, linha_resumo in casos:
+        parsed, erro = app["parse_atualizacao_conversa"](frase)
+        campos = app["campos_atualizacao_conversa"](parsed)
+        resumo = app["resumo_confirmacao_conversa"]({"delivery": "3787816565"}, parsed)
+
+        assert erro is None
+        assert parsed[chave] == valor
+        assert linha_resumo in resumo
+        if chave == "l_horario":
+            assert campos["l_horario"] == valor
+        elif chave == "c_horario":
+            assert campos["c_horario"] == valor
+        elif chave == "horario":
+            assert campos["f_horario"] == valor
+        elif chave == "data_finalizacao":
+            assert campos["data_finalizacao"] == valor
+
 
 def test_status_automatico_regras_observacao():
     app = carregar_funcoes_app()

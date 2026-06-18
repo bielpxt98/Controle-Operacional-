@@ -1334,6 +1334,35 @@ def normalizar_data_conversa(v):
     return f"{dia}/{mes}/{ano}"
 
 
+def extrair_campos_operacionais_conversa(frase):
+    """Extrai marcadores operacionais L, C, FI e DF da conversa em qualquer ordem."""
+    original = texto(frase)
+    campos = {"l_horario": "", "c_horario": "", "f_horario": "", "data_finalizacao": ""}
+
+    for marcador, valor in re.findall(
+        r"(?<!\w)(L|C|FI)\s*:?\s*([0-2]?\d[:hH][0-5]\d)\b",
+        original,
+        flags=re.IGNORECASE | re.UNICODE,
+    ):
+        chave = limpar_busca(marcador)
+        horario = normalizar_horario(valor)
+        if chave == "L":
+            campos["l_horario"] = horario
+        elif chave == "C":
+            campos["c_horario"] = horario
+        elif chave == "FI":
+            campos["f_horario"] = horario
+
+    data_match = re.search(
+        r"\b(?:DT|DF|DATA)\s*:?\s*(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\b",
+        original,
+        flags=re.IGNORECASE | re.UNICODE,
+    )
+    if data_match:
+        campos["data_finalizacao"] = normalizar_data_conversa(data_match.group(1))
+
+    return campos
+
 def identificar_acao_conversa(frase):
     texto_sem_marcador_delivery = re.sub(
         r"(?<!\w)(?:D|DELIVERY|REMESSA)\s*:?\s*\d{4,}\b",
@@ -1616,12 +1645,11 @@ def parse_atualizacao_conversa(frase):
     observacao_livre = extrair_observacao_livre_conversa(original)
     original_sem_observacao = remover_observacao_livre_conversa(original) if observacao_livre else original
 
+    campos_operacionais = extrair_campos_operacionais_conversa(original_sem_observacao)
     horario_match = re.search(r"\b([0-2]?\d[:hH][0-5]\d)\b", original_sem_observacao)
-    horario = normalizar_horario(horario_match.group(1)) if horario_match else ""
-    data_finalizacao = ""
-    data_match = re.search(r"\b(?:DT|DF|DATA)\s*(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\b", original_sem_observacao, flags=re.IGNORECASE)
-    if data_match:
-        data_finalizacao = normalizar_data_conversa(data_match.group(1))
+    horario_generico = normalizar_horario(horario_match.group(1)) if horario_match else ""
+    horario = campos_operacionais.get("f_horario") or horario_generico
+    data_finalizacao = campos_operacionais.get("data_finalizacao", "")
 
     codigo = extrair_codigo_conversa(original_sem_observacao)
     acao = identificar_acao_conversa(original_sem_observacao)
@@ -1636,7 +1664,11 @@ def parse_atualizacao_conversa(frase):
     motorista_linha, cliente_linha = extrair_contexto_linha_busca(original_sem_observacao, codigo)
     motorista = motorista_alteracao or motorista_linha or extrair_motorista_conversa(original_sem_observacao)
 
-    if not acao and horario:
+    tem_campos_operacionais = any(campos_operacionais.get(chave) for chave in ["l_horario", "c_horario", "f_horario", "data_finalizacao"])
+
+    if not acao and campos_operacionais.get("f_horario"):
+        acao = "FINALIZACAO"
+    elif not acao and horario_generico and not tem_campos_operacionais:
         acao = "FINALIZACAO"
 
     if not acao and not eh_alteracao and not codigo:
@@ -1647,7 +1679,8 @@ def parse_atualizacao_conversa(frase):
 
     texto_cliente = re.sub(r"\b[0-2]?\d[:hH][0-5]\d\b", " ", original_sem_observacao)
     texto_cliente = re.sub(r"\b\d{4,}\b", " ", texto_cliente)
-    texto_cliente = re.sub(r"\b(?:DT|DF|DATA)\s*\d{1,2}/\d{1,2}(?:/\d{2,4})?\b", " ", texto_cliente, flags=re.IGNORECASE)
+    texto_cliente = re.sub(r"\b(?:L|C|FI)\s*:?\s*[0-2]?\d[:hH][0-5]\d\b", " ", texto_cliente, flags=re.IGNORECASE)
+    texto_cliente = re.sub(r"\b(?:DT|DF|DATA)\s*:?\s*\d{1,2}/\d{1,2}(?:/\d{2,4})?\b", " ", texto_cliente, flags=re.IGNORECASE)
 
     palavras_remover = set(PALAVRAS_COMANDO_CONVERSA)
     if motorista:
@@ -1678,7 +1711,9 @@ def parse_atualizacao_conversa(frase):
 
     return {
         "motorista": motorista,
-        "horario": horario,
+        "horario": campos_operacionais.get("f_horario") or (horario if acao else ""),
+        "l_horario": campos_operacionais.get("l_horario", ""),
+        "c_horario": campos_operacionais.get("c_horario", ""),
         "final_delivery": codigo,
         "cliente": cliente_contexto,
         "novo_motorista": motorista_alteracao,
@@ -1769,6 +1804,10 @@ def campos_atualizacao_conversa(parsed, f_horario_atual=None):
     campos = {
         "atualizado_em": datetime.now().isoformat(),
     }
+    if parsed.get("l_horario"):
+        campos["l_horario"] = parsed["l_horario"]
+    if parsed.get("c_horario"):
+        campos["c_horario"] = parsed["c_horario"]
     if parsed.get("horario"):
         campos["f_horario"] = parsed["horario"]
     if parsed.get("data_finalizacao"):
@@ -1810,6 +1849,10 @@ def resumo_confirmacao_conversa(item, parsed):
         alteracoes.append(f"M -> {normalizar_motorista(parsed['novo_motorista'])}")
     if parsed.get("novo_cliente"):
         alteracoes.append(f"CL -> {normalizar_cliente_rapido(parsed['novo_cliente'])}")
+    if parsed.get("l_horario"):
+        alteracoes.append(f"L -> {parsed['l_horario']}")
+    if parsed.get("c_horario"):
+        alteracoes.append(f"C -> {parsed['c_horario']}")
     if parsed.get("horario"):
         alteracoes.append(f"FI -> {parsed['horario']}")
     if parsed.get("data_finalizacao"):
