@@ -432,10 +432,30 @@ class ConsultaAdministrativaTest(unittest.TestCase):
             resposta = responder_pergunta("COLETAS DE HOJE", str(caminho))
 
             self.assertIn("3787849356 - GMF (FEIRA DE SANTANA) - @FA", resposta)
-            self.assertIn("3787849367 - WMS (MAX ATACADO CABULA) - @AR", resposta)
+            self.assertIn("3787849367 - WMS MAX ATACADO CABULA - @AR", resposta)
             self.assertNotIn("CLIENTE NÃO CADASTRADO", resposta)
             self.assertNotIn("CNPJ NÃO ENCONTRADO", resposta)
             self.assertNotIn("CNPJ:", resposta)
+
+
+    def test_coletas_de_hoje_normaliza_nome_exibicao_wms_e_abreviacoes(self):
+        hoje = date.today().strftime("%d/%m/%Y")
+        df = pd.DataFrame([
+            {"data": hoje, "motorista": "Ariel", "delivery": "3787849310", "cliente": "WMS (MAX ATACADO BARROS REIS)", "cidade": None, "cnpj": pd.NA},
+            {"data": hoje, "motorista": "Ariel", "delivery": "3787849311", "cliente": "WMS MAX ATACADO REITOR MIGUEL (S.F)", "cidade": None, "cnpj": pd.NA},
+            {"data": hoje, "motorista": "Argemiro", "delivery": "3787849312", "cliente": "WMS MAX ATACADO", "cidade": "L.F", "cnpj": "12.345.678/0001-90"},
+        ])
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "coletas_wms.csv"
+            df.to_csv(caminho, index=False)
+
+            resposta = responder_pergunta("COLETAS DE HOJE", str(caminho))
+
+            self.assertIn("3787849310 - WMS MAX ATACADO (BARROS REIS) - @AI", resposta)
+            self.assertIn("3787849311 - WMS MAX ATACADO REITOR MIGUEL (SIMOES FILHO) - @AI", resposta)
+            self.assertIn("3787849312 - WMS MAX ATACADO (LAURO DE FREITAS) - @AR", resposta)
+            self.assertIn("CNPJ: 12.345.678/0001-90", resposta)
+            self.assertNotIn("WMS (MAX ATACADO", resposta)
 
     def test_coletas_de_ontem_e_do_dia_usam_formato_admin(self):
         ontem = date.today() - timedelta(days=1)
