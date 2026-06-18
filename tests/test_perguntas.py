@@ -106,11 +106,12 @@ class PerguntasTest(unittest.TestCase):
             ]
         ).to_csv(caminho, index=False)
 
-        for pergunta in ["STATUS 17/06", "STATUS DE 17/06", "STATUS DIA 17/06", "COLETAS DE 17/06", "STATUS DO DIA 17/06/2026"]:
+        for pergunta in ["STATUS 17/06", "STATUS DE 17/06", "STATUS DIA 17/06", "STATUS DO DIA 17/06/2026", "STATUS DIA 17"]:
             resposta = responder_pergunta(pergunta, str(caminho))
-            self.assertIn(f"DATA {data_consulta.strftime('%d/%m/%Y')} M FABIO SOUZA D 3787807939", resposta)
-            self.assertIn("P 272", resposta)
-            self.assertIn("V 1.468,13", resposta)
+            self.assertIn("D 3787807939 M FABIO SOUZA CL COMERCIAL SEIS IRMÃOS L 12:23 FI 16:04", resposta)
+            self.assertNotIn("DATA", resposta)
+            self.assertNotIn("P 272", resposta)
+            self.assertNotIn("V 1.468,13", resposta)
             self.assertNotIn("3787805566", resposta)
 
     def test_status_por_periodo_hoje_ontem_e_em_aberto_hoje(self):
@@ -159,7 +160,7 @@ class PerguntasTest(unittest.TestCase):
         self.assertNotIn("3787807939", resposta_motorista)
 
         resposta_status_motorista = responder_pergunta("STATUS FABIO", str(caminho))
-        self.assertIn("M FABIO SOUZA D 3787807939", resposta_status_motorista)
+        self.assertIn("D 3787807939 M FABIO SOUZA", resposta_status_motorista)
         self.assertNotIn("3787805454", resposta_status_motorista)
 
         for pergunta in ["STATUS 5454", "STATUS DELIVERY 3787805454", "COMO ESTÁ A 5454", "CONSULTAR 5454"]:
@@ -264,14 +265,16 @@ class PerguntasTest(unittest.TestCase):
         self.assertNotIn("V 992,17", status)
         self.assertEqual(
             status,
-            "D 3787849414\nM JONES ROSARIO\nCL DROGARIA SÃO PAULO\nL 08:15\nC 10:34\nFI 11:00",
+            "D 3787849414 M JONES ROSARIO CL DROGARIA SÃO PAULO L 08:15 C 10:34 FI 11:00",
         )
 
         status_como_esta = responder_pergunta("COMO ESTÁ A 9414", str(caminho))
         self.assertEqual(status_como_esta, status)
 
         hoje_resposta = responder_pergunta("STATUS DE HOJE", str(caminho))
-        self.assertIn("DATA", hoje_resposta)
+        self.assertNotIn("DATA", hoje_resposta)
+        self.assertNotIn("P 476", hoje_resposta)
+        self.assertNotIn("V 2.189,60", hoje_resposta)
         self.assertIn("D 3787849356", hoje_resposta)
         self.assertIn("D 3787849414", hoje_resposta)
 

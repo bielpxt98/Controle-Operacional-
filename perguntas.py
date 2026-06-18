@@ -26,6 +26,10 @@ COLUNAS_PADRAO = {
     "dt": "data",
     "data coleta": "data",
     "data_coleta": "data",
+    "data finalizacao": "data_finalizacao",
+    "data finalização": "data_finalizacao",
+    "data_finalizacao": "data_finalizacao",
+    "df": "data_finalizacao",
     "motorista": "motorista",
     "driver": "motorista",
     "delivery": "delivery",
@@ -80,6 +84,7 @@ COLUNAS_NECESSARIAS = [
     "status",
     "paletes",
     "l_horario",
+    "data_finalizacao",
 ]
 
 
@@ -359,13 +364,24 @@ def _extrair_veiculo(pergunta: str) -> str:
 
 def _extrair_data_especifica(pergunta: str) -> pd.Timestamp | None:
     match = re.search(r"\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b", pergunta)
-    if not match:
+    if match:
+        dia, mes, ano = match.groups()
+        ano = ano or str(date.today().year)
+        if len(ano) == 2:
+            ano = "20" + ano
+        return pd.to_datetime(f"{dia}/{mes}/{ano}", dayfirst=True, errors="coerce")
+
+    pergunta_norm = _sem_acentos(pergunta)
+    if "STATUS" not in pergunta_norm:
         return None
-    dia, mes, ano = match.groups()
-    ano = ano or str(date.today().year)
-    if len(ano) == 2:
-        ano = "20" + ano
-    return pd.to_datetime(f"{dia}/{mes}/{ano}", dayfirst=True, errors="coerce")
+    if _extrair_delivery_solto(pergunta):
+        return None
+    dias = [int(valor) for valor in re.findall(r"(?<![/-])\b(\d{1,2})\b(?![/-])", pergunta_norm)]
+    dias_validos = [dia for dia in dias if 1 <= dia <= 31]
+    if not dias_validos:
+        return None
+    hoje = date.today()
+    return pd.to_datetime(f"{dias_validos[0]}/{hoje.month}/{hoje.year}", dayfirst=True, errors="coerce")
 
 
 def _aplicar_filtros_pergunta(df: pd.DataFrame, pergunta: str, motorista: str = "") -> pd.DataFrame:
@@ -437,6 +453,7 @@ def _linha_operacional(row: pd.Series) -> str:
 
 
 def _linha_status_individual(row: pd.Series) -> str:
+    """Linha curta para consultas de status, exibindo só campos úteis preenchidos."""
     partes = []
     for rotulo, valor in [
         ("D", row.get("delivery")),
@@ -445,11 +462,13 @@ def _linha_status_individual(row: pd.Series) -> str:
         ("L", row.get("l_horario")),
         ("C", row.get("c_horario")),
         ("FI", row.get("f_horario")),
+        ("DF", row.get("data_finalizacao")),
+        ("O", row.get("observacoes")),
     ]:
         parte = _campo_operacional(rotulo, valor)
         if parte:
             partes.append(parte)
-    return "\n".join(partes)
+    return " ".join(partes)
 
 
 def _responder_status_delivery(df: pd.DataFrame, pergunta: str) -> str:
@@ -471,7 +490,7 @@ def _responder_status_hoje(df: pd.DataFrame) -> str:
     base = _periodo_hoje(df)
     if base.empty:
         return "Nenhuma coleta encontrada."
-    return "\n".join(_linha_operacional(row) for _, row in base.iterrows())
+    return "\n".join(_linha_status_individual(row) for _, row in base.iterrows())
 
 
 def _responder_em_aberto(df: pd.DataFrame, pergunta: str) -> str:
@@ -479,18 +498,7 @@ def _responder_em_aberto(df: pd.DataFrame, pergunta: str) -> str:
     base = base[base["f_horario"].apply(_valor_vazio)]
     if base.empty:
         return "Nenhuma coleta em aberto."
-    linhas = []
-    for _, row in base.iterrows():
-        data = row.get("data")
-        partes = []
-        if not pd.isna(data):
-            partes.append(f"DATA {pd.Timestamp(data).strftime('%d/%m/%Y')}")
-        for rotulo, coluna in [("M", "motorista"), ("D", "delivery"), ("CL", "cliente"), ("L", "l_horario")]:
-            parte = _campo_operacional(rotulo, row.get(coluna))
-            if parte:
-                partes.append(parte)
-        linhas.append(" ".join(partes))
-    return "\n".join(linhas)
+    return "\n".join(_linha_status_individual(row) for _, row in base.iterrows())
 
 
 def _linhas_veiculo(df: pd.DataFrame, veiculo: str) -> str:
@@ -770,10 +778,11 @@ def _responder_relatorio_especial(df: pd.DataFrame, pergunta: str, tipo: str) ->
     return _linhas_relatorio_especial(base, tipo)
 
 
-def _linhas_operacionais(df: pd.DataFrame, limite: int = 200) -> str:
+def _linhas_operacionais(df: pd.DataFrame, limite: int = 200, formato_status: bool = False) -> str:
     if df.empty:
         return "Nenhuma coleta encontrada."
-    linhas = [_linha_operacional(row) for _, row in df.head(limite).iterrows()]
+    formatador = _linha_status_individual if formato_status else _linha_operacional
+    linhas = [formatador(row) for _, row in df.head(limite).iterrows()]
     if len(df) > limite:
         linhas.append(f"... e mais {len(df) - limite} coleta(s).")
     return "\n".join(linhas)
@@ -782,7 +791,7 @@ def _linhas_operacionais(df: pd.DataFrame, limite: int = 200) -> str:
 def _responder_coletas_operacionais(df: pd.DataFrame, pergunta: str, motorista: str = "") -> str:
     base = _aplicar_periodo_operacional(df, pergunta)
     base = _filtrar_motorista(base, motorista)
-    return _linhas_operacionais(base)
+    return _linhas_operacionais(base, formato_status="STATUS" in _sem_acentos(pergunta))
 
 
 def _extrair_delivery_solto(pergunta: str) -> str:
@@ -842,7 +851,7 @@ def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
     veiculo = _extrair_veiculo(pergunta)
 
     if (
-        ("STATUS" in pergunta_norm or re.search(r"\bCOMO\s+(?:ESTA|ESTÁ)\b", pergunta_norm))
+        ("STATUS" in pergunta_norm or "CONSULTAR" in pergunta_norm or re.search(r"\bCOMO\s+(?:ESTA|ESTÁ)\b", pergunta_norm))
         and re.search(r"\b\d{4,}\b", pergunta_norm)
         and _extrair_delivery_solto(pergunta)
     ):
