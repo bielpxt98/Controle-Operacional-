@@ -321,27 +321,29 @@ def test_status_automatico_regras_observacao():
     assert app["calcular_status_automatico"]("bloqueio") == "BLOQUEIO"
     assert app["calcular_status_automatico"]("O BLOQUEIO") == "BLOQUEIO"
     assert app["calcular_status_automatico"]("deslocamento sem carga") == "DESLOCAMENTO"
-    assert app["calcular_status_automatico"]("BLOQUEIO e DESLOCAMENTO") == "BLOQUEIO / DESLOCAMENTO"
-    assert app["calcular_status_automatico"]("cliente pediu comprovante") == "FINALIZADO"
+    assert app["calcular_status_automatico"]("BLOQUEIO e DESLOCAMENTO") == "DESLOCAMENTO"
+    assert app["calcular_status_automatico"]("cliente pediu comprovante") == "EM ABERTO"
+    assert app["calcular_status_automatico"]("cliente pediu comprovante", "13:44") == "FINALIZADO"
+    assert app["calcular_status_automatico"]("deslocamento", "13:44") == "DESLOCAMENTO"
 
 
 def test_preview_status_conta_todos_os_status_sem_alterar_outros_campos():
     app = carregar_funcoes_app()
     df = pd.DataFrame([
-        {"id": 1, "status": "", "delivery": "D1", "cliente": "A", "observacoes": ""},
-        {"id": 2, "status": "", "delivery": "D2", "cliente": "B", "observacoes": "O BLOQUEIO"},
-        {"id": 3, "status": "", "delivery": "D3", "cliente": "C", "observacoes": "deslocamento sem carga"},
-        {"id": 4, "status": "", "delivery": "D4", "cliente": "D", "observacoes": "bloqueio e deslocamento"},
+        {"id": 1, "status": "", "delivery": "D1", "cliente": "A", "f_horario": "13:44", "observacoes": ""},
+        {"id": 2, "status": "", "delivery": "D2", "cliente": "B", "f_horario": "", "observacoes": "O BLOQUEIO"},
+        {"id": 3, "status": "", "delivery": "D3", "cliente": "C", "f_horario": "", "observacoes": "deslocamento sem carga"},
+        {"id": 4, "status": "", "delivery": "D4", "cliente": "D", "f_horario": "", "observacoes": ""},
     ])
 
     preview = app["preview_atualizacao_status"](df)
     resumo = app["resumo_preview_status"](preview)
 
     assert resumo == {
-        "FINALIZADO": 1,
-        "BLOQUEIO": 1,
         "DESLOCAMENTO": 1,
-        "BLOQUEIO / DESLOCAMENTO": 1,
+        "BLOQUEIO": 1,
+        "FINALIZADO": 1,
+        "EM ABERTO": 1,
     }
     assert list(preview["delivery"]) == ["D1", "D2", "D3", "D4"]
     assert list(preview["cliente"]) == ["A", "B", "C", "D"]
