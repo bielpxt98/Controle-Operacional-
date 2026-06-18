@@ -1714,12 +1714,42 @@ def salvar_registro(registro):
         ).execute()
 
 
+def observacao_livre_rapida(valor):
+    obs_original = texto(valor).strip()
+    if not obs_original:
+        return None
+    obs_normalizada = normalizar_observacao(obs_original)
+    if obs_normalizada:
+        return obs_normalizada
+    obs_limpa = obs_original.upper().strip()
+    if obs_limpa.startswith("O "):
+        return obs_limpa
+    return f"O {obs_limpa}"
+
+
+def preparar_linha_atualizacao_rapida(original):
+    """Prepara conflitos de marcadores antes do parser por abreviações."""
+    padrao_bd_observacao = re.compile(
+        r"(?<!\w)([BD])\s*(?:\(\s*([0-2]?\d[:hH][0-5]\d)\s*\)|\s+([0-2]?\d[:hH][0-5]\d)\b)(?=.*(?<!\S)O(?=\s*:|\s+))",
+        re.IGNORECASE,
+    )
+
+    # Quando existe O depois de D/B HH:MM, o texto após O é observação livre
+    # digitada pelo usuário. Nesse caso D/B HH:MM deve alimentar FI, sem gerar
+    # automaticamente O DESLOCAMENTO/BLOQUEIO nem descartar a observação livre.
+    if padrao_bd_observacao.search(original):
+        linha_preparada = padrao_bd_observacao.sub(lambda m: f"FI {m.group(2) or m.group(3)}", original)
+        return linha_preparada, None, None
+
+    return extrair_regra_bloqueio_deslocamento(original)
+
+
 def parse_atualizacao_rapida(linha):
     original = texto(linha)
     if not original:
         return None, "linha vazia"
 
-    original_parse, horario_bd, observacao_bd = extrair_regra_bloqueio_deslocamento(original)
+    original_parse, horario_bd, observacao_bd = preparar_linha_atualizacao_rapida(original)
 
     # Aceita a linha copiada do status no formato:
     # DATA | MOTORISTA | DELIVERY | CLIENTE L HH:MM C HH:MM ...
@@ -1809,7 +1839,7 @@ def parse_atualizacao_rapida(linha):
     if horario_bd:
         campos["f_horario"] = horario_bd
 
-    obs = normalizar_observacao(dados.get("O", ""))
+    obs = observacao_livre_rapida(dados.get("O", ""))
     if obs:
         campos["observacoes"] = obs
     if observacao_bd:
@@ -1875,10 +1905,14 @@ def resumo_atualizacao_rapida(parsed, resultado):
         ("PC", "pc"),
         ("FI", "f_horario"),
         ("DF", "data_finalizacao"),
+        ("O", "observacoes"),
     ]:
         valor = campos.get(coluna)
         if valor:
-            linhas.append(f"{rotulo} {numero_operacional_visual(valor)}")
+            valor_visual = numero_operacional_visual(valor)
+            if rotulo == "O":
+                valor_visual = re.sub(r"^O\s+", "", valor_visual, flags=re.IGNORECASE).strip()
+            linhas.append(f"{rotulo} {valor_visual}")
 
     return "\n".join(linhas)
 

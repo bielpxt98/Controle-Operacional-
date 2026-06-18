@@ -31,6 +31,8 @@ FUNCOES_NECESSARIAS = {
     "campos_atualizacao_conversa",
     "buscar_coletas_por_conversa",
     "cliente_combina",
+    "observacao_livre_rapida",
+    "preparar_linha_atualizacao_rapida",
     "parse_atualizacao_rapida",
     "resumo_atualizacao_rapida",
     "numero_operacional_visual",
@@ -321,6 +323,26 @@ def test_atualizacao_rapida_processa_todos_campos_da_mesma_linha():
         "DF 18/06"
     )
 
+
+
+def test_atualizacao_rapida_preserva_observacao_livre_apos_o_com_d_horario():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_atualizacao_rapida"](
+        "3787849331 L 12:00 D 15:46 O SEM AJUDANTE"
+    )
+
+    assert erro is None
+    assert parsed["campos"]["delivery"] == "3787849331"
+    assert parsed["campos"]["l_horario"] == "12:00"
+    assert parsed["campos"]["f_horario"] == "15:46"
+    assert parsed["campos"]["observacoes"] == "O SEM AJUDANTE"
+    assert app["resumo_atualizacao_rapida"](parsed, "atualizado") == (
+        "D 3787849331 OK\n"
+        "L 12:00\n"
+        "FI 15:46\n"
+        "O SEM AJUDANTE"
+    )
 
 def test_atualizacao_rapida_processa_linhas_independentes_com_mesmos_campos():
     app = carregar_funcoes_app()
