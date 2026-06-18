@@ -1572,13 +1572,34 @@ COMANDOS_CONSULTA_CONVERSA = {
     "EM",
     "TODAS",
     "SEM",
+    "DESLOCAMENTO",
     "DESLOCAMENTOS",
+    "BLOQUEIO",
+    "BLOQUEIOS",
+    "REEMBOLSO",
+    "REEMBOLSOS",
 }
+
+PADROES_RELATORIO_CONVERSA = [
+    r"\bDESLOCAMENTOS?\s+(?:DO\s+DIA|DE)\b",
+    r"\bBLOQUEIOS?\s+(?:DO\s+DIA|DE)\b",
+    r"\bREEMBOLSOS?\s+(?:DO\s+DIA|DE)\b",
+    r"\bSEM\s+FI\s+(?:DO\s+DIA|DE)\b",
+    r"\bSTATUS\s+(?:DO\s+DIA|DE)\b",
+]
 
 
 def detectar_modo_conversa(frase):
     """Classifica a frase da aba conversa sem misturar consulta e atualização."""
-    primeira_palavra = re.match(r"^\s*([\wÀ-ÿ]+)", texto(frase), flags=re.UNICODE)
+    frase_texto = texto(frase)
+    frase_norm = limpar_busca(frase_texto)
+
+    # Pedidos explícitos de relatório por data não são atualização e não devem
+    # exigir HH:MM, mesmo quando contêm termos operacionais como DESLOCAMENTO.
+    if any(re.search(padrao, frase_norm) for padrao in PADROES_RELATORIO_CONVERSA):
+        return "CONSULTA"
+
+    primeira_palavra = re.match(r"^\s*([\wÀ-ÿ]+)", frase_texto, flags=re.UNICODE)
     if not primeira_palavra:
         return "ATUALIZACAO"
 
