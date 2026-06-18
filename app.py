@@ -915,8 +915,18 @@ def numero(v):
     try:
         s = s.replace("R$", "")
         s = s.replace(" ", "")
-        s = s.replace(".", "")
-        s = s.replace(",", ".")
+
+        if "," in s:
+            # Formato brasileiro: 2.189,60 / 992,17.
+            # O ponto é separador de milhar somente quando há vírgula decimal.
+            s = s.replace(".", "").replace(",", ".")
+        elif "." in s:
+            partes = s.split(".")
+            # Sem vírgula, preserve ponto decimal vindo do banco (2189.6).
+            # Remova pontos apenas quando o padrão parecer milhar (2.189 ou 2.189.600).
+            if len(partes) > 2 or (len(partes) == 2 and len(partes[1]) == 3):
+                s = s.replace(".", "")
+
         return float(s)
     except Exception:
         return None
@@ -1885,13 +1895,7 @@ def moeda_visual(v):
     return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def status_visual(row):
-    status = texto(row.get("status")).upper()
-    fi = texto(row.get("f_horario"))
-    if not status and not fi:
-        return "EM ABERTO"
-    if not status and fi:
-        return "FINALIZADO"
-    return status
+    return calcular_status_automatico(row.get("observacoes", ""), row.get("f_horario", ""))
 
 def preparar_tabela_principal(df_base):
     if df_base.empty:
