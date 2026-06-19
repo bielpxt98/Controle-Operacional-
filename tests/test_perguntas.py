@@ -509,6 +509,23 @@ class ConsultaAdministrativaTest(unittest.TestCase):
             self.assertNotIn("CNPJ:", resposta)
             self.assertNotIn("DELIVERIES IGNORADOS", resposta)
 
+    def test_coletas_hoje_e_do_dia_usam_somente_delivery_cliente_sigla(self):
+        hoje = date.today().strftime("%d/%m/%Y")
+        df = pd.DataFrame([
+            {"data": hoje, "motorista": "Fabio Souza", "delivery": "3787867806", "cliente": "ASSAI LAURO DE FREITAS", "paletes": 272, "valor_frete": "992,17"},
+        ])
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "coletas_hoje_curto.csv"
+            df.to_csv(caminho, index=False)
+
+            for pergunta in ["COLETAS HOJE", "COLETAS DE HOJE", "COLETAS DO DIA"]:
+                resposta = responder_pergunta(pergunta, str(caminho))
+
+                self.assertEqual(resposta, "3787867806 - ASSAÍ (LAURO DE FREITAS) - @FA")
+                for termo in ["DATA", "M FABIO", "CL", "P 272", "V 992,17", "CNPJ", " FI "]:
+                    self.assertNotIn(termo, resposta)
+
+
     def test_coletas_de_ontem_e_do_dia_usam_formato_admin(self):
         ontem = date.today() - timedelta(days=1)
         df = pd.DataFrame([
@@ -521,8 +538,8 @@ class ConsultaAdministrativaTest(unittest.TestCase):
             resposta_ontem = responder_pergunta("COLETAS DE ONTEM", str(caminho))
             resposta_dia = responder_pergunta(f"COLETAS DO DIA {ontem.strftime('%d/%m')}", str(caminho))
 
-            self.assertIn("3787849414 - DROGARIA SAO PAULO (LAURO DE FREITAS) - @JO", resposta_ontem)
-            self.assertIn("REGISTROS ENCONTRADOS: 1", resposta_ontem)
-            self.assertIn("REGISTROS EXIBIDOS: 1", resposta_ontem)
+            self.assertEqual(resposta_ontem, "3787849414 - DROGARIA SAO PAULO (LAURO DE FREITAS) - @JO")
+            self.assertNotIn("REGISTROS ENCONTRADOS", resposta_ontem)
+            self.assertNotIn("REGISTROS EXIBIDOS", resposta_ontem)
             self.assertNotIn("CNPJ:", resposta_ontem)
-            self.assertIn("3787849414 - DROGARIA SAO PAULO (LAURO DE FREITAS) - @JO", resposta_dia)
+            self.assertEqual(resposta_dia, "3787849414 - DROGARIA SAO PAULO (LAURO DE FREITAS) - @JO")

@@ -281,9 +281,14 @@ def _texto_valido(valor: object) -> str:
     return "" if _valor_vazio(valor) else str(valor).strip()
 
 
-def _linha_coleta_admin(row: pd.Series, incluir_cnpj: bool = False) -> str:
+def formatar_linha_coleta_motorista(row: pd.Series) -> str:
+    """Formata coletas para a aba Conversação: DELIVERY - CLIENTE - @SIGLA."""
     delivery = _texto_valido(row.get("delivery")) or _texto_valido(row.get("sr"))
-    linha = f"{delivery} - {_cliente_cidade_formatado(row)} - {_sigla_motorista(row.get('motorista'))}"
+    return f"{delivery} - {_cliente_cidade_formatado(row)} - {_sigla_motorista(row.get('motorista'))}"
+
+
+def _linha_coleta_admin(row: pd.Series, incluir_cnpj: bool = False) -> str:
+    linha = formatar_linha_coleta_motorista(row)
     cnpj = _texto_valido(row.get("cnpj"))
     if incluir_cnpj and cnpj:
         linha += f"\nCNPJ: {cnpj}"
@@ -312,19 +317,19 @@ def _conferencia_coletas_admin(base: pd.DataFrame, linhas: list[str]) -> list[st
     return conferencia
 
 
-def _responder_coletas_admin_periodo(df: pd.DataFrame, pergunta: str) -> str:
+def _responder_coletas_motorista_periodo(df: pd.DataFrame, pergunta: str) -> str:
     base = _aplicar_periodo_operacional(df, pergunta)
     if base.empty:
         return "Nenhuma coleta encontrada para o período informado."
-    linhas = [_linha_coleta_admin(row, incluir_cnpj=False) for _, row in base.iterrows()]
-    return "\n\n".join(linhas + _conferencia_coletas_admin(base, linhas))
+    linhas = [formatar_linha_coleta_motorista(row) for _, row in base.iterrows()]
+    return "\n".join(linhas)
 
 
 def _responder_coletas_hoje_admin(df: pd.DataFrame) -> str:
     base = _periodo_hoje(df)
     if base.empty:
         return "Nenhuma coleta encontrada para hoje."
-    linhas = [_linha_coleta_admin(row, incluir_cnpj=False) for _, row in base.iterrows()]
+    linhas = [formatar_linha_coleta_motorista(row) for _, row in base.iterrows()]
     return "\n".join(linhas)
 
 def _normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
@@ -993,11 +998,14 @@ def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
     motorista = _extrair_motorista(pergunta, df["motorista"].dropna().astype(str))
     veiculo = _extrair_veiculo(pergunta)
 
-    if re.fullmatch(r"\s*COLETAS\s+DE\s+HOJE\s*", pergunta_norm):
+    if re.fullmatch(r"\s*COLETAS\s+(?:DE\s+)?HOJE\s*", pergunta_norm):
+        return _responder_coletas_hoje_admin(df)
+
+    if re.fullmatch(r"\s*COLETAS\s+DO\s+DIA\s*", pergunta_norm):
         return _responder_coletas_hoje_admin(df)
 
     if re.fullmatch(r"\s*COLETAS\s+(?:DE\s+ONTEM|DO\s+DIA\s+\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\s*", pergunta_norm):
-        return _responder_coletas_admin_periodo(df, pergunta)
+        return _responder_coletas_motorista_periodo(df, pergunta)
 
     if (
         ("STATUS" in pergunta_norm or "CONSULTAR" in pergunta_norm or re.search(r"\bCOMO\s+(?:ESTA|ESTÁ)\b", pergunta_norm))
