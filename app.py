@@ -1158,6 +1158,53 @@ def registrar_historico_campos(tabela, registro_id, antes, depois, usuario="SIST
         registrar_historico_alteracao(tabela, registro_id, campo, antes.get(campo), valor_novo, usuario)
 
 
+
+
+def erro_supabase_completo(exc):
+    partes = [f"{type(exc).__name__}: {exc}"]
+    for atributo in ["message", "code", "details", "hint"]:
+        valor = getattr(exc, atributo, None)
+        if valor:
+            partes.append(f"{atributo}: {valor}")
+    return "\n".join(partes)
+
+
+def exibir_diagnostico_cliente(tabela, payload):
+    st.warning("DIAGNÓSTICO DO SALVAMENTO DE CLIENTE")
+    st.markdown("**TABELA:**")
+    st.code(tabela)
+    st.markdown("**PAYLOAD:**")
+    st.json(payload)
+    st.markdown("**COLUNAS ENVIADAS:**")
+    st.code("\n".join(payload.keys()))
+
+
+def validar_tabela_cliente_antes_insert(tabela):
+    try:
+        supabase.table(tabela).select("*").limit(1).execute()
+    except Exception as exc:
+        erro = erro_supabase_completo(exc)
+        logger.exception("Falha no diagnóstico da tabela %s antes do insert: %s", tabela, erro)
+        st.error("ERRO AO CONSULTAR TABELA ANTES DO INSERT")
+        st.code(erro)
+        st.exception(exc)
+        st.stop()
+    st.success("TABELA ENCONTRADA COM SUCESSO")
+
+
+def inserir_cliente_com_diagnostico(payload):
+    exibir_diagnostico_cliente(TABELA_CLIENTES_CNPJ, payload)
+    validar_tabela_cliente_antes_insert(TABELA_CLIENTES_CNPJ)
+    try:
+        return supabase.table(TABELA_CLIENTES_CNPJ).insert(payload).execute()
+    except Exception as exc:
+        erro = erro_supabase_completo(exc)
+        logger.exception("Erro ao inserir cliente em %s: %s", TABELA_CLIENTES_CNPJ, erro)
+        st.error("ERRO AO SALVAR CLIENTE")
+        st.code(erro)
+        st.exception(exc)
+        st.stop()
+
 def listar_clientes():
     try:
         res = supabase.table(TABELA_CLIENTES_CNPJ).select("*").order("cliente").execute()
@@ -1372,7 +1419,7 @@ def salvar_cadastro_cliente_conversa(parsed, existente=None):
         supabase.table(TABELA_CLIENTES_CNPJ).update(payload).eq("id", int(existente["id"])).execute()
         return {**existente, **payload}
     payload["data_cadastro"] = datetime.now().isoformat()
-    res = supabase.table(TABELA_CLIENTES_CNPJ).insert(payload).execute()
+    res = inserir_cliente_com_diagnostico(payload)
     return (res.data or [payload])[0]
 
 
@@ -1435,7 +1482,7 @@ def render_clientes_cnpj(admin):
             registrar_historico_campos(TABELA_CLIENTES_CNPJ, id_cliente, antes, payload, "ADMIN")
         else:
             payload["data_cadastro"] = agora
-            supabase.table(TABELA_CLIENTES_CNPJ).insert(payload).execute()
+            inserir_cliente_com_diagnostico(payload)
             registrar_historico_campos(TABELA_CLIENTES_CNPJ, payload.get("cnpj"), {}, payload, "ADMIN")
         st.success("Cliente salvo.")
         st.rerun()
