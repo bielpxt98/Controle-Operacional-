@@ -1198,6 +1198,46 @@ def inserir_cliente_com_diagnostico(payload):
     )
     st.stop()
 
+
+def colunas_reais_clientes(registro_atual=None):
+    """Consulta as colunas reais de clientes_cnpj para montar payload compatível."""
+    colunas = set((registro_atual or {}).keys())
+    try:
+        res = supabase.table(TABELA_CLIENTES_CNPJ).select("*").limit(1).execute()
+        if res.data:
+            colunas.update(res.data[0].keys())
+    except Exception as exc:
+        logger.warning("Não foi possível consultar colunas reais de %s: %s", TABELA_CLIENTES_CNPJ, exc)
+    return colunas
+
+
+def preparar_payload_cliente_para_salvar(payload, registro_atual=None):
+    """Garante nome_exibicao preenchido e usa a coluna de endereço existente."""
+    preparado = dict(payload or {})
+    nome_exibicao = texto(preparado.get("nome_exibicao")).upper() or texto(preparado.get("cliente")).upper()
+    if nome_exibicao:
+        preparado["cliente"] = nome_exibicao
+        preparado["nome_exibicao"] = nome_exibicao
+
+    endereco = texto(preparado.get("endereco_referencia")).upper() or texto(preparado.get("endereco")).upper()
+    if endereco:
+        preparado["endereco"] = endereco
+
+    colunas_reais = colunas_reais_clientes(registro_atual)
+    if not colunas_reais:
+        return preparado
+
+    if "nome_exibicao" not in colunas_reais:
+        preparado.pop("nome_exibicao", None)
+    if "endereco_referencia" in colunas_reais:
+        preparado["endereco_referencia"] = endereco
+        preparado.pop("endereco", None)
+    elif "endereco" in colunas_reais:
+        preparado["endereco"] = endereco
+        preparado.pop("endereco_referencia", None)
+
+    return {campo: valor for campo, valor in preparado.items() if campo in colunas_reais}
+
 def listar_clientes():
     try:
         res = supabase.table(TABELA_CLIENTES_CNPJ).select("*").order("cliente").execute()
@@ -1298,7 +1338,7 @@ def normalizar_rotulo_cadastro_cliente(rotulo):
 
 
 def mensagem_cadastro_cliente_invalido():
-    return "CADASTRO INVÁLIDO\n\nCampos obrigatórios:\n\nCLIENTE\nNOME_EXIBICAO\nRAZÃO_SOCIAL"
+    return "CADASTRO INVÁLIDO\n\nCampos obrigatórios:\n\nCLIENTE\nRAZÃO_SOCIAL"
 
 
 def rotulos_cadastro_cliente_presentes(frase):
@@ -1317,7 +1357,7 @@ def parse_cadastro_cliente_conversa(frase):
         return None, "Cole o cadastro do cliente para interpretar."
 
     rotulos_presentes = rotulos_cadastro_cliente_presentes(original)
-    if "CLIENTE" not in rotulos_presentes or "NOME_EXIBICAO" not in rotulos_presentes:
+    if "CLIENTE" not in rotulos_presentes:
         return None, mensagem_cadastro_cliente_invalido()
 
     campos = {}
@@ -1330,9 +1370,11 @@ def parse_cadastro_cliente_conversa(frase):
         if campo:
             campos[campo] = texto(valor).upper()
 
+    if not texto(campos.get("nome_exibicao")):
+        campos["nome_exibicao"] = texto(campos.get("cliente_operacao")).upper()
+
     obrigatorios = {
         "CLIENTE": campos.get("cliente_operacao"),
-        "NOME_EXIBICAO": campos.get("nome_exibicao"),
         "RAZÃO_SOCIAL": campos.get("razao_social"),
     }
     faltantes = [nome for nome, valor in obrigatorios.items() if not texto(valor)]
@@ -1366,8 +1408,11 @@ def observacao_cadastro_cliente_conversa(parsed):
 
 def payload_cadastro_cliente_conversa(parsed):
     agora = datetime.now().isoformat()
+    cliente_operacao = texto(parsed.get("cliente_operacao")).upper()
+    nome_exibicao = texto(parsed.get("nome_exibicao")).upper() or cliente_operacao
     return {
-        "cliente": texto(parsed.get("nome_exibicao")).upper(),
+        "cliente": nome_exibicao,
+        "nome_exibicao": nome_exibicao,
         "cidade": texto(parsed.get("cidade")).upper(),
         "endereco": texto(parsed.get("endereco")).upper(),
         "cnpj": formatar_cnpj_cliente(parsed.get("cnpj")),
@@ -1405,7 +1450,7 @@ def buscar_cliente_por_nome_exibicao(nome_exibicao):
 
 
 def salvar_cadastro_cliente_conversa(parsed, existente=None):
-    payload = payload_cadastro_cliente_conversa(parsed)
+    payload = preparar_payload_cliente_para_salvar(payload_cadastro_cliente_conversa(parsed), existente)
     if not payload.get("razao_social"):
         raise ValueError("RAZÃO_SOCIAL é obrigatória para salvar o cliente.")
     if existente:
@@ -1467,13 +1512,16 @@ def render_clientes_cnpj(admin):
             st.error("Razão Social é obrigatória.")
             return
         agora = datetime.now().isoformat()
-        payload = {"cliente": cliente.upper(), "cidade": cidade.upper(), "endereco": endereco.upper(), "cnpj": cnpj, "razao_social": razao.upper(), "observacao": observacao, "data_ultima_atualizacao": agora}
+        nome_cliente = texto(cliente).upper()
+        payload_base = {"cliente": nome_cliente, "nome_exibicao": nome_cliente, "cidade": cidade.upper(), "endereco": endereco.upper(), "cnpj": cnpj, "razao_social": razao.upper(), "observacao": observacao, "data_ultima_atualizacao": agora}
         if id_cliente.strip():
             atual = supabase.table(TABELA_CLIENTES_CNPJ).select("*").eq("id", int(id_cliente)).limit(1).execute()
             antes = atual.data[0] if atual.data else {}
+            payload = preparar_payload_cliente_para_salvar(payload_base, antes)
             supabase.table(TABELA_CLIENTES_CNPJ).update(payload).eq("id", int(id_cliente)).execute()
             registrar_historico_campos(TABELA_CLIENTES_CNPJ, id_cliente, antes, payload, "ADMIN")
         else:
+            payload = preparar_payload_cliente_para_salvar(payload_base)
             payload["data_cadastro"] = agora
             inserir_cliente_com_diagnostico(payload)
             registrar_historico_campos(TABELA_CLIENTES_CNPJ, payload.get("cnpj"), {}, payload, "ADMIN")
