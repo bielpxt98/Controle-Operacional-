@@ -772,8 +772,58 @@ STATUS: CONFIRMADO"""
     assert payload["cliente"] == "ASSAÍ"
     assert payload["razao_social"] == "SENDAS DISTRIBUIDORA S/A"
     assert payload["cidade"] == "SALVADOR"
-    assert payload["endereco"] == "RUA GENARO DE CARVALHO"
+    assert parsed["endereco_referencia"] == "RUA GENARO DE CARVALHO"
+    assert payload["endereco_referencia"] == "RUA GENARO DE CARVALHO"
 
+
+def test_conversa_cadastro_cliente_endereco_salva_em_endereco_referencia_sem_observacao():
+    app = carregar_funcoes_app()
+
+    texto_cadastro = """CLIENTE: WMS MAX ATACADO CENTENARIO
+NOME_EXIBICAO: WMS MAX ATACADO CENTENARIO
+RAZAO_SOCIAL: WMS SUPERMERCADOS DO BRASIL LTDA.
+CNPJ: 93.209.765/0695-83
+CIDADE: SALVADOR
+ENDERECO: AVENIDA CENTENARIO, 2786
+OBSERVACAO: AV. CENTENARIO"""
+
+    parsed, erro = app["parse_cadastro_cliente_conversa"](texto_cadastro)
+    payload_base = app["payload_cadastro_cliente_conversa"](parsed)
+    payload = app["preparar_payload_cliente_para_salvar"](
+        payload_base,
+        {
+            "cliente": "",
+            "nome_exibicao": "",
+            "razao_social": "",
+            "cnpj": "",
+            "cidade": "",
+            "endereco_referencia": "",
+            "observacao": "",
+        },
+    )
+
+    assert erro is None
+    assert parsed["endereco_referencia"] == "AVENIDA CENTENARIO, 2786"
+    assert payload["cliente"] == "WMS MAX ATACADO CENTENARIO"
+    assert payload["nome_exibicao"] == "WMS MAX ATACADO CENTENARIO"
+    assert payload["razao_social"] == "WMS SUPERMERCADOS DO BRASIL LTDA."
+    assert payload["cnpj"] == "93.209.765/0695-83"
+    assert payload["cidade"] == "SALVADOR"
+    assert payload["endereco_referencia"] == "AVENIDA CENTENARIO, 2786"
+    assert payload["observacao"] == "AV. CENTENARIO"
+    assert "endereco" not in payload
+
+
+def test_conversa_cadastro_cliente_aceita_rotulos_de_endereco_referencia():
+    app = carregar_funcoes_app()
+
+    for rotulo in ["ENDEREÇO", "ENDERECO", "ENDEREÇO_REFERÊNCIA", "ENDERECO_REFERENCIA"]:
+        parsed, erro = app["parse_cadastro_cliente_conversa"](
+            f"CLIENTE: WMS\nRAZÃO_SOCIAL: WMS SUPERMERCADOS DO BRASIL LTDA.\n{rotulo}: RUA TESTE"
+        )
+
+        assert erro is None
+        assert parsed["endereco_referencia"] == "RUA TESTE"
 
 def test_conversa_cadastro_cliente_exige_razao_social():
     app = carregar_funcoes_app()
