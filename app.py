@@ -2630,13 +2630,13 @@ def exibir_tabela_operacional(df_base, key_prefix="operacional"):
 
 def botao_copiar_resposta(texto_resposta, key):
     import streamlit.components.v1 as components
-    conteudo = texto(texto_resposta).replace("`", "\\`").replace("$", "\\$")
+    conteudo = json.dumps(texto(texto_resposta), ensure_ascii=False)
     components.html(
         f"""<button id='copy-{key}' style='padding:10px 14px;border-radius:10px;border:1px solid #38bdf8;background:#075985;color:white;font-weight:800;cursor:pointer;'>📋 COPIAR RESPOSTA</button>
 <script>
 const btn = document.getElementById('copy-{key}');
 btn.onclick = async () => {{
-  await navigator.clipboard.writeText(`{conteudo}`);
+  await navigator.clipboard.writeText({conteudo});
   btn.innerText = '✅ COPIADO';
   setTimeout(() => btn.innerText = '📋 COPIAR RESPOSTA', 1600);
 }};
@@ -2689,12 +2689,12 @@ def renderizar_resposta_operacional(texto_mensagem: str, chave: str = "resposta_
             classe_linha += " operational-time-line"
         linhas_html.append(f'<div class="{classe_linha}">{escape(linha) or "&nbsp;"}</div>')
     texto_html = "".join(linhas_html)
-    texto_js = texto_resposta.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
+    texto_js = json.dumps(texto_resposta, ensure_ascii=False)
     altura = max(170, min(520, 120 + 30 * max(1, texto_resposta.count("\n") + 1)))
     components.html(
         f"""
         <div class="operational-answer-box" id="{escape(chave)}">
-            <button class="copy-operational-answer" type="button" onclick="navigator.clipboard.writeText(`{texto_js}`); this.textContent='✅ COPIADO'; setTimeout(() => this.textContent='📋 COPIAR', 1400);">📋 COPIAR</button>
+            <button class="copy-operational-answer" type="button" onclick="navigator.clipboard.writeText({texto_js}); this.textContent='✅ COPIADO'; setTimeout(() => this.textContent='📋 COPIAR', 1400);">📋 COPIAR</button>
             <div class="operational-answer-text">{texto_html}</div>
         </div>
         <style>

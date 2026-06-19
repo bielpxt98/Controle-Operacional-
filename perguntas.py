@@ -263,6 +263,10 @@ def _normalizar_nome_exibicao_cliente(cliente: str, cidade: str = "") -> str:
         bases = {"ASSAI", "ATAKAREJO", "GMF", "MERCANTIL"}
         if len(partes) > 1 and partes[0] in bases:
             cliente, cidade = partes[0], " ".join(partes[1:])
+
+    if cliente == "ASSAI":
+        cliente = "ASSAÍ"
+
     return f"{cliente} ({cidade})" if cidade else cliente
 
 
@@ -321,7 +325,7 @@ def _responder_coletas_hoje_admin(df: pd.DataFrame) -> str:
     if base.empty:
         return "Nenhuma coleta encontrada para hoje."
     linhas = [_linha_coleta_admin(row, incluir_cnpj=False) for _, row in base.iterrows()]
-    return "\n\n".join(linhas + _conferencia_coletas_admin(base, linhas))
+    return "\n".join(linhas)
 
 def _normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
     logger.debug("Normalizando dataframe para perguntas. Colunas originais: %s", list(df.columns))

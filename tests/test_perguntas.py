@@ -414,10 +414,13 @@ class ConsultaAdministrativaTest(unittest.TestCase):
 
             resposta = responder_pergunta("COLETAS DE HOJE", str(caminho))
 
-            self.assertIn("3787849356 - GMF (FEIRA DE SANTANA) - @FA", resposta)
-            self.assertIn("3787849414 - DROGARIA SAO PAULO (LAURO DE FREITAS) - @JO", resposta)
-            self.assertIn("REGISTROS ENCONTRADOS: 2", resposta)
-            self.assertIn("REGISTROS EXIBIDOS: 2", resposta)
+            self.assertEqual(
+                resposta,
+                "3787849356 - GMF (FEIRA DE SANTANA) - @FA\n"
+                "3787849414 - DROGARIA SAO PAULO (LAURO DE FREITAS) - @JO",
+            )
+            self.assertNotIn("REGISTROS ENCONTRADOS", resposta)
+            self.assertNotIn("REGISTROS EXIBIDOS", resposta)
             self.assertNotIn("CNPJ:", resposta)
             self.assertNotIn("GMF - FEIRA DE SANTANA", resposta)
 
@@ -456,8 +459,8 @@ class ConsultaAdministrativaTest(unittest.TestCase):
             self.assertIn("3787849310 - WMS MAX ATACADO (BARROS REIS) - @AI", resposta)
             self.assertIn("3787849311 - WMS MAX ATACADO REITOR MIGUEL (SIMOES FILHO) - @AI", resposta)
             self.assertIn("3787849312 - WMS MAX ATACADO (LAURO DE FREITAS) - @AR", resposta)
-            self.assertIn("REGISTROS ENCONTRADOS: 3", resposta)
-            self.assertIn("REGISTROS EXIBIDOS: 3", resposta)
+            self.assertNotIn("REGISTROS ENCONTRADOS", resposta)
+            self.assertNotIn("REGISTROS EXIBIDOS", resposta)
             self.assertNotIn("CNPJ:", resposta)
             self.assertNotIn("WMS (MAX ATACADO", resposta)
 
@@ -485,10 +488,24 @@ class ConsultaAdministrativaTest(unittest.TestCase):
 
             resposta = responder_pergunta("COLETAS DE HOJE", str(caminho))
 
-            for delivery, _, _ in registros:
-                self.assertIn(delivery, resposta)
-            self.assertIn("REGISTROS ENCONTRADOS: 10", resposta)
-            self.assertIn("REGISTROS EXIBIDOS: 10", resposta)
+            esperado = "\n".join(
+                f"{delivery} - {cliente} - {sigla}"
+                for delivery, cliente, sigla in [
+                    ("3787868756", "WMS MAX ATACADO DORIVAL CAYMMI", "@AI"),
+                    ("3787867867", "WMS MAX ATACADO REITOR MIGUEL", "@AI"),
+                    ("3787867863", "MERCANTIL (LAURO DE FREITAS)", "@AI"),
+                    ("3787867862", "WMS MAX ATACADO CENTENARIO", "@MA"),
+                    ("3787816532", "ASSAÍ (VASCO DA GAMA)", "@GA"),
+                    ("3402204834", "BOOMIX", "@LU"),
+                    ("3787816418", "PAGUE MENOS", "@JO"),
+                    ("3787866517", "YOKI DISTRIBUIDORA", "@WI"),
+                    ("3787867835", "CENCOSUD CAMACARI", "@AR"),
+                    ("3787867806", "ASSAÍ (LAURO DE FREITAS)", "@FA"),
+                ]
+            )
+            self.assertEqual(resposta, esperado)
+            self.assertNotIn("REGISTROS ENCONTRADOS", resposta)
+            self.assertNotIn("REGISTROS EXIBIDOS", resposta)
             self.assertNotIn("CNPJ:", resposta)
             self.assertNotIn("DELIVERIES IGNORADOS", resposta)
 
