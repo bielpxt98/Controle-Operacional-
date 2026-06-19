@@ -1169,13 +1169,11 @@ def erro_supabase_completo(exc):
     return "\n".join(partes)
 
 
-def exibir_diagnostico_cliente(tabela, payload):
-    st.warning("DIAGNÓSTICO DO SALVAMENTO DE CLIENTE")
-    st.markdown("**TABELA:**")
-    st.code(tabela)
-    st.markdown("**PAYLOAD:**")
+def exibir_payload_completo_cliente(payload):
+    st.warning("INSERT NÃO EXECUTADO")
+    st.markdown("**PAYLOAD COMPLETO:**")
     st.json(payload)
-    st.markdown("**COLUNAS ENVIADAS:**")
+    st.markdown("**COLUNAS ESPERADAS PELO CÓDIGO:**")
     st.code("\n".join(payload.keys()))
 
 
@@ -1193,17 +1191,12 @@ def validar_tabela_cliente_antes_insert(tabela):
 
 
 def inserir_cliente_com_diagnostico(payload):
-    exibir_diagnostico_cliente(TABELA_CLIENTES_CNPJ, payload)
-    validar_tabela_cliente_antes_insert(TABELA_CLIENTES_CNPJ)
-    try:
-        return supabase.table(TABELA_CLIENTES_CNPJ).insert(payload).execute()
-    except Exception as exc:
-        erro = erro_supabase_completo(exc)
-        logger.exception("Erro ao inserir cliente em %s: %s", TABELA_CLIENTES_CNPJ, erro)
-        st.error("ERRO AO SALVAR CLIENTE")
-        st.code(erro)
-        st.exception(exc)
-        st.stop()
+    exibir_payload_completo_cliente(payload)
+    st.info(
+        "O INSERT em clientes_cnpj não foi executado. "
+        "Use o payload completo acima para alinhar as colunas no Supabase."
+    )
+    st.stop()
 
 def listar_clientes():
     try:
