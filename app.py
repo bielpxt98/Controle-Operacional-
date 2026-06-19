@@ -2664,7 +2664,7 @@ def responder_conversacao(pergunta, dados):
     try:
         logger.info("Consulta da Conversação iniciada: %s", pergunta)
         pergunta_norm = limpar_busca(pergunta)
-        if re.fullmatch(r"\s*COLETAS\s+DE\s+HOJE\s*", pergunta_norm):
+        if re.fullmatch(r"\s*COLETAS\s+(?:(?:DE\s+)?HOJE|DO\s+DIA|DE\s+ONTEM|DO\s+DIA\s+\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\s*", pergunta_norm):
             dados_consulta = dados.copy()
         else:
             dados_consulta = aplicar_cnpjs_clientes_cadastrados(dados, listar_clientes())
@@ -2690,13 +2690,26 @@ def renderizar_resposta_operacional(texto_mensagem: str, chave: str = "resposta_
         linhas_html.append(f'<div class="{classe_linha}">{escape(linha) or "&nbsp;"}</div>')
     texto_html = "".join(linhas_html)
     texto_js = json.dumps(texto_resposta, ensure_ascii=False)
+    chave_js = json.dumps(chave)
     altura = max(170, min(520, 120 + 30 * max(1, texto_resposta.count("\n") + 1)))
     components.html(
         f"""
         <div class="operational-answer-box" id="{escape(chave)}">
-            <button class="copy-operational-answer" type="button" onclick="navigator.clipboard.writeText({texto_js}); this.textContent='✅ COPIADO'; setTimeout(() => this.textContent='📋 COPIAR', 1400);">📋 COPIAR</button>
+            <button class="copy-operational-answer" type="button">📋 COPIAR</button>
             <div class="operational-answer-text">{texto_html}</div>
         </div>
+        <script>
+            (() => {{
+                const box = document.getElementById({chave_js});
+                const copyButton = box?.querySelector('.copy-operational-answer');
+                if (!copyButton) return;
+                copyButton.addEventListener('click', async () => {{
+                    await navigator.clipboard.writeText({texto_js});
+                    copyButton.textContent = '✅ COPIADO';
+                    setTimeout(() => {{ copyButton.textContent = '📋 COPIAR'; }}, 1400);
+                }});
+            }})();
+        </script>
         <style>
             .operational-answer-box {{
                 box-sizing: border-box;
