@@ -1074,7 +1074,7 @@ def numero(v):
 
 
 TABELA_DELIVERIES = "deliveries"
-TABELA_CLIENTES = "clientes_cnpj"
+TABELA_CLIENTES_CNPJ = "clientes_cnpj"
 TABELA_AUDITORIA = "historico_alteracoes"
 
 
@@ -1160,7 +1160,7 @@ def registrar_historico_campos(tabela, registro_id, antes, depois, usuario="SIST
 
 def listar_clientes():
     try:
-        res = supabase.table(TABELA_CLIENTES).select("*").order("cliente").execute()
+        res = supabase.table(TABELA_CLIENTES_CNPJ).select("*").order("cliente").execute()
         return pd.DataFrame(res.data or [])
     except Exception as exc:
         logger.warning("Tabela de clientes indisponível: %s", exc)
@@ -1257,10 +1257,28 @@ def normalizar_rotulo_cadastro_cliente(rotulo):
     return limpar_busca(rotulo).replace(" ", "_")
 
 
+def mensagem_cadastro_cliente_invalido():
+    return "CADASTRO INVÁLIDO\n\nCampos obrigatórios:\n\nCLIENTE\nNOME_EXIBICAO\nRAZÃO_SOCIAL"
+
+
+def rotulos_cadastro_cliente_presentes(frase):
+    presentes = set()
+    for linha in texto(frase).splitlines():
+        if ":" not in linha:
+            continue
+        rotulo, _ = linha.split(":", 1)
+        presentes.add(normalizar_rotulo_cadastro_cliente(rotulo))
+    return presentes
+
+
 def parse_cadastro_cliente_conversa(frase):
     original = texto(frase)
     if not original:
         return None, "Cole o cadastro do cliente para interpretar."
+
+    rotulos_presentes = rotulos_cadastro_cliente_presentes(original)
+    if "CLIENTE" not in rotulos_presentes or "NOME_EXIBICAO" not in rotulos_presentes:
+        return None, mensagem_cadastro_cliente_invalido()
 
     campos = {}
     for linha in original.splitlines():
@@ -1272,25 +1290,16 @@ def parse_cadastro_cliente_conversa(frase):
         if campo:
             campos[campo] = texto(valor).upper()
 
-    indicadores = ["cliente_operacao", "nome_exibicao", "razao_social", "cnpj"]
-    if sum(1 for chave in indicadores if campos.get(chave)) < 3:
-        return None, "O texto não parece um cadastro de cliente válido."
-
-    if not campos.get("nome_exibicao"):
-        campos["nome_exibicao"] = campos.get("cliente_operacao", "")
-    if not campos.get("cliente_operacao"):
-        campos["cliente_operacao"] = campos.get("nome_exibicao", "")
-    campos["cnpj"] = formatar_cnpj_cliente(campos.get("cnpj"))
-
     obrigatorios = {
         "CLIENTE": campos.get("cliente_operacao"),
         "NOME_EXIBICAO": campos.get("nome_exibicao"),
         "RAZÃO_SOCIAL": campos.get("razao_social"),
-        "CNPJ": campos.get("cnpj"),
     }
     faltantes = [nome for nome, valor in obrigatorios.items() if not texto(valor)]
     if faltantes:
-        return None, "Campos obrigatórios ausentes: " + ", ".join(faltantes) + "."
+        return None, mensagem_cadastro_cliente_invalido()
+
+    campos["cnpj"] = formatar_cnpj_cliente(campos.get("cnpj"))
 
     return campos, None
 
@@ -1331,9 +1340,28 @@ def payload_cadastro_cliente_conversa(parsed):
 def buscar_cliente_por_nome_exibicao(nome_exibicao):
     nome = texto(nome_exibicao).upper()
     if not nome:
-        return None
-    res = supabase.table(TABELA_CLIENTES).select("*").eq("cliente", nome).limit(1).execute()
-    return res.data[0] if res.data else None
+        return None, mensagem_cadastro_cliente_invalido()
+
+    tabela = TABELA_CLIENTES_CNPJ
+    coluna = "cliente"
+    logger.info("Tabela utilizada para consulta de cliente: %s", tabela)
+    logger.info("Coluna utilizada para consulta de cliente: %s", coluna)
+
+    try:
+        supabase.table(tabela).select(coluna).limit(1).execute()
+        res = supabase.table(tabela).select("*").eq(coluna, nome).limit(1).execute()
+    except Exception as exc:
+        logger.warning(
+            "Não foi possível consultar cliente em %s.%s: %s",
+            tabela,
+            coluna,
+            exc,
+        )
+        return None, (
+            "Não foi possível consultar o cadastro de clientes agora. "
+            "Verifique se a tabela clientes_cnpj e a coluna cliente existem no banco."
+        )
+    return (res.data[0] if res.data else None), None
 
 
 def salvar_cadastro_cliente_conversa(parsed, existente=None):
@@ -1341,10 +1369,10 @@ def salvar_cadastro_cliente_conversa(parsed, existente=None):
     if not payload.get("razao_social"):
         raise ValueError("RAZÃO_SOCIAL é obrigatória para salvar o cliente.")
     if existente:
-        supabase.table(TABELA_CLIENTES).update(payload).eq("id", int(existente["id"])).execute()
+        supabase.table(TABELA_CLIENTES_CNPJ).update(payload).eq("id", int(existente["id"])).execute()
         return {**existente, **payload}
     payload["data_cadastro"] = datetime.now().isoformat()
-    res = supabase.table(TABELA_CLIENTES).insert(payload).execute()
+    res = supabase.table(TABELA_CLIENTES_CNPJ).insert(payload).execute()
     return (res.data or [payload])[0]
 
 
@@ -1401,22 +1429,22 @@ def render_clientes_cnpj(admin):
         agora = datetime.now().isoformat()
         payload = {"cliente": cliente.upper(), "cidade": cidade.upper(), "endereco": endereco.upper(), "cnpj": cnpj, "razao_social": razao.upper(), "observacao": observacao, "data_ultima_atualizacao": agora}
         if id_cliente.strip():
-            atual = supabase.table(TABELA_CLIENTES).select("*").eq("id", int(id_cliente)).limit(1).execute()
+            atual = supabase.table(TABELA_CLIENTES_CNPJ).select("*").eq("id", int(id_cliente)).limit(1).execute()
             antes = atual.data[0] if atual.data else {}
-            supabase.table(TABELA_CLIENTES).update(payload).eq("id", int(id_cliente)).execute()
-            registrar_historico_campos(TABELA_CLIENTES, id_cliente, antes, payload, "ADMIN")
+            supabase.table(TABELA_CLIENTES_CNPJ).update(payload).eq("id", int(id_cliente)).execute()
+            registrar_historico_campos(TABELA_CLIENTES_CNPJ, id_cliente, antes, payload, "ADMIN")
         else:
             payload["data_cadastro"] = agora
-            supabase.table(TABELA_CLIENTES).insert(payload).execute()
-            registrar_historico_campos(TABELA_CLIENTES, payload.get("cnpj"), {}, payload, "ADMIN")
+            supabase.table(TABELA_CLIENTES_CNPJ).insert(payload).execute()
+            registrar_historico_campos(TABELA_CLIENTES_CNPJ, payload.get("cnpj"), {}, payload, "ADMIN")
         st.success("Cliente salvo.")
         st.rerun()
     excluir_id = st.text_input("ID do cliente para excluir")
     if st.button("Excluir cliente") and excluir_id.strip():
-        atual = supabase.table(TABELA_CLIENTES).select("*").eq("id", int(excluir_id)).limit(1).execute()
+        atual = supabase.table(TABELA_CLIENTES_CNPJ).select("*").eq("id", int(excluir_id)).limit(1).execute()
         antes = atual.data[0] if atual.data else {}
-        supabase.table(TABELA_CLIENTES).delete().eq("id", int(excluir_id)).execute()
-        registrar_historico_campos(TABELA_CLIENTES, excluir_id, antes, {"excluido": True}, "ADMIN")
+        supabase.table(TABELA_CLIENTES_CNPJ).delete().eq("id", int(excluir_id)).execute()
+        registrar_historico_campos(TABELA_CLIENTES_CNPJ, excluir_id, antes, {"excluido": True}, "ADMIN")
         st.warning("Cliente excluído.")
         st.rerun()
 
@@ -3657,9 +3685,12 @@ if pagina_atual == "conversa":
                 if erro:
                     st.error(erro)
                 else:
-                    existente = buscar_cliente_por_nome_exibicao(parsed_cliente.get("nome_exibicao"))
-                    st.session_state["conversa_cadastro_cliente"] = parsed_cliente
-                    st.session_state["conversa_cliente_existente"] = existente
+                    existente, erro_busca = buscar_cliente_por_nome_exibicao(parsed_cliente.get("nome_exibicao"))
+                    if erro_busca:
+                        st.error(erro_busca)
+                    else:
+                        st.session_state["conversa_cadastro_cliente"] = parsed_cliente
+                        st.session_state["conversa_cliente_existente"] = existente
             elif modo_conversa == "CONSULTA":
                 resposta, erro = responder_conversacao(frase_conversa, df)
                 if erro:

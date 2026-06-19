@@ -52,6 +52,8 @@ FUNCOES_NECESSARIAS = {
     "formatar_cnpj_cliente",
     "aplicar_cnpjs_clientes_cadastrados",
     "normalizar_rotulo_cadastro_cliente",
+    "mensagem_cadastro_cliente_invalido",
+    "rotulos_cadastro_cliente_presentes",
     "parse_cadastro_cliente_conversa",
     "parece_cadastro_cliente_conversa",
     "observacao_cadastro_cliente_conversa",
@@ -67,6 +69,7 @@ CONSTANTES_NECESSARIAS = {
     "PADROES_RELATORIO_CONVERSA",
     "CAMPOS_CADASTRO_CLIENTE_CONVERSA",
     "TABELA_DELIVERIES",
+    "TABELA_CLIENTES_CNPJ",
     "COLUNAS_LOGICAS_DELIVERIES",
 }
 
@@ -86,6 +89,9 @@ def carregar_funcoes_app():
             return self
 
         def limit(self, *args, **kwargs):
+            return self
+
+        def eq(self, *args, **kwargs):
             return self
 
         def execute(self):
@@ -776,6 +782,32 @@ def test_conversa_cadastro_cliente_exige_razao_social():
 
     assert parsed is None
     assert "RAZÃO_SOCIAL" in erro
+
+
+def test_conversa_cadastro_cliente_sem_nome_exibicao_retorna_cadastro_invalido():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_cadastro_cliente_conversa"](
+        "CLIENTE: WMS\nRAZÃO_SOCIAL: WMS SUPERMERCADOS DO BRASIL LTDA."
+    )
+
+    assert parsed is None
+    assert erro == "CADASTRO INVÁLIDO\n\nCampos obrigatórios:\n\nCLIENTE\nNOME_EXIBICAO\nRAZÃO_SOCIAL"
+
+
+def test_conversa_cadastro_cliente_nao_exige_cnpj():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_cadastro_cliente_conversa"](
+        "CLIENTE: WMS\nNOME_EXIBICAO: WMS MAX ATACADO CABULA\n"
+        "RAZÃO_SOCIAL: WMS SUPERMERCADOS DO BRASIL LTDA."
+    )
+
+    assert erro is None
+    assert parsed["cliente_operacao"] == "WMS"
+    assert parsed["nome_exibicao"] == "WMS MAX ATACADO CABULA"
+    assert parsed["razao_social"] == "WMS SUPERMERCADOS DO BRASIL LTDA."
+    assert parsed["cnpj"] == ""
 
 
 def test_resumo_cadastro_cliente_avisa_atualizacao_sem_sobrescrever():
