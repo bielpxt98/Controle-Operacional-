@@ -286,18 +286,42 @@ def _linha_coleta_admin(row: pd.Series, incluir_cnpj: bool = False) -> str:
     return linha
 
 
+def _conferencia_coletas_admin(base: pd.DataFrame, linhas: list[str]) -> list[str]:
+    total_encontrado = len(base)
+    total_exibido = len(linhas)
+    conferencia = [
+        f"REGISTROS ENCONTRADOS: {total_encontrado}",
+        f"REGISTROS EXIBIDOS: {total_exibido}",
+    ]
+    if total_exibido < total_encontrado:
+        deliveries_exibidos = {
+            _texto_valido(row.get("delivery")) or _texto_valido(row.get("sr"))
+            for _, row in base.iloc[:total_exibido].iterrows()
+        }
+        ignorados = []
+        for _, row in base.iterrows():
+            delivery = _texto_valido(row.get("delivery")) or _texto_valido(row.get("sr")) or "SEM DELIVERY/SR"
+            if delivery not in deliveries_exibidos:
+                ignorados.append(f"{delivery} - motivo: registro encontrado no período, mas não foi exibido na resposta")
+        if ignorados:
+            conferencia.extend(["", "DELIVERIES IGNORADOS:", *ignorados])
+    return conferencia
+
+
 def _responder_coletas_admin_periodo(df: pd.DataFrame, pergunta: str) -> str:
     base = _aplicar_periodo_operacional(df, pergunta)
     if base.empty:
         return "Nenhuma coleta encontrada para o período informado."
-    return "\n\n".join(_linha_coleta_admin(row, incluir_cnpj=True) for _, row in base.iterrows())
+    linhas = [_linha_coleta_admin(row, incluir_cnpj=False) for _, row in base.iterrows()]
+    return "\n\n".join(linhas + _conferencia_coletas_admin(base, linhas))
 
 
 def _responder_coletas_hoje_admin(df: pd.DataFrame) -> str:
     base = _periodo_hoje(df)
     if base.empty:
         return "Nenhuma coleta encontrada para hoje."
-    return "\n\n".join(_linha_coleta_admin(row, incluir_cnpj=True) for _, row in base.iterrows())
+    linhas = [_linha_coleta_admin(row, incluir_cnpj=False) for _, row in base.iterrows()]
+    return "\n\n".join(linhas + _conferencia_coletas_admin(base, linhas))
 
 def _normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
     logger.debug("Normalizando dataframe para perguntas. Colunas originais: %s", list(df.columns))
