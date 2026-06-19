@@ -2788,7 +2788,7 @@ def responder_conversacao(pergunta, dados):
     try:
         logger.info("Consulta da Conversação iniciada: %s", pergunta)
         pergunta_norm = limpar_busca(pergunta)
-        if re.fullmatch(r"\s*COLETAS\s+(?:(?:DE\s+)?HOJE|DO\s+DIA|DE\s+ONTEM|DO\s+DIA\s+\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\s*", pergunta_norm):
+        if re.fullmatch(r"\s*COLETAS\s+(?:DE\s+ONTEM|DO\s+DIA\s+\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\s*", pergunta_norm):
             dados_consulta = dados.copy()
         else:
             dados_consulta = aplicar_cnpjs_clientes_cadastrados(dados, listar_clientes())

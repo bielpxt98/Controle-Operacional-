@@ -291,7 +291,7 @@ def _linha_coleta_admin(row: pd.Series, incluir_cnpj: bool = False) -> str:
     linha = formatar_linha_coleta_motorista(row)
     cnpj = _texto_valido(row.get("cnpj"))
     if incluir_cnpj and cnpj:
-        linha += f"\nCNPJ: {cnpj}"
+        linha += f" | CNPJ {cnpj}"
     return linha
 
 
@@ -329,7 +329,7 @@ def _responder_coletas_hoje_admin(df: pd.DataFrame) -> str:
     base = _periodo_hoje(df)
     if base.empty:
         return "Nenhuma coleta encontrada para hoje."
-    linhas = [formatar_linha_coleta_motorista(row) for _, row in base.iterrows()]
+    linhas = [_linha_coleta_admin(row, incluir_cnpj=True) for _, row in base.iterrows()]
     return "\n".join(linhas)
 
 def _normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
