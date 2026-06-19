@@ -48,6 +48,7 @@ FUNCOES_NECESSARIAS = {
     "resolver_coluna_delivery",
     "preparar_campos_deliveries_para_salvar",
     "valor_campo_delivery",
+    "colunas_reais_clientes",
     "normalizar_chave_cliente_cnpj",
     "formatar_cnpj_cliente",
     "aplicar_cnpjs_clientes_cadastrados",
@@ -58,6 +59,7 @@ FUNCOES_NECESSARIAS = {
     "parece_cadastro_cliente_conversa",
     "observacao_cadastro_cliente_conversa",
     "payload_cadastro_cliente_conversa",
+    "preparar_payload_cliente_para_salvar",
     "resumo_cadastro_cliente_conversa",
 }
 
@@ -784,15 +786,43 @@ def test_conversa_cadastro_cliente_exige_razao_social():
     assert "RAZÃO_SOCIAL" in erro
 
 
-def test_conversa_cadastro_cliente_sem_nome_exibicao_retorna_cadastro_invalido():
+def test_conversa_cadastro_cliente_sem_nome_exibicao_copia_cliente():
     app = carregar_funcoes_app()
 
     parsed, erro = app["parse_cadastro_cliente_conversa"](
-        "CLIENTE: WMS\nRAZÃO_SOCIAL: WMS SUPERMERCADOS DO BRASIL LTDA."
+        "CLIENTE: WMS MAX ATACADO CENTENARIO\nRAZÃO_SOCIAL: WMS SUPERMERCADOS DO BRASIL LTDA."
     )
 
-    assert parsed is None
-    assert erro == "CADASTRO INVÁLIDO\n\nCampos obrigatórios:\n\nCLIENTE\nNOME_EXIBICAO\nRAZÃO_SOCIAL"
+    assert erro is None
+    assert parsed["cliente_operacao"] == "WMS MAX ATACADO CENTENARIO"
+    assert parsed["nome_exibicao"] == "WMS MAX ATACADO CENTENARIO"
+
+    payload = app["payload_cadastro_cliente_conversa"](parsed)
+    assert payload["cliente"] == "WMS MAX ATACADO CENTENARIO"
+    assert payload["nome_exibicao"] == "WMS MAX ATACADO CENTENARIO"
+
+
+def test_preparar_payload_cliente_usa_endereco_referencia_quando_tabela_tem_coluna():
+    app = carregar_funcoes_app()
+
+    payload = app["preparar_payload_cliente_para_salvar"](
+        {
+            "cliente": "WMS MAX ATACADO CENTENARIO",
+            "nome_exibicao": "",
+            "endereco": "RUA TESTE",
+            "razao_social": "WMS SUPERMERCADOS DO BRASIL LTDA.",
+        },
+        {
+            "cliente": "",
+            "nome_exibicao": "",
+            "endereco_referencia": "",
+            "razao_social": "",
+        },
+    )
+
+    assert payload["nome_exibicao"] == "WMS MAX ATACADO CENTENARIO"
+    assert payload["endereco_referencia"] == "RUA TESTE"
+    assert "endereco" not in payload
 
 
 def test_conversa_cadastro_cliente_nao_exige_cnpj():
