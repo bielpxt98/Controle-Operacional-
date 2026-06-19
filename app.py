@@ -1325,10 +1325,12 @@ CAMPOS_CADASTRO_CLIENTE_CONVERSA = {
     "RAZAO SOCIAL": "razao_social",
     "RAZÃO SOCIAL": "razao_social",
     "UNIDADE": "unidade",
-    "ENDERECO_REFERENCIA": "endereco",
-    "ENDEREÇO_REFERÊNCIA": "endereco",
-    "ENDERECO REFERENCIA": "endereco",
-    "ENDEREÇO REFERÊNCIA": "endereco",
+    "ENDERECO": "endereco_referencia",
+    "ENDEREÇO": "endereco_referencia",
+    "ENDERECO_REFERENCIA": "endereco_referencia",
+    "ENDEREÇO_REFERÊNCIA": "endereco_referencia",
+    "ENDERECO REFERENCIA": "endereco_referencia",
+    "ENDEREÇO REFERÊNCIA": "endereco_referencia",
     "BAIRRO": "bairro",
     "CIDADE": "cidade",
     "CNPJ": "cnpj",
@@ -1399,15 +1401,16 @@ def parece_cadastro_cliente_conversa(frase):
 def observacao_cadastro_cliente_conversa(parsed):
     partes = []
     for rotulo, chave in [
-        ("CLIENTE OPERAÇÃO", "cliente_operacao"),
         ("UNIDADE", "unidade"),
         ("BAIRRO", "bairro"),
         ("STATUS", "status"),
-        ("OBSERVAÇÃO", "observacao"),
     ]:
         valor = texto(parsed.get(chave))
         if valor:
             partes.append(f"{rotulo}: {valor}")
+    observacao = texto(parsed.get("observacao"))
+    if observacao:
+        partes.append(observacao)
     return " | ".join(partes)
 
 
@@ -1419,7 +1422,7 @@ def payload_cadastro_cliente_conversa(parsed):
         "cliente": nome_exibicao,
         "nome_exibicao": nome_exibicao,
         "cidade": texto(parsed.get("cidade")).upper(),
-        "endereco": texto(parsed.get("endereco")).upper(),
+        "endereco_referencia": texto(parsed.get("endereco_referencia") or parsed.get("endereco")).upper(),
         "cnpj": formatar_cnpj_cliente(parsed.get("cnpj")),
         "razao_social": texto(parsed.get("razao_social")).upper(),
         "observacao": observacao_cadastro_cliente_conversa(parsed),
@@ -1474,7 +1477,7 @@ def resumo_cadastro_cliente_conversa(parsed, existente=None):
         ("NOME EXIBIÇÃO", "nome_exibicao"),
         ("RAZÃO SOCIAL", "razao_social"),
         ("UNIDADE", "unidade"),
-        ("ENDEREÇO REFERÊNCIA", "endereco"),
+        ("ENDEREÇO REFERÊNCIA", "endereco_referencia"),
         ("BAIRRO", "bairro"),
         ("CIDADE", "cidade"),
         ("CNPJ", "cnpj"),
