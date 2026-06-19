@@ -416,7 +416,9 @@ class ConsultaAdministrativaTest(unittest.TestCase):
 
             self.assertIn("3787849356 - GMF (FEIRA DE SANTANA) - @FA", resposta)
             self.assertIn("3787849414 - DROGARIA SAO PAULO (LAURO DE FREITAS) - @JO", resposta)
-            self.assertIn("CNPJ: XX.XXX.XXX/XXXX-XX", resposta)
+            self.assertIn("REGISTROS ENCONTRADOS: 2", resposta)
+            self.assertIn("REGISTROS EXIBIDOS: 2", resposta)
+            self.assertNotIn("CNPJ:", resposta)
             self.assertNotIn("GMF - FEIRA DE SANTANA", resposta)
 
     def test_coletas_de_hoje_sem_cnpj_ignora_valores_vazios_e_na(self):
@@ -454,8 +456,41 @@ class ConsultaAdministrativaTest(unittest.TestCase):
             self.assertIn("3787849310 - WMS MAX ATACADO (BARROS REIS) - @AI", resposta)
             self.assertIn("3787849311 - WMS MAX ATACADO REITOR MIGUEL (SIMOES FILHO) - @AI", resposta)
             self.assertIn("3787849312 - WMS MAX ATACADO (LAURO DE FREITAS) - @AR", resposta)
-            self.assertIn("CNPJ: 12.345.678/0001-90", resposta)
+            self.assertIn("REGISTROS ENCONTRADOS: 3", resposta)
+            self.assertIn("REGISTROS EXIBIDOS: 3", resposta)
+            self.assertNotIn("CNPJ:", resposta)
             self.assertNotIn("WMS (MAX ATACADO", resposta)
+
+    def test_coletas_de_hoje_exibe_todos_registros_do_dia_sem_limite_ou_cnpj(self):
+        hoje = date.today().strftime("%d/%m/%Y")
+        registros = [
+            ("3787868756", "WMS MAX ATACADO DORIVAL CAYMMI", "Ariel"),
+            ("3787867867", "WMS MAX ATACADO REITOR MIGUEL", "Ariel"),
+            ("3787867863", "MERCANTIL LAURO DE FREITAS", "Ariel"),
+            ("3787867862", "WMS MAX ATACADO CENTENARIO", "Maria"),
+            ("3787816532", "ASSAI VASCO DA GAMA", "Gabriel"),
+            ("3402204834", "BOOMIX", "Luis"),
+            ("3787816418", "PAGUE MENOS", "Jones"),
+            ("3787866517", "YOKI DISTRIBUIDORA", "Wilson"),
+            ("3787867835", "CENCOSUD CAMACARI", "Argemiro"),
+            ("3787867806", "ASSAI LAURO DE FREITAS", "Fabio"),
+        ]
+        df = pd.DataFrame([
+            {"data": hoje, "delivery": delivery, "cliente": cliente, "motorista": motorista, "cnpj": "00.000.000/0000-00"}
+            for delivery, cliente, motorista in registros
+        ])
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "coletas_hoje_10.csv"
+            df.to_csv(caminho, index=False)
+
+            resposta = responder_pergunta("COLETAS DE HOJE", str(caminho))
+
+            for delivery, _, _ in registros:
+                self.assertIn(delivery, resposta)
+            self.assertIn("REGISTROS ENCONTRADOS: 10", resposta)
+            self.assertIn("REGISTROS EXIBIDOS: 10", resposta)
+            self.assertNotIn("CNPJ:", resposta)
+            self.assertNotIn("DELIVERIES IGNORADOS", resposta)
 
     def test_coletas_de_ontem_e_do_dia_usam_formato_admin(self):
         ontem = date.today() - timedelta(days=1)
@@ -470,5 +505,7 @@ class ConsultaAdministrativaTest(unittest.TestCase):
             resposta_dia = responder_pergunta(f"COLETAS DO DIA {ontem.strftime('%d/%m')}", str(caminho))
 
             self.assertIn("3787849414 - DROGARIA SAO PAULO (LAURO DE FREITAS) - @JO", resposta_ontem)
-            self.assertIn("CNPJ: 61412110062002", resposta_ontem)
+            self.assertIn("REGISTROS ENCONTRADOS: 1", resposta_ontem)
+            self.assertIn("REGISTROS EXIBIDOS: 1", resposta_ontem)
+            self.assertNotIn("CNPJ:", resposta_ontem)
             self.assertIn("3787849414 - DROGARIA SAO PAULO (LAURO DE FREITAS) - @JO", resposta_dia)

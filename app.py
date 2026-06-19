@@ -2663,7 +2663,11 @@ def responder_conversacao(pergunta, dados):
 
     try:
         logger.info("Consulta da Conversação iniciada: %s", pergunta)
-        dados_consulta = aplicar_cnpjs_clientes_cadastrados(dados, listar_clientes())
+        pergunta_norm = limpar_busca(pergunta)
+        if re.fullmatch(r"\s*COLETAS\s+DE\s+HOJE\s*", pergunta_norm):
+            dados_consulta = dados.copy()
+        else:
+            dados_consulta = aplicar_cnpjs_clientes_cadastrados(dados, listar_clientes())
         return responder_pergunta_df(pergunta, dados_consulta), None
     except Exception:
         tb = traceback.format_exc()
