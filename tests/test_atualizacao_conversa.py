@@ -35,6 +35,7 @@ FUNCOES_NECESSARIAS = {
     "preparar_linha_atualizacao_rapida",
     "parse_atualizacao_rapida",
     "resumo_atualizacao_rapida",
+    "buscar_registros_atualizacao_rapida",
     "numero_operacional_visual",
     "montar_registro",
     "numero",
@@ -47,6 +48,7 @@ FUNCOES_NECESSARIAS = {
     "colunas_reais_deliveries",
     "resolver_coluna_delivery",
     "preparar_campos_deliveries_para_salvar",
+    "juntar_observacoes_sem_duplicar",
     "valor_campo_delivery",
     "colunas_reais_clientes",
     "normalizar_chave_cliente_cnpj",
@@ -124,11 +126,11 @@ def test_conversa_bloqueio_com_observacao_livre_concatena_o_campo_o():
     assert erro is None
     assert parsed["horario"] == "16:22"
     assert parsed["acao"] == "BLOQUEIO"
-    assert parsed["observacoes"] == "BLOQUEIO AS 16:22 | CLIENTE NAO QUIS CARREGAR"
+    assert parsed["observacoes"] == "BLOQUEIO 16:22 | CLIENTE NAO QUIS CARREGAR"
 
     campos = app["campos_atualizacao_conversa"](parsed)
     assert campos["f_horario"] == "16:22"
-    assert campos["observacoes"] == "BLOQUEIO AS 16:22 | CLIENTE NAO QUIS CARREGAR"
+    assert campos["observacoes"] == "BLOQUEIO 16:22 | CLIENTE NAO QUIS CARREGAR"
 
 
 def test_conversa_atualiza_l_c_pc_por_frase_natural_e_confirma_sem_setas():
@@ -150,7 +152,8 @@ def test_conversa_atualiza_l_c_pc_por_frase_natural_e_confirma_sem_setas():
     assert campos["c_horario"] == "09:24"
     assert campos["pc"] == 76
     assert "paletes_coletados" not in campos
-    assert "D 3787849356\nM FABIO\nCL GMF\n\nALTERAÇÕES:\nL 08:02\nC 09:24\nPC 76" in resumo
+    assert "D 3787849356\nM FABIO\nCL GMF" in resumo
+    assert "ALTERAÇÕES:\nL 08:02\nC 09:24\nPC 76" in resumo
 
 
 def test_conversa_filtra_por_cliente_quando_final_tem_mais_de_um_resultado():
@@ -177,11 +180,11 @@ def test_conversa_deslocamento_e_bloqueio_salvam_fi_observacao_e_status():
 
     assert erro is None
     assert campos_deslocamento["f_horario"] == "14:05"
-    assert campos_deslocamento["observacoes"] == "DESLOCAMENTO AS 14:05"
+    assert campos_deslocamento["observacoes"] == "DESLOCAMENTO 14:05"
     assert campos_deslocamento["status"] == "DESLOCAMENTO"
     assert erro_bloqueio is None
     assert campos_bloqueio["f_horario"] == "16:20"
-    assert campos_bloqueio["observacoes"] == "BLOQUEIO AS 16:20"
+    assert campos_bloqueio["observacoes"] == "BLOQUEIO 16:20"
     assert campos_bloqueio["status"] == "BLOQUEIO"
 
 
@@ -727,7 +730,7 @@ def test_d_horario_vira_deslocamento_com_prioridade_sobre_finalizado():
     assert erro is None
     assert parsed["campos"]["cliente"] == "WMS MAX ATACADO ALAGOINHAS"
     assert parsed["campos"]["f_horario"] == "14:05"
-    assert parsed["campos"]["observacoes"] == "O DESLOCAMENTO AS 14:05"
+    assert parsed["campos"]["observacoes"] == "DESLOCAMENTO 14:05"
     assert parsed["campos"]["status"] == "DESLOCAMENTO"
 
 
@@ -902,3 +905,46 @@ def test_resumo_cadastro_cliente_avisa_atualizacao_sem_sobrescrever():
     assert erro is None
     assert "CLIENTE JÁ CADASTRADO" in resumo
     assert "DESEJA ATUALIZAR?" in resumo
+
+
+def test_delivery_valido_tem_exatamente_10_digitos_e_busca_final_nao_cria_codigo_curto():
+    app = carregar_funcoes_app()
+    df = pd.DataFrame([
+        {"id": 1, "delivery": "3402204874", "cliente": "CLIENTE A", "motorista": "MOTORISTA A", "f_horario": ""},
+        {"id": 2, "delivery": "3787804874", "cliente": "CLIENTE B", "motorista": "MOTORISTA B", "f_horario": ""},
+    ])
+
+    parsed, erro = app["parse_atualizacao_conversa"]("4874 B 16:07 RECUSADO PELO CLIENTE REEMBOLSO 664,22")
+    resultados = app["buscar_coletas_por_conversa"](df, parsed)
+    campos = app["campos_atualizacao_conversa"](parsed)
+
+    assert erro is None
+    assert not app["parece_delivery_completo"]("4874")
+    assert app["parece_delivery_completo"]("3402204874")
+    assert parsed["final_delivery"] == "4874"
+    assert len(resultados) == 2
+    assert campos["f_horario"] == "16:07"
+    assert campos["status"] == "BLOQUEIO"
+    assert campos["observacoes"] == "BLOQUEIO 16:07 | RECUSADO PELO CLIENTE | REEMBOLSO 664,22"
+
+
+def test_busca_rapida_por_final_do_delivery_e_preserva_observacao_antiga_sem_duplicar():
+    app = carregar_funcoes_app()
+    df = pd.DataFrame([
+        {"id": 1, "delivery": "3402204874", "cliente": "CLIENTE A", "motorista": "MOTORISTA A", "observacoes": "RECUSADO PELO CLIENTE"},
+        {"id": 2, "delivery": "3787801111", "cliente": "CLIENTE B", "motorista": "MOTORISTA B", "observacoes": ""},
+    ])
+
+    parsed, erro = app["parse_atualizacao_rapida"]("4874 D 15:19 RECUSADO PELO CLIENTE REEMBOLSO 664,22")
+    resultados = app["buscar_registros_atualizacao_rapida"](df, parsed)
+    preparados = app["preparar_campos_deliveries_para_salvar"](
+        parsed["campos"],
+        resultados[0],
+    )
+
+    assert erro is None
+    assert parsed["valor_busca"] == "4874"
+    assert len(resultados) == 1
+    assert parsed["campos"]["f_horario"] == "15:19"
+    assert parsed["campos"]["status"] == "DESLOCAMENTO"
+    assert preparados["observacoes"] == "RECUSADO PELO CLIENTE | DESLOCAMENTO 15:19 | REEMBOLSO 664,22"

@@ -1105,8 +1105,31 @@ def resolver_coluna_delivery(campo_logico, colunas_reais):
     return campo_logico if campo_logico in colunas_reais else None
 
 
+def juntar_observacoes_sem_duplicar(observacao_atual, observacao_nova):
+    """Concatena observações com | sem apagar histórico nem repetir trechos."""
+    partes = []
+    vistos = set()
+    for origem in [observacao_atual, observacao_nova]:
+        for parte in texto(origem).split("|"):
+            parte_limpa = parte.strip()
+            if not parte_limpa:
+                continue
+            chave = limpar_busca(re.sub(r"^O\s+", "", parte_limpa, flags=re.IGNORECASE))
+            if chave and chave not in vistos:
+                vistos.add(chave)
+                partes.append(re.sub(r"^O\s+", "", parte_limpa, flags=re.IGNORECASE).strip().upper())
+    return " | ".join(partes) if partes else None
+
+
 def preparar_campos_deliveries_para_salvar(campos, registro_atual=None):
     """Usa exatamente os nomes físicos existentes em deliveries no payload salvo."""
+    campos = dict(campos or {})
+    if registro_atual and campos.get("observacoes"):
+        campos["observacoes"] = juntar_observacoes_sem_duplicar(
+            registro_atual.get("observacoes"),
+            campos.get("observacoes"),
+        )
+
     colunas_reais = colunas_reais_deliveries(registro_atual)
     if not colunas_reais:
         return dict(campos)
@@ -1680,7 +1703,15 @@ def extrair_regra_bloqueio_deslocamento(linha):
     else:
         motivo = linha_sem_marcadores.upper().strip()
     acao = "DESLOCAMENTO" if tipo == "D" else "BLOQUEIO"
-    observacao = f"O {acao} AS {horario}" if horario else None
+    extras = []
+    normalizado_original = limpar_busca(original)
+    if "RECUSADO PELO CLIENTE" in normalizado_original or "RECUSA PELO CLIENTE" in normalizado_original:
+        extras.append("RECUSADO PELO CLIENTE")
+    reembolso = re.search(r"\bREEMBOLSO\b\s*(?:R\$?\s*)?([0-9]+(?:[.,][0-9]{1,2})?)?", original, flags=re.IGNORECASE | re.UNICODE)
+    if reembolso:
+        valor_reembolso = texto(reembolso.group(1)).strip()
+        extras.append(f"REEMBOLSO {valor_reembolso}".strip())
+    observacao = combinar_observacoes_conversa(f"{acao} {horario}" if horario else acao, *extras)
     return linha_sem_marcadores, horario or None, observacao
 
 
@@ -1908,7 +1939,18 @@ def parse_atualizacao_rapida(linha):
     matches = list(padrao.finditer(original_parse))
 
     if not matches:
-        return None, "nenhuma abreviação encontrada"
+        codigo_solto = re.search(r"\b(\d{4,10})\b", original_parse)
+        if not codigo_solto or not (horario_bd or observacao_bd):
+            return None, "nenhuma abreviação encontrada"
+        delivery_solto = codigo_solto.group(1)
+        campos = {
+            "delivery": delivery_solto,
+            "f_horario": horario_bd,
+            "observacoes": observacao_bd,
+            "atualizado_em": datetime.now().isoformat(),
+        }
+        campos["status"] = calcular_status_automatico(campos.get("observacoes", ""), campos.get("f_horario"))
+        return {"campos": campos, "chave_busca": "delivery", "valor_busca": delivery_solto}, None
 
     dados = {}
 
@@ -1928,6 +1970,10 @@ def parse_atualizacao_rapida(linha):
         delivery_implicita = re.search(r"\b((?:378|340)\d{7})\b", original_parse)
         if delivery_implicita:
             delivery = delivery_implicita.group(1)
+    if not delivery:
+        delivery_final = re.search(r"\b(\d{4,9})\b", original_parse)
+        if delivery_final:
+            delivery = delivery_final.group(1)
 
     if not delivery and not sr:
         return None, "sem delivery ou SR"
@@ -1966,8 +2012,18 @@ def parse_atualizacao_rapida(linha):
     obs = observacao_livre_rapida(dados.get("O", ""))
     if obs:
         campos["observacoes"] = obs
+    extras = []
+    normalizado_original = limpar_busca(original)
+    if "RECUSADO PELO CLIENTE" in normalizado_original or "RECUSA PELO CLIENTE" in normalizado_original:
+        extras.append("RECUSADO PELO CLIENTE")
+    reembolso = re.search(r"\bREEMBOLSO\b\s*(?:R\$?\s*)?([0-9]+(?:[.,][0-9]{1,2})?)?", original, flags=re.IGNORECASE | re.UNICODE)
+    if reembolso:
+        valor_reembolso = texto(reembolso.group(1)).strip()
+        extras.append(f"REEMBOLSO {valor_reembolso}".strip())
     if observacao_bd:
-        campos["observacoes"] = observacao_bd
+        campos["observacoes"] = combinar_observacoes_conversa(observacao_bd, *extras)
+    elif extras:
+        campos["observacoes"] = combinar_observacoes_conversa(*extras)
 
     campos["status"] = calcular_status_automatico(campos.get("observacoes", ""), campos.get("f_horario"))
 
@@ -2009,6 +2065,42 @@ def atualizar_rapido_no_supabase(parsed):
     registrar_historico_campos(TABELA_DELIVERIES, valor, {}, campos_salvar, "ADMIN")
     atualizar_dataframe_principal()
     return "criado"
+
+
+def buscar_registros_atualizacao_rapida(df_base, parsed):
+    """Busca delivery completo ou por final, sem criar registros implícitos."""
+    if df_base.empty:
+        return []
+    chave = parsed.get("chave_busca")
+    valor = limpar_codigo_delivery(parsed.get("valor_busca"))
+    base = df_base.copy()
+    if chave == "delivery":
+        if "delivery" not in base.columns:
+            return []
+        entregas = base["delivery"].astype("string").fillna("").apply(limpar_codigo_delivery)
+        if parece_delivery_completo(valor):
+            encontrados = base[entregas == valor]
+        else:
+            completos = entregas.apply(parece_delivery_completo)
+            encontrados = base[completos & entregas.str.endswith(valor)]
+        return encontrados.to_dict("records")
+    if chave == "sr" and "sr" in base.columns:
+        encontrados = base[base["sr"].astype("string").fillna("").apply(limpar_codigo_delivery) == valor]
+        return encontrados.to_dict("records")
+    return []
+
+
+def atualizar_rapido_registro_no_supabase(id_registro, parsed):
+    atual = supabase.table(TABELA_DELIVERIES).select("*").eq("id", int(id_registro)).limit(1).execute()
+    dados_atuais = atual.data[0] if atual.data else {}
+    campos_salvar = preparar_campos_deliveries_para_salvar(parsed["campos"], dados_atuais)
+    campos_salvar.pop("delivery", None)
+    campos_salvar.pop("sr", None)
+    supabase.table(TABELA_DELIVERIES).update(campos_salvar).eq("id", int(id_registro)).execute()
+    registrar_historico_campos(TABELA_DELIVERIES, id_registro, dados_atuais, campos_salvar, "ADMIN")
+    salvo = supabase.table(TABELA_DELIVERIES).select("*").eq("id", int(id_registro)).limit(1).execute()
+    atualizar_dataframe_principal()
+    return salvo.data[0] if salvo.data else {}
 
 
 def numero_operacional_visual(valor):
@@ -2064,7 +2156,7 @@ def limpar_codigo_delivery(v):
 
 def parece_delivery_completo(codigo):
     codigo_limpo = limpar_codigo_delivery(codigo)
-    return len(codigo_limpo) >= 8 and codigo_limpo.startswith(("378", "340"))
+    return len(codigo_limpo) == 10
 
 
 def normalizar_data_conversa(v):
@@ -2352,6 +2444,25 @@ def combinar_observacoes_conversa(*observacoes):
     return " | ".join(partes) if partes else None
 
 
+def extrair_observacoes_especiais(frase):
+    """Reconhece automaticamente recusa do cliente e reembolso na atualização."""
+    original = texto(frase)
+    normalizado = limpar_busca(original)
+    especiais = []
+    if "RECUSADO PELO CLIENTE" in normalizado or "RECUSA PELO CLIENTE" in normalizado:
+        especiais.append("RECUSADO PELO CLIENTE")
+
+    reembolso = re.search(
+        r"\bREEMBOLSO\b\s*(?:R\$?\s*)?([0-9]+(?:[.,][0-9]{1,2})?)?",
+        original,
+        flags=re.IGNORECASE | re.UNICODE,
+    )
+    if reembolso:
+        valor = texto(reembolso.group(1)).strip()
+        especiais.append(f"REEMBOLSO {valor}".strip())
+    return especiais
+
+
 COMANDOS_CONSULTA_CONVERSA = {
     "RELATORIO",
     "RELATÓRIO",
@@ -2474,10 +2585,18 @@ def parse_atualizacao_conversa(frase):
 
     observacao_acao = None
     if acao == "BLOQUEIO":
-        observacao_acao = f"BLOQUEIO AS {horario}"
+        observacao_acao = f"BLOQUEIO {horario}"
     elif acao == "DESLOCAMENTO":
-        observacao_acao = f"DESLOCAMENTO AS {horario}"
-    observacoes = combinar_observacoes_conversa(observacao_acao, observacao_livre)
+        observacao_acao = f"DESLOCAMENTO {horario}"
+    extras = []
+    normalizado_original = limpar_busca(original_sem_observacao)
+    if "RECUSADO PELO CLIENTE" in normalizado_original or "RECUSA PELO CLIENTE" in normalizado_original:
+        extras.append("RECUSADO PELO CLIENTE")
+    reembolso = re.search(r"\bREEMBOLSO\b\s*(?:R\$?\s*)?([0-9]+(?:[.,][0-9]{1,2})?)?", original_sem_observacao, flags=re.IGNORECASE | re.UNICODE)
+    if reembolso:
+        valor_reembolso = texto(reembolso.group(1)).strip()
+        extras.append(f"REEMBOLSO {valor_reembolso}".strip())
+    observacoes = combinar_observacoes_conversa(observacao_acao, observacao_livre, *extras)
 
     return {
         "motorista": motorista,
@@ -2633,11 +2752,26 @@ def atualizar_conversa_no_supabase(id_registro, parsed):
 
 
 def resumo_confirmacao_conversa(item, parsed):
-    linhas = ["COLETA ENCONTRADA", "", f"D {texto(item.get('delivery'))}"]
-    if texto(item.get("motorista")):
-        linhas.append(f"M {texto(item.get('motorista'))}")
-    if texto(item.get("cliente")):
-        linhas.append(f"CL {texto(item.get('cliente'))}")
+    status_previsto = parsed.get("status") or calcular_status_automatico(
+        parsed.get("observacoes", ""),
+        parsed.get("horario") or texto(item.get("f_horario")),
+    )
+    linhas = [
+        "COLETA ENCONTRADA",
+        "",
+        "DELIVERY ENCONTRADO",
+        "",
+        f"D {texto(item.get('delivery'))}",
+        f"M {texto(item.get('motorista')) or '—'}",
+        f"CL {texto(item.get('cliente')) or '—'}",
+        "",
+        f"DELIVERY: {texto(item.get('delivery'))}",
+        f"CLIENTE: {texto(item.get('cliente')) or '—'}",
+        f"MOTORISTA: {texto(item.get('motorista')) or '—'}",
+        f"STATUS: {status_previsto or texto(item.get('status')) or '—'}",
+        f"FI: {texto(parsed.get('horario')) or texto(item.get('f_horario')) or '—'}",
+        f"OBSERVAÇÃO: {texto(parsed.get('observacoes')) or texto(item.get('observacoes')) or '—'}",
+    ]
 
     alteracoes = []
     if parsed.get("novo_motorista"):
@@ -2649,7 +2783,7 @@ def resumo_confirmacao_conversa(item, parsed):
     if parsed.get("c_horario"):
         alteracoes.append(f"C {parsed['c_horario']}")
     if parsed.get("pc") not in (None, ""):
-        alteracoes.append(f"PC {parsed['pc']}")
+        alteracoes.append(f"PC {numero_operacional_visual(parsed['pc'])}")
     if parsed.get("horario"):
         alteracoes.append(f"FI {parsed['horario']}")
     if parsed.get("data_finalizacao"):
@@ -3700,16 +3834,14 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
             placeholder="D 3787762754 FI 11:03",
         )
 
-        if st.button("Atualizar registros", type="primary"):
+        if st.button("Pré-visualizar atualizações", type="primary"):
             linhas = [linha.strip() for linha in texto_rapido.splitlines() if linha.strip()]
 
             if not linhas:
                 st.warning("Digite pelo menos uma atualização.")
             else:
-                atualizados = 0
-                criados = 0
                 erros = []
-                resumos = []
+                pendentes = []
 
                 for idx, linha in enumerate(linhas, start=1):
                     try:
@@ -3719,31 +3851,87 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                             erros.append(f"Linha {idx}: {erro} — {linha}")
                             continue
 
-                        resultado = atualizar_rapido_no_supabase(parsed)
-
-                        if resultado == "criado":
-                            criados += 1
-                        else:
-                            atualizados += 1
-
-                        resumos.append(resumo_atualizacao_rapida(parsed, resultado))
-
+                        resultados = buscar_registros_atualizacao_rapida(df, parsed)
+                        final = limpar_codigo_delivery(parsed.get("valor_busca"))
+                        if not resultados:
+                            erros.append(
+                                f"Linha {idx}: Nenhum delivery encontrado com final {final}. "
+                                "Informe o delivery completo com 10 números."
+                            )
+                            continue
+                        pendentes.append({"linha": idx, "texto": linha, "parsed": parsed, "resultados": resultados})
                     except Exception as e:
                         erros.append(f"Linha {idx}: {e} — {linha}")
 
+                st.session_state["rapida_pendentes"] = pendentes
+                st.session_state["rapida_erros"] = erros
+
+        pendentes_rapida = st.session_state.get("rapida_pendentes") or []
+        erros_rapida = st.session_state.get("rapida_erros") or []
+        if pendentes_rapida:
+            st.write("Pré-visualização obrigatória antes de salvar:")
+            for i, item_pendente in enumerate(pendentes_rapida):
+                parsed = item_pendente["parsed"]
+                resultados = item_pendente["resultados"]
+                opcoes = {
+                    f"{texto(item.get('delivery'))} | {texto(item.get('cliente'))} | {texto(item.get('motorista'))}": item
+                    for item in resultados
+                }
+                if len(resultados) > 1:
+                    st.warning(f"Linha {item_pendente['linha']}: mais de um delivery compatível. Escolha qual atualizar.")
+                item_escolhido = opcoes[
+                    st.selectbox(
+                        f"Linha {item_pendente['linha']} - delivery",
+                        list(opcoes.keys()),
+                        key=f"rapida_escolha_{i}",
+                    )
+                ]
+                st.code(resumo_confirmacao_conversa(item_escolhido, {
+                    **parsed["campos"],
+                    "horario": parsed["campos"].get("f_horario"),
+                    "observacoes": parsed["campos"].get("observacoes"),
+                    "final_delivery": parsed.get("valor_busca"),
+                }))
+
+            col_confirmar, col_cancelar = st.columns(2)
+            if col_confirmar.button("Confirmar atualizações rápidas", type="primary"):
+                atualizados = 0
+                resumos = []
+                erros = []
+                for i, item_pendente in enumerate(pendentes_rapida):
+                    parsed = item_pendente["parsed"]
+                    resultados = item_pendente["resultados"]
+                    opcoes = {
+                        f"{texto(item.get('delivery'))} | {texto(item.get('cliente'))} | {texto(item.get('motorista'))}": item
+                        for item in resultados
+                    }
+                    escolha = st.session_state.get(f"rapida_escolha_{i}") or next(iter(opcoes))
+                    try:
+                        salvo = atualizar_rapido_registro_no_supabase(opcoes[escolha]["id"], parsed)
+                        atualizados += 1
+                        resumos.append(resumo_registro_salvo_conversa(salvo))
+                    except Exception as e:
+                        erros.append(f"Linha {item_pendente['linha']}: {e}")
                 if atualizados:
                     st.success(f"{atualizados} registro(s) atualizado(s).")
-                if criados:
-                    st.success(f"{criados} registro(s) criado(s).")
                 if resumos:
-                    st.write("Resumo por delivery:")
                     st.code("\n\n".join(resumos))
                 if erros:
                     st.error("Algumas linhas não foram processadas:")
                     for erro in erros:
                         st.write(f"- {erro}")
-
+                st.session_state.pop("rapida_pendentes", None)
+                st.session_state.pop("rapida_erros", None)
                 st.caption("Atualize a página ou volte na aba Buscar / editar para conferir os dados.")
+            if col_cancelar.button("Cancelar atualizações rápidas"):
+                st.session_state.pop("rapida_pendentes", None)
+                st.session_state.pop("rapida_erros", None)
+                st.rerun()
+
+        if erros_rapida:
+            st.error("Algumas linhas não foram processadas:")
+            for erro in erros_rapida:
+                st.write(f"- {erro}")
 
 
 if pagina_atual == "conversa":
