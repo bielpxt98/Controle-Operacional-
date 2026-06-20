@@ -5,6 +5,7 @@ create table if not exists public.clientes_cnpj (
     endereco text,
     cnpj text unique,
     razao_social text,
+    glid text,
     observacao text,
     data_cadastro timestamptz default now(),
     data_ultima_atualizacao timestamptz default now()
@@ -22,5 +23,7 @@ create table if not exists public.historico_alteracoes (
 );
 
 create index if not exists idx_clientes_cnpj_cliente on public.clientes_cnpj using gin (to_tsvector('portuguese', coalesce(cliente, '')));
+alter table public.clientes_cnpj add column if not exists glid text;
+
 create index if not exists idx_clientes_cnpj_cnpj on public.clientes_cnpj (cnpj);
 create index if not exists idx_historico_alteracoes_data on public.historico_alteracoes (data_hora desc);
