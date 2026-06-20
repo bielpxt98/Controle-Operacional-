@@ -35,6 +35,9 @@ FUNCOES_NECESSARIAS = {
     "preparar_linha_atualizacao_rapida",
     "parse_atualizacao_rapida",
     "parse_glid_envio_rapido",
+    "parse_glid_cliente_conversa",
+    "buscar_cliente_glid_conversa",
+    "resumo_glid_cliente_conversa",
     "resumo_glid_envio_rapido",
     "buscar_clientes_glid_envio_rapido",
     "resumo_atualizacao_rapida",
@@ -753,6 +756,45 @@ def test_conversacao_enriquece_cnpj_da_tabela_clientes_sem_mensagem_de_nao_encon
     assert enriquecido.loc[1, "cnpj"] == ""
 
 
+def test_conversa_glid_atualiza_cadastro_cliente_sem_buscar_delivery():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_glid_cliente_conversa"]("CL WMS MAX ATACADO BR 324 LOJA GLID 1000238063")
+    resumo = app["resumo_glid_cliente_conversa"](
+        {"id": 1, "cliente": "WMS MAX ATACADO BR 324 LOJA", "glid": ""},
+        parsed,
+    )
+
+    assert app["detectar_modo_conversa"]("CL WMS MAX ATACADO BR 324 LOJA GLID 1000238063") == "GLID_CLIENTE"
+    assert erro is None
+    assert parsed["cliente"] == "WMS MAX ATACADO BR 324 LOJA"
+    assert parsed["glid"] == "1000238063"
+    assert parsed["campos"]["glid"] == "1000238063"
+    assert "✅ Cliente encontrado." in resumo
+    assert "CLIENTE: WMS MAX ATACADO BR 324 LOJA" in resumo
+    assert "GLID ANTERIOR: —" in resumo
+    assert "GLID NOVO: 1000238063" in resumo
+
+
+def test_conversa_glid_clientes_exemplos_nao_entram_em_atualizacao_delivery():
+    app = carregar_funcoes_app()
+
+    exemplos = [
+        ("CL ASSAI PARIPE GLID 1000000001", "ASSAÍ PARIPE", "1000000001"),
+        (
+            "CLIENTE A D R DISTRIBUIDORA DE ALIMENTOS GLID 123456789",
+            "A D R DISTRIBUIDORA DE ALIMENTOS",
+            "123456789",
+        ),
+    ]
+
+    for frase, cliente, glid in exemplos:
+        parsed, erro = app["parse_glid_cliente_conversa"](frase)
+        assert app["detectar_modo_conversa"](frase) == "GLID_CLIENTE"
+        assert erro is None
+        assert parsed["cliente"] == cliente
+        assert parsed["glid"] == glid
+        assert parsed["campos"]["glid"] == glid
 
 def test_envio_rapido_glid_atualiza_apenas_cliente_sem_delivery():
     app = carregar_funcoes_app()
