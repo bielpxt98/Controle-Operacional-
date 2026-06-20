@@ -1240,8 +1240,10 @@ def colunas_reais_clientes(registro_atual=None):
 
 
 def preparar_payload_cliente_para_salvar(payload, registro_atual=None):
-    """Garante nome_exibicao preenchido e usa a coluna de endereço existente."""
+    """Garante nome_exibicao preenchido, GLID como texto e usa a coluna de endereço existente."""
     preparado = dict(payload or {})
+    if "glid" in preparado:
+        preparado["glid"] = texto(preparado.get("glid"))
     nome_exibicao = texto(preparado.get("nome_exibicao")).upper() or texto(preparado.get("cliente")).upper()
     if nome_exibicao:
         preparado["cliente"] = nome_exibicao
@@ -1360,6 +1362,7 @@ CAMPOS_CADASTRO_CLIENTE_CONVERSA = {
     "OBSERVACAO": "observacao",
     "OBSERVAÇÃO": "observacao",
     "STATUS": "status",
+    "GLID": "glid",
 }
 
 
@@ -1449,6 +1452,7 @@ def payload_cadastro_cliente_conversa(parsed):
         "cnpj": formatar_cnpj_cliente(parsed.get("cnpj")),
         "razao_social": texto(parsed.get("razao_social")).upper(),
         "observacao": observacao_cadastro_cliente_conversa(parsed),
+        "glid": texto(parsed.get("glid")),
         "data_ultima_atualizacao": agora,
     }
 
@@ -1504,6 +1508,7 @@ def resumo_cadastro_cliente_conversa(parsed, existente=None):
         ("BAIRRO", "bairro"),
         ("CIDADE", "cidade"),
         ("CNPJ", "cnpj"),
+        ("GLID", "glid"),
         ("STATUS", "status"),
         ("OBSERVAÇÃO", "observacao"),
     ]:
@@ -1520,10 +1525,37 @@ def render_clientes_cnpj(admin):
     q_cidade = st.text_input("Pesquisar por cidade")
     q_endereco = st.text_input("Pesquisar por endereço")
     filtrado = clientes.copy()
+    pesquisa_ativa = any(texto(v) for v in [q_cliente, q_cnpj, q_cidade, q_endereco])
     for coluna, valor in [("cliente", q_cliente), ("cnpj", q_cnpj), ("cidade", q_cidade), ("endereco", q_endereco)]:
         if valor and coluna in filtrado.columns:
             filtrado = filtrado[filtrado[coluna].fillna("").astype(str).str.upper().str.contains(valor.upper(), na=False)]
-    st.dataframe(filtrado, use_container_width=True, hide_index=True)
+
+    colunas_cliente = [
+        c for c in ["cliente", "nome_exibicao", "razao_social", "cnpj", "cidade", "endereco", "endereco_referencia", "glid", "observacao"]
+        if c in filtrado.columns
+    ]
+    if pesquisa_ativa and not filtrado.empty:
+        opcoes = {
+            f"{texto(row.get('cliente'))} | {texto(row.get('cidade'))} | ID {texto(row.get('id'))}": row.to_dict()
+            for _, row in filtrado.iterrows()
+        }
+        escolha = st.selectbox("Selecione um cliente para ver a ficha", list(opcoes.keys()))
+        selecionado = opcoes[escolha]
+        endereco_cliente = selecionado.get("endereco") or selecionado.get("endereco_referencia")
+        st.markdown("### Ficha do cliente")
+        for rotulo, valor in [
+            ("CLIENTE", selecionado.get("cliente")),
+            ("NOME_EXIBICAO", selecionado.get("nome_exibicao")),
+            ("RAZAO_SOCIAL", selecionado.get("razao_social")),
+            ("CNPJ", selecionado.get("cnpj")),
+            ("CIDADE", selecionado.get("cidade")),
+            ("ENDERECO", endereco_cliente),
+            ("GLID", selecionado.get("glid")),
+            ("OBSERVACAO", selecionado.get("observacao")),
+        ]:
+            st.markdown(f"**{rotulo}:** {escape(texto(valor))}")
+    else:
+        st.dataframe(filtrado[colunas_cliente] if colunas_cliente else filtrado, use_container_width=True, hide_index=True)
     if not admin:
         st.info("Entre como administrador para adicionar, editar ou excluir clientes.")
         return
@@ -1536,6 +1568,7 @@ def render_clientes_cnpj(admin):
         endereco = st.text_input("Endereço")
         cnpj = c1.text_input("CNPJ")
         razao = c2.text_input("Razão Social")
+        glid = st.text_input("GLID", help="Texto; zeros à esquerda serão mantidos.")
         observacao = st.text_area("Observação")
         salvar_cliente = st.form_submit_button("Salvar cliente", type="primary")
     if salvar_cliente:
@@ -1544,7 +1577,7 @@ def render_clientes_cnpj(admin):
             return
         agora = datetime.now().isoformat()
         nome_cliente = texto(cliente).upper()
-        payload_base = {"cliente": nome_cliente, "nome_exibicao": nome_cliente, "cidade": cidade.upper(), "endereco": endereco.upper(), "cnpj": cnpj, "razao_social": razao.upper(), "observacao": observacao, "data_ultima_atualizacao": agora}
+        payload_base = {"cliente": nome_cliente, "nome_exibicao": nome_cliente, "cidade": cidade.upper(), "endereco": endereco.upper(), "cnpj": cnpj, "razao_social": razao.upper(), "glid": texto(glid), "observacao": observacao, "data_ultima_atualizacao": agora}
         if id_cliente.strip():
             atual = supabase.table(TABELA_CLIENTES_CNPJ).select("*").eq("id", int(id_cliente)).limit(1).execute()
             antes = atual.data[0] if atual.data else {}
@@ -1899,10 +1932,78 @@ def preparar_linha_atualizacao_rapida(original):
     return extrair_regra_bloqueio_deslocamento(original)
 
 
+
+def parse_glid_envio_rapido(linha):
+    """Interpreta atualização rápida exclusiva de GLID no cadastro do cliente."""
+    original = texto(linha)
+    if not original:
+        return None, "linha vazia"
+
+    padrao = re.compile(
+        r"^\s*(CL|CLIENTE)\s+(.+?)\s+GLID\s+(.+?)\s*$",
+        flags=re.IGNORECASE | re.UNICODE,
+    )
+    match = padrao.match(original)
+    if not match:
+        return None, None
+
+    cliente = normalizar_cliente_rapido(match.group(2))
+    glid = texto(match.group(3))
+    if not cliente:
+        return None, "Informe o cliente antes de GLID."
+    if not glid:
+        return None, "Informe o número GLID."
+
+    return {
+        "cliente": cliente,
+        "glid": glid,
+        "campos": {
+            "glid": glid,
+            "data_ultima_atualizacao": datetime.now().isoformat(),
+        },
+    }, None
+
+
+def resumo_glid_envio_rapido(parsed):
+    return f"CLIENTE {parsed.get('cliente', '')}\nGLID {parsed.get('glid', '')}"
+
+
+def buscar_clientes_glid_envio_rapido(clientes, parsed):
+    if clientes is None or clientes.empty:
+        return []
+    cliente_busca = normalizar_chave_cliente_cnpj(parsed.get("cliente"))
+    if not cliente_busca:
+        return []
+    base = clientes.copy()
+    colunas_busca = [c for c in ["cliente", "nome_exibicao"] if c in base.columns]
+    if not colunas_busca:
+        return []
+    mascara = False
+    for coluna in colunas_busca:
+        chaves = base[coluna].fillna("").astype(str).apply(normalizar_chave_cliente_cnpj)
+        mascara = mascara | (chaves == cliente_busca)
+    return base[mascara].to_dict("records")
+
+
+def atualizar_glid_cliente_no_supabase(id_cliente, parsed):
+    atual = supabase.table(TABELA_CLIENTES_CNPJ).select("*").eq("id", int(id_cliente)).limit(1).execute()
+    antes = atual.data[0] if atual.data else {}
+    payload = preparar_payload_cliente_para_salvar(parsed.get("campos", {}), antes)
+    supabase.table(TABELA_CLIENTES_CNPJ).update(payload).eq("id", int(id_cliente)).execute()
+    registrar_historico_campos(TABELA_CLIENTES_CNPJ, id_cliente, antes, payload, "ADMIN")
+    salvo = supabase.table(TABELA_CLIENTES_CNPJ).select("*").eq("id", int(id_cliente)).limit(1).execute()
+    return salvo.data[0] if salvo.data else {**antes, **payload}
+
 def parse_atualizacao_rapida(linha):
     original = texto(linha)
     if not original:
         return None, "linha vazia"
+
+    parsed_glid, erro_glid = parse_glid_envio_rapido(original)
+    if parsed_glid:
+        return None, "GLID deve atualizar somente o cadastro do cliente"
+    if erro_glid:
+        return None, erro_glid
 
     original_parse, horario_bd, observacao_bd = preparar_linha_atualizacao_rapida(original)
 
@@ -3842,9 +3943,23 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
             else:
                 erros = []
                 pendentes = []
+                pendentes_glid = []
+                clientes_cadastrados = listar_clientes()
 
                 for idx, linha in enumerate(linhas, start=1):
                     try:
+                        parsed_glid, erro_glid = parse_glid_envio_rapido(linha)
+                        if erro_glid:
+                            erros.append(f"Linha {idx}: {erro_glid} — {linha}")
+                            continue
+                        if parsed_glid:
+                            resultados_glid = buscar_clientes_glid_envio_rapido(clientes_cadastrados, parsed_glid)
+                            if not resultados_glid:
+                                erros.append(f"Linha {idx}: Cliente não encontrado para atualizar GLID — {linha}")
+                                continue
+                            pendentes_glid.append({"linha": idx, "texto": linha, "parsed": parsed_glid, "resultados": resultados_glid})
+                            continue
+
                         parsed, erro = parse_atualizacao_rapida(linha)
 
                         if erro:
@@ -3864,12 +3979,33 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                         erros.append(f"Linha {idx}: {e} — {linha}")
 
                 st.session_state["rapida_pendentes"] = pendentes
+                st.session_state["rapida_glid_pendentes"] = pendentes_glid
                 st.session_state["rapida_erros"] = erros
 
         pendentes_rapida = st.session_state.get("rapida_pendentes") or []
+        pendentes_glid_rapida = st.session_state.get("rapida_glid_pendentes") or []
         erros_rapida = st.session_state.get("rapida_erros") or []
-        if pendentes_rapida:
-            st.write("Pré-visualização obrigatória antes de salvar:")
+        if pendentes_glid_rapida:
+            st.write("Atualizações de GLID no cadastro do cliente:")
+            for i, item_pendente in enumerate(pendentes_glid_rapida):
+                parsed = item_pendente["parsed"]
+                resultados = item_pendente["resultados"]
+                opcoes = {
+                    f"{texto(item.get('cliente'))} | {texto(item.get('cidade'))} | ID {texto(item.get('id'))}": item
+                    for item in resultados
+                }
+                if len(resultados) > 1:
+                    st.warning(f"Linha {item_pendente['linha']}: mais de um cliente compatível. Escolha qual atualizar.")
+                st.selectbox(
+                    f"Linha {item_pendente['linha']} - cliente GLID",
+                    list(opcoes.keys()),
+                    key=f"rapida_glid_escolha_{i}",
+                )
+                st.code(resumo_glid_envio_rapido(parsed))
+
+        if pendentes_rapida or pendentes_glid_rapida:
+            if pendentes_rapida:
+                st.write("Pré-visualização obrigatória antes de salvar:")
             for i, item_pendente in enumerate(pendentes_rapida):
                 parsed = item_pendente["parsed"]
                 resultados = item_pendente["resultados"]
@@ -3895,6 +4031,19 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
 
             col_confirmar, col_cancelar = st.columns(2)
             if col_confirmar.button("Confirmar atualizações rápidas", type="primary"):
+                atualizados_glid = 0
+                for i, item_pendente in enumerate(pendentes_glid_rapida):
+                    parsed = item_pendente["parsed"]
+                    opcoes = {
+                        f"{texto(item.get('cliente'))} | {texto(item.get('cidade'))} | ID {texto(item.get('id'))}": item
+                        for item in item_pendente["resultados"]
+                    }
+                    escolha = st.session_state.get(f"rapida_glid_escolha_{i}") or next(iter(opcoes))
+                    atualizar_glid_cliente_no_supabase(opcoes[escolha]["id"], parsed)
+                    atualizados_glid += 1
+                if atualizados_glid:
+                    st.success(f"{atualizados_glid} GLID(s) atualizado(s) no cadastro de clientes.")
+
                 atualizados = 0
                 resumos = []
                 erros = []
@@ -3921,10 +4070,12 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                     for erro in erros:
                         st.write(f"- {erro}")
                 st.session_state.pop("rapida_pendentes", None)
+                st.session_state.pop("rapida_glid_pendentes", None)
                 st.session_state.pop("rapida_erros", None)
                 st.caption("Atualize a página ou volte na aba Buscar / editar para conferir os dados.")
             if col_cancelar.button("Cancelar atualizações rápidas"):
                 st.session_state.pop("rapida_pendentes", None)
+                st.session_state.pop("rapida_glid_pendentes", None)
                 st.session_state.pop("rapida_erros", None)
                 st.rerun()
 

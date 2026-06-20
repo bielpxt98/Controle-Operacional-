@@ -34,6 +34,9 @@ FUNCOES_NECESSARIAS = {
     "observacao_livre_rapida",
     "preparar_linha_atualizacao_rapida",
     "parse_atualizacao_rapida",
+    "parse_glid_envio_rapido",
+    "resumo_glid_envio_rapido",
+    "buscar_clientes_glid_envio_rapido",
     "resumo_atualizacao_rapida",
     "buscar_registros_atualizacao_rapida",
     "numero_operacional_visual",
@@ -749,6 +752,58 @@ def test_conversacao_enriquece_cnpj_da_tabela_clientes_sem_mensagem_de_nao_encon
     assert enriquecido.loc[0, "cnpj"] == "61.412.110/0620-02"
     assert enriquecido.loc[1, "cnpj"] == ""
 
+
+
+def test_envio_rapido_glid_atualiza_apenas_cliente_sem_delivery():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_glid_envio_rapido"]("CL CABULA GLID 000000000")
+
+    assert erro is None
+    assert parsed["cliente"] == "CABULA"
+    assert parsed["glid"] == "000000000"
+    assert parsed["campos"]["glid"] == "000000000"
+    assert "observacoes" not in parsed["campos"]
+    assert "delivery" not in parsed["campos"]
+
+    parsed_delivery, erro_delivery = app["parse_atualizacao_rapida"]("CL CABULA GLID 000000000")
+    assert parsed_delivery is None
+    assert erro_delivery == "GLID deve atualizar somente o cadastro do cliente"
+
+
+def test_envio_rapido_glid_cliente_composto_e_busca_cadastro():
+    app = carregar_funcoes_app()
+    clientes = pd.DataFrame([
+        {"id": 1, "cliente": "WMS MAX ATACADO CABULA", "cidade": "SALVADOR", "glid": ""},
+        {"id": 2, "cliente": "OUTRO", "cidade": "SALVADOR", "glid": ""},
+    ])
+
+    parsed, erro = app["parse_glid_envio_rapido"]("CLIENTE WMS MAX ATACADO CABULA GLID 000000000")
+    resultados = app["buscar_clientes_glid_envio_rapido"](clientes, parsed)
+
+    assert erro is None
+    assert parsed["cliente"] == "WMS MAX ATACADO CABULA"
+    assert parsed["glid"] == "000000000"
+    assert len(resultados) == 1
+    assert resultados[0]["id"] == 1
+
+
+def test_cadastro_cliente_payload_preserva_glid_com_zeros():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_cadastro_cliente_conversa"](
+        "CLIENTE: WMS MAX ATACADO CABULA\n"
+        "RAZÃO_SOCIAL: WMS SUPERMERCADOS DO BRASIL LTDA.\n"
+        "GLID: 000000000"
+    )
+    payload = app["preparar_payload_cliente_para_salvar"](
+        app["payload_cadastro_cliente_conversa"](parsed),
+        {"cliente": "", "nome_exibicao": "", "razao_social": "", "glid": ""},
+    )
+
+    assert erro is None
+    assert parsed["glid"] == "000000000"
+    assert payload["glid"] == "000000000"
 
 def test_conversa_reconhece_cadastro_assistido_cliente():
     app = carregar_funcoes_app()
