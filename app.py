@@ -1940,7 +1940,7 @@ def parse_glid_envio_rapido(linha):
         return None, "linha vazia"
 
     padrao = re.compile(
-        r"^\s*(CL|CLIENTE)\s+(.+?)\s+GLID\s+(.+?)\s*$",
+        r"^\s*(CL|CLIENTE)\s*:?\s+(.+?)\s+GL(?:ID)?\s*:?\s+(.+?)\s*$",
         flags=re.IGNORECASE | re.UNICODE,
     )
     match = padrao.match(original)
@@ -1965,7 +1965,7 @@ def parse_glid_envio_rapido(linha):
 
 
 def resumo_glid_envio_rapido(parsed):
-    return f"CLIENTE {parsed.get('cliente', '')}\nGLID {parsed.get('glid', '')}"
+    return f"✅ GLID atualizado no cadastro do cliente.\nCLIENTE: {parsed.get('cliente', '')}\nGLID: {parsed.get('glid', '')}"
 
 
 def buscar_clientes_glid_envio_rapido(clientes, parsed):
@@ -2629,6 +2629,7 @@ def detectar_modo_conversa(frase):
     frase_texto = texto(frase)
     frase_norm = limpar_busca(frase_texto)
 
+    parsed_glid, erro_glid = parse_glid_envio_rapido(frase_texto)
     parsed_glid, erro_glid = parse_glid_cliente_conversa(frase_texto)
     if parsed_glid or erro_glid:
         return "GLID_CLIENTE"
@@ -4142,12 +4143,24 @@ if pagina_atual == "conversa":
             st.session_state.pop("conversa_cadastro_cliente", None)
             st.session_state.pop("conversa_cliente_existente", None)
             st.session_state.pop("conversa_glid_cliente", None)
+            st.session_state.pop("conversa_glid_resultados", None)
             st.session_state.pop("conversa_glid_cliente_existente", None)
 
             modo_conversa = detectar_modo_conversa(frase_conversa)
             st.session_state["conversa_modo"] = modo_conversa
 
             if modo_conversa == "GLID_CLIENTE":
+                parsed_glid, erro = parse_glid_envio_rapido(frase_conversa)
+                if erro:
+                    st.error(erro)
+                else:
+                    clientes_cadastrados = listar_clientes()
+                    resultados_glid = buscar_clientes_glid_envio_rapido(clientes_cadastrados, parsed_glid)
+                    if not resultados_glid:
+                        st.warning("Cliente não encontrado para atualizar GLID.")
+                    else:
+                        st.session_state["conversa_glid_cliente"] = parsed_glid
+                        st.session_state["conversa_glid_resultados"] = resultados_glid
                 parsed_glid, erro = parse_glid_cliente_conversa(frase_conversa)
                 if erro:
                     st.error(erro)
@@ -4196,12 +4209,33 @@ if pagina_atual == "conversa":
         cadastro_cliente_conversa = st.session_state.get("conversa_cadastro_cliente")
         cliente_existente_conversa = st.session_state.get("conversa_cliente_existente")
         glid_cliente_conversa = st.session_state.get("conversa_glid_cliente")
+        glid_resultados_conversa = st.session_state.get("conversa_glid_resultados") or []
         glid_cliente_existente_conversa = st.session_state.get("conversa_glid_cliente_existente")
 
         if modo_conversa == "CONSULTA" and resposta_consulta_conversa:
             st.markdown("### MODO CONSULTA")
             renderizar_resposta_operacional(resposta_consulta_conversa, "consulta_conversa")
 
+        if modo_conversa == "GLID_CLIENTE" and glid_cliente_conversa and glid_resultados_conversa:
+            st.markdown("### ATUALIZAÇÃO DE GLID DO CLIENTE")
+            opcoes = {
+                f"{texto(item.get('cliente'))} | {texto(item.get('cidade'))} | ID {texto(item.get('id'))}": item
+                for item in glid_resultados_conversa
+            }
+            if len(glid_resultados_conversa) > 1:
+                st.warning("Mais de um cliente compatível. Escolha qual atualizar.")
+            escolha = st.selectbox("Selecione o cliente para atualizar GLID", list(opcoes.keys()), key="conversa_glid_escolha")
+            st.code(resumo_glid_envio_rapido(glid_cliente_conversa))
+            col_confirmar, col_cancelar = st.columns(2)
+            if col_confirmar.button("Confirmar GLID", key="confirmar_glid_cliente_conversa"):
+                atualizar_glid_cliente_no_supabase(opcoes[escolha]["id"], glid_cliente_conversa)
+                st.session_state["conversa_registro_salvo"] = resumo_glid_envio_rapido(glid_cliente_conversa)
+                st.session_state.pop("conversa_glid_cliente", None)
+                st.session_state.pop("conversa_glid_resultados", None)
+                st.rerun()
+            if col_cancelar.button("Cancelar", key="cancelar_glid_cliente_conversa"):
+                st.session_state.pop("conversa_glid_cliente", None)
+                st.session_state.pop("conversa_glid_resultados", None)
         if modo_conversa == "GLID_CLIENTE" and glid_cliente_conversa and glid_cliente_existente_conversa:
             st.markdown("### ATUALIZAÇÃO DE GLID DO CLIENTE")
             st.code(resumo_glid_cliente_conversa(glid_cliente_existente_conversa, glid_cliente_conversa))
