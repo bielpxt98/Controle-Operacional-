@@ -754,6 +754,39 @@ def test_conversacao_enriquece_cnpj_da_tabela_clientes_sem_mensagem_de_nao_encon
 
 
 
+
+def test_conversa_cl_gl_curto_atualiza_glid_do_cadastro_sem_coleta():
+    app = carregar_funcoes_app()
+    clientes = pd.DataFrame([
+        {"id": 1, "cliente": "WMS MAX ATACADO BR 324 LOJA", "nome_exibicao": "", "cidade": "FEIRA", "glid": ""},
+        {"id": 2, "cliente": "WMS BR 324", "nome_exibicao": "", "cidade": "FEIRA", "glid": ""},
+    ])
+
+    exemplos = [
+        ("CL WMS MAX ATACADO BR 324 LOJA GL 1000238063", "WMS MAX ATACADO BR 324 LOJA", "1000238063"),
+        ("CL: WMS MAX ATACADO BR 324 LOJA GL: 1000238063", "WMS MAX ATACADO BR 324 LOJA", "1000238063"),
+        ("CL CABULA GL 000000000", "CABULA", "000000000"),
+        ("CL WMS BR 324 GL 1000238063", "WMS BR 324", "1000238063"),
+    ]
+
+    for frase, cliente, glid in exemplos:
+        assert app["detectar_modo_conversa"](frase) == "GLID_CLIENTE"
+        parsed, erro = app["parse_glid_envio_rapido"](frase)
+        assert erro is None
+        assert parsed["cliente"] == cliente
+        assert parsed["glid"] == glid
+        assert parsed["campos"]["glid"] == glid
+        assert "delivery" not in parsed["campos"]
+        assert "observacoes" not in parsed["campos"]
+
+    parsed_wms, _ = app["parse_glid_envio_rapido"]("CL WMS BR 324 GL 1000238063")
+    resultados = app["buscar_clientes_glid_envio_rapido"](clientes, parsed_wms)
+    assert len(resultados) == 1
+    assert resultados[0]["id"] == 2
+    assert app["resumo_glid_envio_rapido"](parsed_wms) == (
+        "✅ GLID atualizado no cadastro do cliente.\nCLIENTE: WMS BR 324\nGLID: 1000238063"
+    )
+
 def test_envio_rapido_glid_atualiza_apenas_cliente_sem_delivery():
     app = carregar_funcoes_app()
 
