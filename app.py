@@ -3734,8 +3734,7 @@ PAGINAS = {
     "dashboard": {"label": "Dashboard", "icon": "📊", "grupo": "principal"},
     "busca": {"label": "Buscar / visualizar", "icon": "🔎", "grupo": "principal"},
     "conversacao": {"label": "Conversação", "icon": "💬", "grupo": "principal"},
-    "rapida": {"label": "Atualização rápida", "icon": "⚡", "grupo": "principal"},
-    "conversa": {"label": "Atualização por conversa", "icon": "🗣️", "grupo": "principal"},
+    "rapida": {"label": "Atualização", "icon": "⚡", "grupo": "principal"},
     "ler_folha": {"label": "Ler folha", "icon": "📄", "grupo": "principal"},
     "importar": {"label": "Importar Excel mestre", "icon": "📥", "grupo": "principal"},
     "admin": {"label": "Excel Mestre", "icon": "📥", "grupo": "admin"},
@@ -3821,6 +3820,9 @@ df = listar()
 if "pagina_atual" not in st.session_state:
     st.session_state["pagina_atual"] = "dashboard"
 pagina_atual = st.session_state["pagina_atual"]
+if pagina_atual == "conversa":
+    pagina_atual = "rapida"
+    st.session_state["pagina_atual"] = "rapida"
 render_menu(pagina_atual)
 render_header()
 
@@ -3845,8 +3847,7 @@ if pagina_atual == "dashboard":
     nav_items = [
         ("busca", "🔎", "Buscar / visualizar", "Consultar, filtrar, editar e excluir registros."),
         ("conversacao", "💬", "Conversação", "Perguntas livres sobre os dados operacionais."),
-        ("rapida", "⚡", "Atualização rápida", "Atualizar registros por abreviações."),
-        ("conversa", "🗣️", "Atualização por conversa", "Interpretar frase natural e confirmar alteração."),
+        ("rapida", "⚡", "Atualização", "Atualizar por linhas completas ou frases naturais, sempre com pré-visualização."),
         ("ler_folha", "📄", "Ler folha", "Extrair dados de foto da folha operacional."),
         ("importar", "📥", "Importar Excel mestre", "Carregar planilha base para a nuvem."),
         ("admin", "📥", "Excel Mestre", "Exportação e rotinas administrativas."),
@@ -4091,10 +4092,10 @@ if pagina_atual == "conversacao":
 
 
 if pagina_atual == "rapida":
-    st.subheader("Atualização rápida")
+    st.subheader("⚡ Atualização")
 
     if not admin:
-        st.warning("Apenas administradores podem usar a atualização rápida.")
+        st.warning("Apenas administradores podem usar a atualização.")
     else:
         st.markdown(
             """
@@ -4111,7 +4112,7 @@ div[data-testid="stExpander"] details {
         with st.expander("ℹ️ Legendas e regras", expanded=False):
             st.markdown(
                 """
-Use uma atualização por linha.
+Use uma atualização por linha. A mesma tela aceita linhas completas de coleta e frases naturais de atualização.
 
 #### Abreviações
 - **M** = Motorista
@@ -4157,7 +4158,7 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
         texto_rapido = st.text_area(
             "Digite uma ou mais atualizações",
             height=260,
-            placeholder="D 3787762754 FI 11:03",
+            placeholder="DATA 20/06/2026 M FABIO D 3787828462 P 100 CL WMS MAX ATACADO BR 324 LOJA V 1021,05 L 07:34 C 08:28 FI 08:23 DF 22/06 PC 84\nARIEL FINALIZOU 7868 E 8756 AS 11:34 DF 22/06\nD 3787833608 OK L 07:48 C 09:24 PC 102 FI 13:40 DF 22/06",
         )
 
         if st.button("Pré-visualizar atualizações", type="primary"):
@@ -4188,7 +4189,28 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                         parsed, erro = parse_atualizacao_rapida(linha)
 
                         if erro:
-                            erros.append(f"Linha {idx}: {erro} — {linha}")
+                            parsed_conversa, erro_conversa = parse_atualizacao_conversa(linha)
+                            if erro_conversa:
+                                erros.append(f"Linha {idx}: {erro} — {linha}")
+                                continue
+                            resultados_conversa, erros_multiplos = buscar_coletas_multiplas_por_conversa(df, parsed_conversa)
+                            if erros_multiplos:
+                                erros.extend(f"Linha {idx}: {erro_multiplo} — {linha}" for erro_multiplo in erros_multiplos)
+                            if not resultados_conversa:
+                                erros.append(f"Linha {idx}: Nenhuma coleta encontrada. Informe mais detalhes, como final do delivery, cliente ou data. — {linha}")
+                                continue
+                            pendentes.append({
+                                "linha": idx,
+                                "texto": linha,
+                                "parsed": {
+                                    "campos": campos_atualizacao_conversa(parsed_conversa),
+                                    "valor_busca": parsed_conversa.get("final_delivery"),
+                                    "parsed_conversa": parsed_conversa,
+                                    "tipo_rapida": "conversa",
+                                },
+                                "resultados": resultados_conversa,
+                                "atualizar_todos": len(parsed_conversa.get("final_deliveries") or []) > 1,
+                            })
                             continue
 
                         if parsed.get("tipo_rapida") == "conversa_multipla":
@@ -4206,11 +4228,13 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                             continue
 
                         if eh_cadastro_completo_atualizacao_rapida(parsed):
-                            try:
-                                resultado = atualizar_rapido_no_supabase(parsed)
-                                st.toast(resumo_atualizacao_rapida(parsed, resultado))
-                            except Exception as e:
-                                erros.append(f"Linha {idx}: {e} — {linha}")
+                            pendentes.append({
+                                "linha": idx,
+                                "texto": linha,
+                                "parsed": parsed,
+                                "resultados": [],
+                                "criar_ou_atualizar": True,
+                            })
                             continue
 
                         resultados = buscar_registros_atualizacao_rapida(df, parsed)
@@ -4256,6 +4280,10 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
             for i, item_pendente in enumerate(pendentes_rapida):
                 parsed = item_pendente["parsed"]
                 resultados = item_pendente["resultados"]
+                if item_pendente.get("criar_ou_atualizar"):
+                    st.write(f"Linha {item_pendente['linha']}: registro completo será criado ou atualizado somente após confirmação.")
+                    st.code(resumo_atualizacao_rapida(parsed, "pré-visualização"))
+                    continue
                 if item_pendente.get("atualizar_todos"):
                     st.write(f"Linha {item_pendente['linha']}: {len(resultados)} coletas serão atualizadas.")
                     st.code("\n\n".join(
@@ -4283,7 +4311,7 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                 }))
 
             col_confirmar, col_cancelar = st.columns(2)
-            if col_confirmar.button("Confirmar atualizações rápidas", type="primary"):
+            if col_confirmar.button("CONFIRMAR ATUALIZAÇÕES", type="primary"):
                 atualizados_glid = 0
                 for i, item_pendente in enumerate(pendentes_glid_rapida):
                     parsed = item_pendente["parsed"]
@@ -4303,6 +4331,14 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                 for i, item_pendente in enumerate(pendentes_rapida):
                     parsed = item_pendente["parsed"]
                     resultados = item_pendente["resultados"]
+                    if item_pendente.get("criar_ou_atualizar"):
+                        try:
+                            resultado = atualizar_rapido_no_supabase(parsed)
+                            atualizados += 1
+                            resumos.append(resumo_atualizacao_rapida(parsed, resultado))
+                        except Exception as e:
+                            erros.append(f"Linha {item_pendente['linha']}: {e}")
+                        continue
                     if item_pendente.get("atualizar_todos"):
                         salvos_linha = []
                         for item in resultados:
@@ -4338,7 +4374,7 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                 st.session_state.pop("rapida_glid_pendentes", None)
                 st.session_state.pop("rapida_erros", None)
                 st.caption("Atualize a página ou volte na aba Buscar / editar para conferir os dados.")
-            if col_cancelar.button("Cancelar atualizações rápidas"):
+            if col_cancelar.button("Cancelar atualizações"):
                 st.session_state.pop("rapida_pendentes", None)
                 st.session_state.pop("rapida_glid_pendentes", None)
                 st.session_state.pop("rapida_erros", None)
