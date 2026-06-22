@@ -291,7 +291,7 @@ def _linha_coleta_admin(row: pd.Series, incluir_cnpj: bool = False) -> str:
     linha = formatar_linha_coleta_motorista(row)
     cnpj = _texto_valido(row.get("cnpj"))
     if incluir_cnpj and cnpj:
-        linha += f" | CNPJ {cnpj}"
+        linha += f"\n\nCNPJ: {cnpj}"
     return linha
 
 
@@ -596,7 +596,14 @@ def _linha_operacional(row: pd.Series) -> str:
     obs = _campo_operacional("O", row.get("observacoes"))
     if obs:
         partes.append(obs)
-    return " ".join(partes)
+    return _adicionar_cnpj_conferencia(" ".join(partes), row)
+
+
+def _adicionar_cnpj_conferencia(linha: str, row: pd.Series) -> str:
+    cnpj = _texto_valido(row.get("cnpj"))
+    if not cnpj:
+        return linha
+    return f"{linha}\n\nCNPJ: {cnpj}"
 
 
 def _linha_status_individual(row: pd.Series) -> str:
@@ -616,7 +623,7 @@ def _linha_status_individual(row: pd.Series) -> str:
         parte = _campo_operacional(rotulo, valor)
         if parte:
             partes.append(parte)
-    return " ".join(partes)
+    return _adicionar_cnpj_conferencia(" ".join(partes), row)
 
 
 def _responder_status_delivery(df: pd.DataFrame, pergunta: str) -> str:
@@ -690,7 +697,7 @@ def _responder_veiculo(df: pd.DataFrame, pergunta: str, motorista: str) -> str:
 def _linhas_resumo(df: pd.DataFrame) -> str:
     if df.empty:
         return "Nenhuma coleta encontrada."
-    colunas = [c for c in ["data", "motorista", "delivery", "sr", "cliente", "observacoes"] if c in df.columns]
+    colunas = [c for c in ["data", "motorista", "delivery", "sr", "cliente", "observacoes", "cnpj"] if c in df.columns]
     linhas = []
     for _, row in df[colunas].head(50).iterrows():
         partes = []
@@ -698,12 +705,13 @@ def _linhas_resumo(df: pd.DataFrame) -> str:
         if not pd.isna(data):
             partes.append(pd.Timestamp(data).strftime("%d/%m/%Y"))
         for coluna in colunas:
-            if coluna == "data":
+            if coluna in {"data", "cnpj"}:
                 continue
             valor = row.get(coluna)
             if not _valor_vazio(valor):
                 partes.append(str(valor))
-        linhas.append(" - " + " | ".join(partes))
+        linha = " - " + " | ".join(partes)
+        linhas.append(_adicionar_cnpj_conferencia(linha, row))
     sufixo = "" if len(df) <= 50 else f"\n... e mais {len(df) - 50} coleta(s)."
     return "\n".join(linhas) + sufixo
 
@@ -732,7 +740,8 @@ def _linhas_resumo_sem_fi(df: pd.DataFrame) -> str:
             _formatar_campo_horario_resumo("C", row.get("c_horario")),
             _formatar_campo_horario_resumo("FI", row.get("f_horario")),
         ]
-        linhas.append(" - " + " | ".join(partes))
+        linha = " - " + " | ".join(partes)
+        linhas.append(_adicionar_cnpj_conferencia(linha, row))
     sufixo = "" if len(df) <= 50 else f"\n... e mais {len(df) - 50} coleta(s)."
     return "\n".join(linhas) + sufixo
 
