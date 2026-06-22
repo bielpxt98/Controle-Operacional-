@@ -3270,7 +3270,7 @@ def renderizar_resposta_operacional(texto_mensagem: str, chave: str = "resposta_
     texto_html = "".join(linhas_html)
     texto_js = json.dumps(texto_resposta, ensure_ascii=False)
     chave_js = json.dumps(chave)
-    altura = max(170, min(520, 120 + 30 * max(1, texto_resposta.count("\n") + 1)))
+    altura = 660
     components.html(
         f"""
         <div class="operational-answer-box" id="{escape(chave)}">
@@ -3293,6 +3293,9 @@ def renderizar_resposta_operacional(texto_mensagem: str, chave: str = "resposta_
             .operational-answer-box {{
                 box-sizing: border-box;
                 width: 100%;
+                max-height: 600px;
+                overflow-y: auto;
+                overflow-x: hidden;
                 margin: 0 0 10px;
                 padding: 18px 18px 16px;
                 border: 1px solid #D7E2F0;
@@ -3323,6 +3326,9 @@ def renderizar_resposta_operacional(texto_mensagem: str, chave: str = "resposta_
                 font-size: 14px;
                 font-weight: 900;
                 letter-spacing: .02em;
+                position: sticky;
+                top: 0;
+                z-index: 2;
             }}
         </style>
         """,
@@ -4082,7 +4088,6 @@ if pagina_atual == "conversacao":
     for item in st.session_state["historico_conversacao"]:
         renderizar_mensagem_conversacao("user", item["pergunta"], item["quando"])
         renderizar_mensagem_conversacao("assistant", item["resposta"])
-        botao_copiar_resposta(item["resposta"], f"conv_{abs(hash(item['quando'] + item['pergunta']))}")
 
 
 if pagina_atual == "rapida":
