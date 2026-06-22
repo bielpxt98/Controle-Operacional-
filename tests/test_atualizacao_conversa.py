@@ -38,6 +38,10 @@ FUNCOES_NECESSARIAS = {
     "parse_atualizacao_rapida",
     "parse_glid_envio_rapido",
     "parse_glid_cliente_conversa",
+    "parse_consulta_glid_conversacao",
+    "buscar_cliente_por_glid_conversacao",
+    "formatar_cliente_glid_conversacao",
+    "responder_consulta_glid_conversacao",
     "buscar_cliente_glid_conversa",
     "resumo_glid_cliente_conversa",
     "resumo_glid_envio_rapido",
@@ -1171,3 +1175,34 @@ def test_busca_rapida_por_final_do_delivery_e_preserva_observacao_antiga_sem_dup
     assert parsed["campos"]["f_horario"] == "15:19"
     assert parsed["campos"]["status"] == "DESLOCAMENTO"
     assert preparados["observacoes"] == "RECUSADO PELO CLIENTE | DESLOCAMENTO AS 15:19 | REEMBOLSO 664,22"
+
+
+def test_conversacao_consulta_glid_aceita_formatos_solicitados():
+    app = carregar_funcoes_app()
+
+    assert app["parse_consulta_glid_conversacao"]("GLID 4000334240") == {"glid": "4000334240"}
+    assert app["parse_consulta_glid_conversacao"]("GL 4000334240") == {"glid": "4000334240"}
+    assert app["parse_consulta_glid_conversacao"]("CLIENTE GLID 4000334240") == {"glid": "4000334240"}
+    assert app["parse_consulta_glid_conversacao"]("CLIENTE PLANETA GLID 4000334240") is None
+
+
+def test_conversacao_consulta_glid_formata_cliente_e_nao_encontrado():
+    app = carregar_funcoes_app()
+    cliente = {
+        "cliente": "PLANETA NATURAL",
+        "glid": "4000334240",
+        "cnpj": "03427129000179",
+        "cidade": "SALVADOR",
+    }
+
+    assert app["formatar_cliente_glid_conversacao"](cliente) == (
+        "CLIENTE: PLANETA NATURAL\n"
+        "GLID: 4000334240\n"
+        "CNPJ: 03.427.129/0001-79\n"
+        "CIDADE: SALVADOR"
+    )
+    assert app["formatar_cliente_glid_conversacao"](cliente, compacto=True) == "CL: PLANETA NATURAL | GLID: 4000334240"
+
+    app["buscar_cliente_por_glid_conversacao"] = lambda glid: [cliente] if glid == "4000334240" else []
+    assert "CLIENTE: PLANETA NATURAL" in app["responder_consulta_glid_conversacao"]("GLID 4000334240")
+    assert app["responder_consulta_glid_conversacao"]("GLID 999") == "GLID não encontrado."

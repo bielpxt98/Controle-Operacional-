@@ -48,6 +48,8 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 PERGUNTAS_PROGRAMADAS = [
+    "Consultar GLID",
+    "Pesquisar cliente por GLID",
     "Quantas coletas JEAN teve hoje?",
     "Quantas coletas JEAN teve este mês?",
     "Quantas coletas cada motorista teve este mês?",
@@ -2017,6 +2019,61 @@ def parse_glid_cliente_conversa(frase):
     return parse_glid_envio_rapido(frase)
 
 
+def parse_consulta_glid_conversacao(frase):
+    """Extrai consultas simples por GLID na aba Conversação.
+
+    Aceita formatos como ``GLID 4000334240``, ``GL 4000334240`` e
+    ``CLIENTE GLID 4000334240``. Não interpreta cadastros/atualizações com
+    nome de cliente, para manter a busca restrita ao campo ``glid``.
+    """
+    original = texto(frase)
+    if not original:
+        return None
+    match = re.fullmatch(r"\s*(?:CLIENTE\s+)?GL(?:ID)?\s*:?\s*([A-Za-z0-9._/-]+)\s*", original, flags=re.IGNORECASE)
+    if not match:
+        return None
+    glid = texto(match.group(1))
+    return {"glid": glid} if glid else None
+
+
+def buscar_cliente_por_glid_conversacao(glid):
+    """Busca um cliente exclusivamente em clientes_cnpj pelo campo glid."""
+    glid_limpo = texto(glid)
+    if not glid_limpo:
+        return []
+    try:
+        res = supabase.table(TABELA_CLIENTES_CNPJ).select("*").eq("glid", glid_limpo).execute()
+        return res.data or []
+    except Exception as exc:
+        logger.warning("Não foi possível consultar GLID em %s: %s", TABELA_CLIENTES_CNPJ, exc)
+        return []
+
+
+def formatar_cliente_glid_conversacao(cliente, compacto=False):
+    """Formata o retorno da consulta de cliente por GLID."""
+    cliente = cliente or {}
+    nome = texto(cliente.get("nome_exibicao")) or texto(cliente.get("cliente")) or "—"
+    glid = texto(cliente.get("glid")) or "—"
+    if compacto:
+        return f"CL: {nome} | GLID: {glid}"
+    cnpj = formatar_cnpj_cliente(cliente.get("cnpj")) or "—"
+    cidade = texto(cliente.get("cidade")) or "—"
+    return f"CLIENTE: {nome}\nGLID: {glid}\nCNPJ: {cnpj}\nCIDADE: {cidade}"
+
+
+def responder_consulta_glid_conversacao(frase):
+    """Responde consulta por GLID sem pesquisar deliveries ou coletas."""
+    parsed = parse_consulta_glid_conversacao(frase)
+    if not parsed:
+        return None
+    resultados = buscar_cliente_por_glid_conversacao(parsed["glid"])
+    if not resultados:
+        return "GLID não encontrado."
+    if len(resultados) == 1:
+        return formatar_cliente_glid_conversacao(resultados[0])
+    return "\n\n".join(formatar_cliente_glid_conversacao(item) for item in resultados)
+
+
 def buscar_cliente_glid_conversa(parsed):
     """Procura o cliente do GLID na tabela clientes_cnpj, sem consultar deliveries."""
     clientes = listar_clientes()
@@ -3106,6 +3163,10 @@ def excel_bytes(df):
 def responder_conversacao(pergunta, dados):
     if not pergunta or not pergunta.strip():
         return None, "Escolha ou digite uma pergunta para consultar o histórico."
+
+    resposta_glid = responder_consulta_glid_conversacao(pergunta)
+    if resposta_glid is not None:
+        return resposta_glid, None
 
     if dados.empty:
         return None, "Ainda não existem dados carregados para responder a pergunta."
