@@ -21,6 +21,7 @@ FUNCOES_NECESSARIAS = {
     "extrair_campos_operacionais_conversa",
     "identificar_acao_conversa",
     "extrair_motorista_conversa",
+    "extrair_codigos_conversa",
     "extrair_codigo_conversa",
     "extrair_contexto_linha_busca",
     "extrair_valores_alteracao_conversa",
@@ -32,6 +33,8 @@ FUNCOES_NECESSARIAS = {
     "parse_atualizacao_conversa",
     "campos_atualizacao_conversa",
     "buscar_coletas_por_conversa",
+    "buscar_coletas_multiplas_por_conversa",
+    "resumo_coletas_atualizadas_conversa",
     "cliente_combina",
     "observacao_livre_rapida",
     "preparar_linha_atualizacao_rapida",
@@ -1206,3 +1209,53 @@ def test_conversacao_consulta_glid_formata_cliente_e_nao_encontrado():
     app["buscar_cliente_por_glid_conversacao"] = lambda glid: [cliente] if glid == "4000334240" else []
     assert "CLIENTE: PLANETA NATURAL" in app["responder_consulta_glid_conversacao"]("GLID 4000334240")
     assert app["responder_consulta_glid_conversacao"]("GLID 999") == "GLID não encontrado."
+
+
+def test_parse_conversa_aceita_multiplos_finais_delivery():
+    app = carregar_funcoes_app()
+    parsed, erro = app["parse_atualizacao_conversa"]("ARIEL FINALIZOU 7868 E 8756 AS 11:34 DF 22/06")
+
+    assert erro is None
+    assert parsed["final_delivery"] == "7868"
+    assert parsed["final_deliveries"] == ["7868", "8756"]
+    assert parsed["horario"] == "11:34"
+    assert parsed["data_finalizacao"] == "22/06"
+    assert parsed["acao"] == "FINALIZACAO"
+
+
+def test_busca_conversa_multiplos_deliveries_por_final():
+    app = carregar_funcoes_app()
+    parsed, _ = app["parse_atualizacao_conversa"]("ARIEL FINALIZOU 7868, 8756 E 4321 AS 11:34 DF 22/06")
+    df = pd.DataFrame([
+        {"id": 1, "delivery": "3787867868", "cliente": "Mercantil L.F", "motorista": "Ariel"},
+        {"id": 2, "delivery": "3787868756", "cliente": "WMS Max Atacado Dorival Caymmi", "motorista": "Ariel"},
+        {"id": 3, "delivery": "3787864321", "cliente": "Cliente 3", "motorista": "Ariel"},
+    ])
+
+    resultados, erros = app["buscar_coletas_multiplas_por_conversa"](df, parsed)
+
+    assert erros == []
+    assert [item["delivery"] for item in resultados] == ["3787867868", "3787868756", "3787864321"]
+
+
+def test_parse_rapida_aceita_frase_natural_com_multiplos_deliveries():
+    app = carregar_funcoes_app()
+    parsed, erro = app["parse_atualizacao_rapida"]("FINALIZAR 7868 E 8756 AS 11:34 DF 22/06")
+
+    assert erro is None
+    assert parsed["tipo_rapida"] == "conversa_multipla"
+    assert parsed["final_deliveries"] == ["7868", "8756"]
+    assert parsed["campos"]["f_horario"] == "11:34"
+    assert parsed["campos"]["data_finalizacao"] == "22/06"
+
+
+def test_resumo_coletas_atualizadas_conversa():
+    app = carregar_funcoes_app()
+    resumo = app["resumo_coletas_atualizadas_conversa"]([
+        {"delivery": "3787867868", "cliente": "MERCANTIL L.F", "f_horario": "11:34", "data_finalizacao": "22/06/2026"},
+        {"delivery": "3787868756", "cliente": "WMS MAX ATACADO DORIVAL CAYMMI", "f_horario": "11:34", "data_finalizacao": "22/06/2026"},
+    ])
+
+    assert "✅ 2 coletas atualizadas." in resumo
+    assert "3787867868 - MERCANTIL L.F" in resumo
+    assert "3787868756 - WMS MAX ATACADO DORIVAL CAYMMI" in resumo

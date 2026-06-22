@@ -2115,6 +2115,18 @@ def parse_atualizacao_rapida(linha):
     if erro_glid:
         return None, erro_glid
 
+    parsed_conversa, erro_conversa = parse_atualizacao_conversa(original)
+    if parsed_conversa and len(parsed_conversa.get("final_deliveries") or []) > 1:
+        campos_conversa = campos_atualizacao_conversa(parsed_conversa)
+        return {
+            "campos": campos_conversa,
+            "chave_busca": "delivery",
+            "valor_busca": parsed_conversa.get("final_delivery"),
+            "final_deliveries": parsed_conversa.get("final_deliveries"),
+            "parsed_conversa": parsed_conversa,
+            "tipo_rapida": "conversa_multipla",
+        }, None
+
     original_parse, horario_bd, observacao_bd = preparar_linha_atualizacao_rapida(original)
 
     # Aceita a linha copiada do status no formato:
@@ -2348,7 +2360,7 @@ def resumo_atualizacao_rapida(parsed, resultado):
 
 
 ACOES_CONVERSA = {
-    "FINALIZACAO": ["FINALIZOU", "FINALIZADO", "FINAL", "FI", "F"],
+    "FINALIZACAO": ["FINALIZOU", "FINALIZADO", "FINALIZAR", "FINAL", "FI", "F"],
     "BLOQUEIO": ["BLOQUEIO", "BLOQUEADO", "B"],
     "DESLOCAMENTO": ["DESLOCAMENTO", "DESLOCOU", "D"],
 }
@@ -2495,21 +2507,35 @@ def extrair_motorista_conversa(frase):
     return ""
 
 
-def extrair_codigo_conversa(frase):
+def extrair_codigos_conversa(frase):
+    """Extrai todos os deliveries/remessas informados na conversa, preservando a ordem."""
     original = texto(frase)
-    marcador = re.search(
+    codigos = []
+
+    for marcador in re.finditer(
         r"(?<!\w)(?:D|DELIVERY|REMESSA)\s*:?\s*(\d{4,})\b",
         original,
         flags=re.IGNORECASE | re.UNICODE,
-    )
-    if marcador:
-        return marcador.group(1)
+    ):
+        codigos.append(marcador.group(1))
 
-    numeros = re.findall(r"\b\d{4,}\b", original)
-    completos = [n for n in numeros if parece_delivery_completo(n)]
-    if completos:
-        return completos[0]
-    return numeros[0] if numeros else ""
+    if not codigos:
+        codigos = re.findall(r"(?<!/)\b\d{4,}\b(?!/)", original)
+
+    unicos = []
+    vistos = set()
+    for codigo in codigos:
+        codigo_limpo = limpar_codigo_delivery(codigo)
+        if codigo_limpo and codigo_limpo not in vistos:
+            vistos.add(codigo_limpo)
+            unicos.append(codigo)
+
+    return unicos
+
+
+def extrair_codigo_conversa(frase):
+    codigos = extrair_codigos_conversa(frase)
+    return codigos[0] if codigos else ""
 
 
 def extrair_contexto_linha_busca(frase, codigo):
@@ -2769,7 +2795,8 @@ def parse_atualizacao_conversa(frase):
     horario = campos_operacionais.get("f_horario") or horario_generico
     data_finalizacao = campos_operacionais.get("data_finalizacao", "")
 
-    codigo = extrair_codigo_conversa(original_sem_observacao)
+    codigos = extrair_codigos_conversa(original_sem_observacao)
+    codigo = codigos[0] if codigos else ""
     acao = identificar_acao_conversa(original_sem_observacao)
     if acao in {"BLOQUEIO", "DESLOCAMENTO"}:
         marcador_acao = "B" if acao == "BLOQUEIO" else "D"
@@ -2852,6 +2879,7 @@ def parse_atualizacao_conversa(frase):
         "l_horario": campos_operacionais.get("l_horario", ""),
         "c_horario": campos_operacionais.get("c_horario", ""),
         "final_delivery": codigo,
+        "final_deliveries": codigos,
         "cliente": cliente_contexto,
         "novo_motorista": motorista_alteracao,
         "novo_cliente": cliente_alteracao,
@@ -2942,6 +2970,47 @@ def buscar_coletas_por_conversa(df_base, parsed):
 
     return resultado[mascara].copy()
 
+
+
+def buscar_coletas_multiplas_por_conversa(df_base, parsed):
+    """Busca uma coleta para cada final de delivery informado na conversa."""
+    codigos = parsed.get("final_deliveries") or [parsed.get("final_delivery")]
+    codigos = [codigo for codigo in codigos if limpar_codigo_delivery(codigo)]
+    if len(codigos) <= 1:
+        resultados = buscar_coletas_por_conversa(df_base, parsed)
+        return resultados.to_dict("records"), []
+
+    encontrados = []
+    erros = []
+    ids_vistos = set()
+    for codigo in codigos:
+        parsed_codigo = {**parsed, "final_delivery": codigo, "final_deliveries": [codigo]}
+        resultados = buscar_coletas_por_conversa(df_base, parsed_codigo)
+        final = limpar_codigo_delivery(codigo)
+        if resultados.empty:
+            erros.append(f"Nenhuma coleta encontrada com final {final}.")
+            continue
+        if len(resultados) > 1:
+            erros.append(f"Mais de uma coleta encontrada com final {final}. Informe o delivery completo.")
+            continue
+        item = resultados.iloc[0].to_dict()
+        item_id = texto(item.get("id")) or limpar_codigo_delivery(item.get("delivery"))
+        if item_id not in ids_vistos:
+            ids_vistos.add(item_id)
+            encontrados.append(item)
+    return encontrados, erros
+
+
+def resumo_coletas_atualizadas_conversa(itens):
+    linhas = [f"✅ {len(itens)} coleta{'s' if len(itens) != 1 else ''} atualizada{'s' if len(itens) != 1 else ''}."]
+    for item in itens:
+        linhas.extend([
+            "",
+            f"{texto(item.get('delivery'))} - {texto(item.get('cliente')) or '—'}",
+            f"FI {texto(item.get('f_horario')) or '—'}",
+            f"DF {texto(item.get('data_finalizacao')) or '—'}",
+        ])
+    return "\n".join(linhas)
 
 def campos_atualizacao_conversa(parsed, f_horario_atual=None):
     campos = {
@@ -4117,6 +4186,20 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                             erros.append(f"Linha {idx}: {erro} — {linha}")
                             continue
 
+                        if parsed.get("tipo_rapida") == "conversa_multipla":
+                            resultados, erros_multiplos = buscar_coletas_multiplas_por_conversa(df, parsed["parsed_conversa"])
+                            if erros_multiplos:
+                                erros.extend(f"Linha {idx}: {erro} — {linha}" for erro in erros_multiplos)
+                            if resultados:
+                                pendentes.append({
+                                    "linha": idx,
+                                    "texto": linha,
+                                    "parsed": parsed,
+                                    "resultados": resultados,
+                                    "atualizar_todos": True,
+                                })
+                            continue
+
                         if eh_cadastro_completo_atualizacao_rapida(parsed):
                             try:
                                 resultado = atualizar_rapido_no_supabase(parsed)
@@ -4168,6 +4251,12 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
             for i, item_pendente in enumerate(pendentes_rapida):
                 parsed = item_pendente["parsed"]
                 resultados = item_pendente["resultados"]
+                if item_pendente.get("atualizar_todos"):
+                    st.write(f"Linha {item_pendente['linha']}: {len(resultados)} coletas serão atualizadas.")
+                    st.code("\n\n".join(
+                        resumo_confirmacao_conversa(item, parsed["parsed_conversa"]) for item in resultados
+                    ))
+                    continue
                 opcoes = {
                     f"{texto(item.get('delivery'))} | {texto(item.get('cliente'))} | {texto(item.get('motorista'))}": item
                     for item in resultados
@@ -4209,6 +4298,18 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                 for i, item_pendente in enumerate(pendentes_rapida):
                     parsed = item_pendente["parsed"]
                     resultados = item_pendente["resultados"]
+                    if item_pendente.get("atualizar_todos"):
+                        salvos_linha = []
+                        for item in resultados:
+                            try:
+                                salvo = atualizar_conversa_no_supabase(item["id"], parsed["parsed_conversa"])
+                                salvos_linha.append(salvo)
+                                atualizados += 1
+                            except Exception as e:
+                                erros.append(f"Linha {item_pendente['linha']} / {texto(item.get('delivery'))}: {e}")
+                        if salvos_linha:
+                            resumos.append(resumo_coletas_atualizadas_conversa(salvos_linha))
+                        continue
                     opcoes = {
                         f"{texto(item.get('delivery'))} | {texto(item.get('cliente'))} | {texto(item.get('motorista'))}": item
                         for item in resultados
@@ -4321,14 +4422,17 @@ if pagina_atual == "conversa":
                 if erro:
                     st.error(erro)
                 else:
-                    resultados = buscar_coletas_por_conversa(df, parsed)
-                    if resultados.empty:
+                    resultados, erros_multiplos = buscar_coletas_multiplas_por_conversa(df, parsed)
+                    if erros_multiplos:
+                        for erro_multiplo in erros_multiplos:
+                            st.warning(erro_multiplo)
+                    if not resultados:
                         st.warning(
                             "Nenhuma coleta encontrada. Informe mais detalhes, como final do delivery, cliente ou data."
                         )
                     else:
                         st.session_state["conversa_parsed"] = parsed
-                        st.session_state["conversa_resultados"] = resultados.to_dict("records")
+                        st.session_state["conversa_resultados"] = resultados
 
         parsed_conversa = st.session_state.get("conversa_parsed")
         resultados_conversa = st.session_state.get("conversa_resultados") or []
@@ -4435,7 +4539,19 @@ if pagina_atual == "conversa":
                 f"{'; '.join(resumo_campos)}."
             )
 
-            if len(resultados_conversa) == 1:
+            if len(parsed_conversa.get("final_deliveries") or []) > 1:
+                st.write(f"{len(resultados_conversa)} coletas serão atualizadas com os mesmos dados.")
+                st.code("\n\n".join(resumo_confirmacao_conversa(item, parsed_conversa) for item in resultados_conversa))
+                if parsed_conversa.get("observacoes"):
+                    st.caption(f"Observações: {parsed_conversa['observacoes']}")
+
+                if st.button("Confirmar alterações", key="confirmar_conversa_multiplos_deliveries"):
+                    salvos = [atualizar_conversa_no_supabase(item["id"], parsed_conversa) for item in resultados_conversa]
+                    st.session_state["conversa_registro_salvo"] = resumo_coletas_atualizadas_conversa(salvos)
+                    st.session_state.pop("conversa_parsed", None)
+                    st.session_state.pop("conversa_resultados", None)
+                    st.rerun()
+            elif len(resultados_conversa) == 1:
                 item = resultados_conversa[0]
                 st.code(resumo_confirmacao_conversa(item, parsed_conversa))
                 if parsed_conversa.get("observacoes"):
