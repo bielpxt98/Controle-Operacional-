@@ -3177,7 +3177,7 @@ def renderizar_resposta_operacional(texto_mensagem: str, chave: str = "resposta_
                 margin: 12px 0 0;
                 color: #111827;
                 font-family: Arial, Helvetica, sans-serif;
-                font-size: 20px;
+                font-size: 17px;
                 font-weight: 800;
                 line-height: 1.55;
             }}
@@ -3402,9 +3402,9 @@ def aplicar_css_profissional():
         }}
         .conversation-text {{
             color: #FFFFFF;
-            font-size: .98rem;
+            font-size: .83rem;
             font-weight: 650;
-            line-height: 1.65;
+            line-height: 1.5;
             white-space: pre-wrap;
             text-shadow: 0 2px 7px rgba(0, 0, 0, .72);
         }}

@@ -291,7 +291,7 @@ def _linha_coleta_admin(row: pd.Series, incluir_cnpj: bool = False) -> str:
     linha = formatar_linha_coleta_motorista(row)
     cnpj = _texto_valido(row.get("cnpj"))
     if incluir_cnpj and cnpj:
-        linha += f"\n\nCNPJ: {cnpj}"
+        linha += f" | CNPJ {cnpj}"
     return linha
 
 
@@ -603,7 +603,7 @@ def _adicionar_cnpj_conferencia(linha: str, row: pd.Series) -> str:
     cnpj = _texto_valido(row.get("cnpj"))
     if not cnpj:
         return linha
-    return f"{linha}\n\nCNPJ: {cnpj}"
+    return f"{linha} | CNPJ {cnpj}"
 
 
 def _linha_status_individual(row: pd.Series) -> str:
