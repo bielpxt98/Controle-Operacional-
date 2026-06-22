@@ -418,13 +418,14 @@ class ConsultaAdministrativaTest(unittest.TestCase):
 
             self.assertEqual(
                 resposta,
-                "3787849356 - GMF (FEIRA DE SANTANA) - @FA | CNPJ XX.XXX.XXX/XXXX-XX\n"
-                "3787849414 - DROGARIA SAO PAULO (LAURO DE FREITAS) - @JO | CNPJ YY.YYY.YYY/YYYY-YY",
+                "3787849356 - GMF (FEIRA DE SANTANA) - @FA\n\n"
+                "CNPJ: XX.XXX.XXX/XXXX-XX\n"
+                "3787849414 - DROGARIA SAO PAULO (LAURO DE FREITAS) - @JO\n\n"
+                "CNPJ: YY.YYY.YYY/YYYY-YY",
             )
             self.assertNotIn("REGISTROS ENCONTRADOS", resposta)
             self.assertNotIn("REGISTROS EXIBIDOS", resposta)
-            self.assertNotIn("CNPJ:", resposta)
-            self.assertIn(" | CNPJ XX.XXX.XXX/XXXX-XX", resposta)
+            self.assertIn("CNPJ: XX.XXX.XXX/XXXX-XX", resposta)
             self.assertNotIn("GMF - FEIRA DE SANTANA", resposta)
 
     def test_coletas_de_hoje_sem_cnpj_ignora_valores_vazios_e_na(self):
@@ -464,8 +465,7 @@ class ConsultaAdministrativaTest(unittest.TestCase):
             self.assertIn("3787849312 - WMS MAX ATACADO (LAURO DE FREITAS) - @AR", resposta)
             self.assertNotIn("REGISTROS ENCONTRADOS", resposta)
             self.assertNotIn("REGISTROS EXIBIDOS", resposta)
-            self.assertNotIn("CNPJ:", resposta)
-            self.assertIn(" | CNPJ 12.345.678/0001-90", resposta)
+            self.assertIn("CNPJ: 12.345.678/0001-90", resposta)
             self.assertNotIn("WMS (MAX ATACADO", resposta)
 
     def test_coletas_de_hoje_exibe_todos_registros_do_dia_sem_limite_ou_cnpj(self):

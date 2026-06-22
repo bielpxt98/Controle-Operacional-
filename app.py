@@ -1278,9 +1278,23 @@ def listar_clientes():
 
 
 
+ABREVIACOES_LOCALIDADE_CNPJ = {
+    "L.F": "LAURO DE FREITAS",
+    "LF": "LAURO DE FREITAS",
+    "S.F": "SIMOES FILHO",
+    "SF": "SIMOES FILHO",
+    "F.S": "FEIRA DE SANTANA",
+    "FS": "FEIRA DE SANTANA",
+}
+
+
 def normalizar_chave_cliente_cnpj(*partes):
     """Gera chave comparável para localizar CNPJ sem alterar o fluxo operacional."""
-    return " ".join(limpar_busca(parte) for parte in partes if texto(parte)).strip()
+    chave = " ".join(limpar_busca(parte) for parte in partes if texto(parte))
+    for abreviacao, localidade in ABREVIACOES_LOCALIDADE_CNPJ.items():
+        chave = re.sub(rf"(?<!\w){re.escape(abreviacao)}(?!\w)", localidade, chave)
+    chave = re.sub(r"[^A-Z0-9]+", " ", chave)
+    return re.sub(r"\s+", " ", chave).strip()
 
 
 def formatar_cnpj_cliente(valor):
@@ -1312,14 +1326,15 @@ def aplicar_cnpjs_clientes_cadastrados(df_base, clientes):
         cnpj = formatar_cnpj_cliente(cliente_row.get("cnpj"))
         if not cnpj:
             continue
-        cliente = cliente_row.get("cliente")
+        nomes_cliente = [cliente_row.get("cliente"), cliente_row.get("nome_exibicao")]
         cidade = cliente_row.get("cidade")
-        chave_cliente = normalizar_chave_cliente_cnpj(cliente)
-        chave_cliente_cidade = normalizar_chave_cliente_cnpj(cliente, cidade)
-        if chave_cliente_cidade:
-            mapa_cliente_cidade.setdefault(chave_cliente_cidade, cnpj)
-        if chave_cliente:
-            mapa_cliente.setdefault(chave_cliente, cnpj)
+        for cliente in nomes_cliente:
+            chave_cliente = normalizar_chave_cliente_cnpj(cliente)
+            chave_cliente_cidade = normalizar_chave_cliente_cnpj(cliente, cidade)
+            if chave_cliente_cidade:
+                mapa_cliente_cidade.setdefault(chave_cliente_cidade, cnpj)
+            if chave_cliente:
+                mapa_cliente.setdefault(chave_cliente, cnpj)
 
     if not mapa_cliente_cidade and not mapa_cliente:
         return df_enriquecido

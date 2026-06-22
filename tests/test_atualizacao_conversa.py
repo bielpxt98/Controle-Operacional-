@@ -83,6 +83,7 @@ CONSTANTES_NECESSARIAS = {
     "TABELA_DELIVERIES",
     "TABELA_CLIENTES_CNPJ",
     "COLUNAS_LOGICAS_DELIVERIES",
+    "ABREVIACOES_LOCALIDADE_CNPJ",
 }
 
 
@@ -784,6 +785,30 @@ def test_conversacao_enriquece_cnpj_da_tabela_clientes_sem_mensagem_de_nao_encon
 
     assert enriquecido.loc[0, "cnpj"] == "61.412.110/0620-02"
     assert enriquecido.loc[1, "cnpj"] == ""
+
+
+def test_conversacao_enriquece_cnpj_por_nome_exibicao_normalizado_e_abreviacao():
+    app = carregar_funcoes_app()
+    coletas = pd.DataFrame([
+        {
+            "delivery": "3787878659",
+            "cliente": "BUIATTE TRANSPORTE LOGISTICA (SIMOES FILHO)",
+            "cidade": "",
+            "motorista": "LUIS CARLOS",
+        },
+    ])
+    clientes = pd.DataFrame([
+        {
+            "cliente": "BUIATTE TRANSPORTE LOGÍSTICA (S.F)",
+            "nome_exibicao": "BUIATTE TRANSPORTE LOGÍSTICA (S.F)",
+            "cidade": "",
+            "cnpj": "12345678000199",
+        },
+    ])
+
+    enriquecido = app["aplicar_cnpjs_clientes_cadastrados"](coletas, clientes)
+
+    assert enriquecido.loc[0, "cnpj"] == "12.345.678/0001-99"
 
 
 def test_conversa_glid_atualiza_cadastro_cliente_sem_buscar_delivery():
