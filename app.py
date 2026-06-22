@@ -2189,6 +2189,19 @@ def parse_atualizacao_rapida(linha):
     delivery = texto(dados.get("D", ""))
     sr = texto(dados.get("SR", ""))
 
+    # Em atualizações parciais é comum a linha trazer um comando entre o
+    # código e o próximo campo, por exemplo: "D 8462 TROCOU CL ...".
+    # O valor lógico do campo D/SR deve continuar sendo apenas o código para
+    # que a busca por final funcione e para não contaminar o payload/preview.
+    if delivery:
+        delivery_match = re.search(r"\b(\d{4,10})\b", delivery)
+        if delivery_match:
+            delivery = delivery_match.group(1)
+    if sr:
+        sr_match = re.search(r"\b(\d{4,10})\b", sr)
+        if sr_match:
+            sr = sr_match.group(1)
+
     if not delivery:
         delivery_implicita = re.search(r"\b((?:378|340)\d{7})\b", original_parse)
         if delivery_implicita:

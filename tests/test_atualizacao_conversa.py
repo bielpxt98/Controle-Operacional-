@@ -1137,6 +1137,46 @@ def test_atualizacao_rapida_parcial_continua_busca_por_final_do_delivery():
     assert len(resultados) == 1
     assert resultados[0]["delivery"] == "3787816628"
 
+
+def test_atualizacao_rapida_parcial_por_final_atualiza_somente_campos_informados():
+    app = carregar_funcoes_app()
+    casos = [
+        ("D 8462 FI 12:00", {"delivery": "8462", "f_horario": "12:00"}),
+        ("D 8462 FI 12:00 DF 22/06", {"delivery": "8462", "f_horario": "12:00", "data_finalizacao": "22/06"}),
+        ("D 8462 PC 84", {"delivery": "8462", "pc": 84}),
+        ("D 8462 C 10:30", {"delivery": "8462", "c_horario": "10:30"}),
+        ("D 8462 TROCOU CL WMS MAX ATACADO BR 324 CD", {"delivery": "8462", "cliente": "WMS MAX ATACADO BR 324 CD"}),
+        ("D 8462 TROCOU M ARIEL", {"delivery": "8462", "motorista": "ARIEL NASCIMENTO"}),
+    ]
+
+    for linha, esperado in casos:
+        parsed, erro = app["parse_atualizacao_rapida"](linha)
+
+        assert erro is None
+        assert parsed["valor_busca"] == "8462"
+        expected_keys = set(esperado)
+        for campo, valor in esperado.items():
+            assert parsed["campos"][campo] == valor
+        campos_negocio = set(parsed["campos"]) - {"atualizado_em", "status", "cpf", "cavalo", "carreta"}
+        assert campos_negocio == expected_keys
+        assert not app["eh_cadastro_completo_atualizacao_rapida"](parsed)
+
+
+def test_atualizacao_rapida_parcial_por_final_encontra_delivery_sem_exigir_cadastro_completo():
+    app = carregar_funcoes_app()
+    df = pd.DataFrame([
+        {"id": 1, "delivery": "3787808462", "cliente": "CLIENTE", "motorista": "FABIO", "f_horario": ""},
+    ])
+
+    parsed, erro = app["parse_atualizacao_rapida"]("D 8462 TROCOU CL WMS MAX ATACADO BR 324 CD")
+    resultados = app["buscar_registros_atualizacao_rapida"](df, parsed)
+
+    assert erro is None
+    assert parsed["campos"]["delivery"] == "8462"
+    assert parsed["campos"]["cliente"] == "WMS MAX ATACADO BR 324 CD"
+    assert len(resultados) == 1
+    assert resultados[0]["delivery"] == "3787808462"
+
 def test_delivery_valido_tem_exatamente_10_digitos_e_busca_final_nao_cria_codigo_curto():
     app = carregar_funcoes_app()
     df = pd.DataFrame([
