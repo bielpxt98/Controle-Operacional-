@@ -706,8 +706,6 @@ def _linhas_resumo(df: pd.DataFrame) -> str:
         linhas.append(linha)
     sufixo = "" if len(df) <= 50 else f"\n... e mais {len(df) - 50} coleta(s)."
     return "\n".join(linhas) + sufixo
-        linhas.append(_adicionar_cnpj_conferencia(linha, row))
-    return "\n".join(linhas)
 
 
 def _formatar_campo_horario_resumo(rotulo: str, valor: object) -> str:
@@ -738,8 +736,6 @@ def _linhas_resumo_sem_fi(df: pd.DataFrame) -> str:
         linhas.append(linha)
     sufixo = "" if len(df) <= 50 else f"\n... e mais {len(df) - 50} coleta(s)."
     return "\n".join(linhas) + sufixo
-        linhas.append(_adicionar_cnpj_conferencia(linha, row))
-    return "\n".join(linhas)
 
 
 def _linhas_codigos_sem_fi(df: pd.DataFrame) -> str:
