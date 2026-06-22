@@ -632,7 +632,7 @@ def _responder_status_delivery(df: pd.DataFrame, pergunta: str) -> str:
             base = base_exata
     if base.empty:
         return "Nenhuma coleta encontrada."
-    return "\n\n".join(_linha_status_individual(row) for _, row in base.head(20).iterrows())
+    return "\n\n".join(_linha_status_individual(row) for _, row in base.iterrows())
 
 
 def _responder_status_hoje(df: pd.DataFrame) -> str:
@@ -652,7 +652,7 @@ def _responder_em_aberto(df: pd.DataFrame, pergunta: str) -> str:
 
 def _linhas_veiculo(df: pd.DataFrame, veiculo: str) -> str:
     linhas = []
-    for _, row in df.head(50).iterrows():
+    for _, row in df.iterrows():
         data = row.get("data")
         data_txt = pd.Timestamp(data).strftime("%d/%m/%Y") if not pd.isna(data) else ""
         linhas.append(
@@ -664,8 +664,6 @@ def _linhas_veiculo(df: pd.DataFrame, veiculo: str) -> str:
                 veiculo=veiculo,
             )
         )
-    if len(df) > 50:
-        linhas.append(f"... e mais {len(df) - 50} coleta(s).")
     linhas.append(f"TOTAL DE COLETAS COM {veiculo}: {len(df)}")
     return "\n".join(linhas)
 
@@ -693,7 +691,7 @@ def _linhas_resumo(df: pd.DataFrame) -> str:
         return "Nenhuma coleta encontrada."
     colunas = [c for c in ["data", "motorista", "delivery", "sr", "cliente", "observacoes", "cnpj"] if c in df.columns]
     linhas = []
-    for _, row in df[colunas].head(50).iterrows():
+    for _, row in df[colunas].iterrows():
         partes = []
         data = row.get("data")
         if not pd.isna(data):
@@ -708,6 +706,8 @@ def _linhas_resumo(df: pd.DataFrame) -> str:
         linhas.append(linha)
     sufixo = "" if len(df) <= 50 else f"\n... e mais {len(df) - 50} coleta(s)."
     return "\n".join(linhas) + sufixo
+        linhas.append(_adicionar_cnpj_conferencia(linha, row))
+    return "\n".join(linhas)
 
 
 def _formatar_campo_horario_resumo(rotulo: str, valor: object) -> str:
@@ -719,7 +719,7 @@ def _linhas_resumo_sem_fi(df: pd.DataFrame) -> str:
     if df.empty:
         return "Nenhuma coleta encontrada."
     linhas = []
-    for _, row in df.head(50).iterrows():
+    for _, row in df.iterrows():
         data = row.get("data")
         data_texto = "—" if pd.isna(data) else pd.Timestamp(data).strftime("%d/%m/%Y")
         motorista = "—" if _valor_vazio(row.get("motorista")) else str(row.get("motorista")).strip()
@@ -738,19 +738,19 @@ def _linhas_resumo_sem_fi(df: pd.DataFrame) -> str:
         linhas.append(linha)
     sufixo = "" if len(df) <= 50 else f"\n... e mais {len(df) - 50} coleta(s)."
     return "\n".join(linhas) + sufixo
+        linhas.append(_adicionar_cnpj_conferencia(linha, row))
+    return "\n".join(linhas)
 
 
 def _linhas_codigos_sem_fi(df: pd.DataFrame) -> str:
     if df.empty:
         return "Nenhuma coleta encontrada."
     linhas = []
-    for _, row in df.head(50).iterrows():
+    for _, row in df.iterrows():
         delivery = "" if _valor_vazio(row.get("delivery")) else str(row.get("delivery")).strip()
         motorista = "" if _valor_vazio(row.get("motorista")) else str(row.get("motorista")).strip()
         cliente = "" if _valor_vazio(row.get("cliente")) else str(row.get("cliente")).strip()
         linhas.append(f"D {delivery} | {motorista} | {cliente}")
-    if len(df) > 50:
-        linhas.append(f"... e mais {len(df) - 50} coleta(s).")
     return "\n".join(linhas)
 
 
@@ -822,7 +822,7 @@ def _linhas_observacoes(df: pd.DataFrame) -> str:
     if df.empty:
         return "Nenhum registro encontrado."
     linhas = []
-    for _, row in df.head(50).iterrows():
+    for _, row in df.iterrows():
         data = row.get("data")
         data_txt = pd.Timestamp(data).strftime("%d/%m/%Y") if not pd.isna(data) else ""
         linhas.append(
@@ -834,8 +834,6 @@ def _linhas_observacoes(df: pd.DataFrame) -> str:
                 observacao="" if _valor_vazio(row.get("observacoes")) else str(row.get("observacoes")).removeprefix("O "),
             )
         )
-    if len(df) > 50:
-        linhas.append(f"... e mais {len(df) - 50} observação(ões).")
     return "\n".join(linhas)
 
 
@@ -958,13 +956,11 @@ def _responder_relatorio_especial(df: pd.DataFrame, pergunta: str, tipo: str) ->
     return _linhas_relatorio_especial(base, tipo)
 
 
-def _linhas_operacionais(df: pd.DataFrame, limite: int = 200, formato_status: bool = False) -> str:
+def _linhas_operacionais(df: pd.DataFrame, formato_status: bool = False) -> str:
     if df.empty:
         return "Nenhuma coleta encontrada."
     formatador = _linha_status_individual if formato_status else _linha_operacional
-    linhas = [formatador(row) for _, row in df.head(limite).iterrows()]
-    if len(df) > limite:
-        linhas.append(f"... e mais {len(df) - limite} coleta(s).")
+    linhas = [formatador(row) for _, row in df.iterrows()]
     return "\n".join(linhas)
 
 
