@@ -1758,13 +1758,19 @@ def normalizar_cliente_rapido(v):
     s_limpo = limpar_busca(s)
 
     sufixo = ""
-    if re.search(r"\bS\.?F\.?\b", s, flags=re.IGNORECASE):
+    if re.search(r"\(\s*S\.?F\.?\s*\)", s, flags=re.IGNORECASE):
+        sufixo = " (S.F)"
+    elif re.search(r"\(\s*L\.?F\.?\s*\)", s, flags=re.IGNORECASE):
+        sufixo = " (L.F)"
+    elif re.search(r"\bS\.?F\.?\b", s, flags=re.IGNORECASE):
         sufixo = " S.F"
     elif re.search(r"\bL\.?F\.?\b", s, flags=re.IGNORECASE):
         sufixo = " L.F"
 
     # remove S.F/L.F antes de corrigir o nome, depois recoloca no cliente
-    s_sem_local = re.sub(r"\bS\.?F\.?\b", "", s, flags=re.IGNORECASE)
+    s_sem_local = re.sub(r"\(\s*S\.?F\.?\s*\)", "", s, flags=re.IGNORECASE)
+    s_sem_local = re.sub(r"\(\s*L\.?F\.?\s*\)", "", s_sem_local, flags=re.IGNORECASE)
+    s_sem_local = re.sub(r"\bS\.?F\.?\b", "", s_sem_local, flags=re.IGNORECASE)
     s_sem_local = re.sub(r"\bL\.?F\.?\b", "", s_sem_local, flags=re.IGNORECASE).strip()
     s_limpo_sem_local = limpar_busca(s_sem_local)
 
@@ -2283,7 +2289,14 @@ def limpar_codigo_delivery(v):
 
 def parece_delivery_completo(codigo):
     codigo_limpo = limpar_codigo_delivery(codigo)
-    return len(codigo_limpo) == 10
+    return bool(re.fullmatch(r"(?:378|340)\d{7}", codigo_limpo))
+
+
+def eh_cadastro_completo_atualizacao_rapida(parsed):
+    campos = (parsed or {}).get("campos") or {}
+    delivery = limpar_codigo_delivery(campos.get("delivery") or (parsed or {}).get("valor_busca"))
+    campos_obrigatorios = ["data", "motorista", "paletes", "cliente"]
+    return parece_delivery_completo(delivery) and all(texto(campos.get(campo)) for campo in campos_obrigatorios)
 
 
 def normalizar_data_conversa(v):
@@ -3997,12 +4010,20 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                             erros.append(f"Linha {idx}: {erro} — {linha}")
                             continue
 
+                        if eh_cadastro_completo_atualizacao_rapida(parsed):
+                            try:
+                                resultado = atualizar_rapido_no_supabase(parsed)
+                                st.toast(resumo_atualizacao_rapida(parsed, resultado))
+                            except Exception as e:
+                                erros.append(f"Linha {idx}: {e} — {linha}")
+                            continue
+
                         resultados = buscar_registros_atualizacao_rapida(df, parsed)
                         final = limpar_codigo_delivery(parsed.get("valor_busca"))
                         if not resultados:
                             erros.append(
                                 f"Linha {idx}: Nenhum delivery encontrado com final {final}. "
-                                "Informe o delivery completo com 10 números."
+                                "Informe o delivery completo com 10 números ou os dados completos da coleta."
                             )
                             continue
                         pendentes.append({"linha": idx, "texto": linha, "parsed": parsed, "resultados": resultados})

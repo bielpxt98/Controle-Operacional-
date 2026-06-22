@@ -16,6 +16,7 @@ FUNCOES_NECESSARIAS = {
     "completar_dados_motorista",
     "limpar_codigo_delivery",
     "parece_delivery_completo",
+    "eh_cadastro_completo_atualizacao_rapida",
     "normalizar_data_conversa",
     "extrair_campos_operacionais_conversa",
     "identificar_acao_conversa",
@@ -1036,6 +1037,44 @@ def test_resumo_cadastro_cliente_avisa_atualizacao_sem_sobrescrever():
     assert "CLIENTE JÁ CADASTRADO" in resumo
     assert "DESEJA ATUALIZAR?" in resumo
 
+
+def test_atualizacao_rapida_cadastro_completo_usa_delivery_completo_sem_busca_por_final():
+    app = carregar_funcoes_app()
+    df = pd.DataFrame([
+        {"id": 1, "delivery": "3787806628", "cliente": "CLIENTE ANTIGO", "motorista": "OUTRO"},
+    ])
+
+    parsed, erro = app["parse_atualizacao_rapida"](
+        "DATA 22/06/2026 M FABIO D 3787816628 P 329 CL BULITTE TRANSPORTE LOGÍSTICA (S.F) V 893,64 L 08:34"
+    )
+    resultados = app["buscar_registros_atualizacao_rapida"](df, parsed)
+
+    assert erro is None
+    assert parsed["campos"]["data"] == "22/06/2026"
+    assert parsed["campos"]["motorista"] == "FABIO SOUZA"
+    assert parsed["campos"]["delivery"] == "3787816628"
+    assert parsed["campos"]["paletes"] == 329
+    assert parsed["campos"]["cliente"] == "BULITTE TRANSPORTE LOGÍSTICA (S.F)"
+    assert parsed["campos"]["valor_frete"] == 893.64
+    assert parsed["campos"]["l_horario"] == "08:34"
+    assert app["eh_cadastro_completo_atualizacao_rapida"]({**parsed, "campos": parsed["campos"]})
+    assert resultados == []
+
+
+def test_atualizacao_rapida_parcial_continua_busca_por_final_do_delivery():
+    app = carregar_funcoes_app()
+    df = pd.DataFrame([
+        {"id": 1, "delivery": "3787816628", "cliente": "CLIENTE", "motorista": "FABIO", "f_horario": ""},
+    ])
+
+    parsed, erro = app["parse_atualizacao_rapida"]("D 6628 FI 13:40")
+    resultados = app["buscar_registros_atualizacao_rapida"](df, parsed)
+
+    assert erro is None
+    assert parsed["valor_busca"] == "6628"
+    assert not app["eh_cadastro_completo_atualizacao_rapida"]({**parsed, "campos": parsed["campos"]})
+    assert len(resultados) == 1
+    assert resultados[0]["delivery"] == "3787816628"
 
 def test_delivery_valido_tem_exatamente_10_digitos_e_busca_final_nao_cria_codigo_curto():
     app = carregar_funcoes_app()
