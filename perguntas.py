@@ -708,6 +708,35 @@ def _linhas_resumo(df: pd.DataFrame) -> str:
     return "\n".join(linhas) + sufixo
 
 
+def _formatar_campo_horario_resumo(rotulo: str, valor: object) -> str:
+    horario = "—" if _valor_vazio(valor) else str(valor).strip()
+    return f"{rotulo} {horario}"
+
+
+def _linhas_resumo_sem_fi(df: pd.DataFrame) -> str:
+    if df.empty:
+        return "Nenhuma coleta encontrada."
+    linhas = []
+    for _, row in df.head(50).iterrows():
+        data = row.get("data")
+        data_texto = "—" if pd.isna(data) else pd.Timestamp(data).strftime("%d/%m/%Y")
+        motorista = "—" if _valor_vazio(row.get("motorista")) else str(row.get("motorista")).strip()
+        delivery = "—" if _valor_vazio(row.get("delivery")) else str(row.get("delivery")).strip()
+        cliente = "—" if _valor_vazio(row.get("cliente")) else str(row.get("cliente")).strip()
+        partes = [
+            data_texto,
+            motorista,
+            delivery,
+            cliente,
+            _formatar_campo_horario_resumo("L", row.get("l_horario")),
+            _formatar_campo_horario_resumo("C", row.get("c_horario")),
+            _formatar_campo_horario_resumo("FI", row.get("f_horario")),
+        ]
+        linhas.append(" - " + " | ".join(partes))
+    sufixo = "" if len(df) <= 50 else f"\n... e mais {len(df) - 50} coleta(s)."
+    return "\n".join(linhas) + sufixo
+
+
 def _linhas_codigos_sem_fi(df: pd.DataFrame) -> str:
     if df.empty:
         return "Nenhuma coleta encontrada."
@@ -1043,7 +1072,7 @@ def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
         pendentes = df[df["f_horario"].apply(_valor_vazio)]
         if "CODIGO" in pergunta_norm:
             return _linhas_codigos_sem_fi(pendentes)
-        return f"Coletas sem FI: {len(pendentes)}\n{_linhas_resumo(pendentes)}"
+        return f"Coletas sem FI: {len(pendentes)}\n{_linhas_resumo_sem_fi(pendentes)}"
 
     if re.search(r"\bSEM C\b", pergunta_norm) or "SEM COLETA" in pergunta_norm:
         pendentes = df[df["c_horario"].apply(_valor_vazio)]

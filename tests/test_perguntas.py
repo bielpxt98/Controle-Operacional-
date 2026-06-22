@@ -18,8 +18,8 @@ class PerguntasTest(unittest.TestCase):
         self.df = pd.DataFrame(
             [
                 {"data": hoje.strftime("%d/%m/%Y"), "motorista": "Jean", "delivery": "1001", "cliente": "A", "tipo_veiculo": "TRUCK", "valor_frete": "100,50", "c_horario": "09:00", "f_horario": "10:00", "observacoes": ""},
-                {"data": hoje.strftime("%d/%m/%Y"), "motorista": "Jean Robson", "delivery": "1002", "cliente": "B", "tipo_veiculo": "TRUCK", "valor_frete": "200,00", "c_horario": "", "f_horario": "", "observacoes": "BLOQUEIO 12:00"},
-                {"data": mes.strftime("%d/%m/%Y"), "motorista": "Fabio", "delivery": "1003", "cliente": "C", "tipo_veiculo": "CARRETA", "valor_frete": 300, "c_horario": "11:00", "f_horario": "", "observacoes": "DESLOCAMENTO 13:00"},
+                {"data": hoje.strftime("%d/%m/%Y"), "motorista": "Jean Robson", "delivery": "1002", "cliente": "B", "tipo_veiculo": "TRUCK", "valor_frete": "200,00", "l_horario": "08:34", "c_horario": "", "f_horario": "", "observacoes": "BLOQUEIO 12:00"},
+                {"data": mes.strftime("%d/%m/%Y"), "motorista": "Fabio", "delivery": "1003", "cliente": "C", "tipo_veiculo": "CARRETA", "valor_frete": 300, "l_horario": "", "c_horario": "11:00", "f_horario": "", "observacoes": "DESLOCAMENTO 13:00"},
             ]
         )
         self.csv = self.base / "dados.csv"
@@ -47,6 +47,8 @@ class PerguntasTest(unittest.TestCase):
         self.assertIn("Coletas sem FI: 2", resposta)
         self.assertIn("1002", resposta)
         self.assertIn("1003", resposta)
+        self.assertIn("1002 | B | L 08:34 | C — | FI —", resposta)
+        self.assertIn("1003 | C | L — | C 11:00 | FI —", resposta)
 
     def test_codigos_de_todas_sem_fi(self):
         df = pd.DataFrame(
