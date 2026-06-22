@@ -520,12 +520,35 @@ class ConsultaAdministrativaTest(unittest.TestCase):
             caminho = Path(tmp) / "coletas_hoje_curto.csv"
             df.to_csv(caminho, index=False)
 
-            for pergunta in ["COLETAS HOJE", "COLETAS DE HOJE", "COLETAS DO DIA"]:
+            for pergunta in ["COLETAS HOJE", "COLETAS DE HOJE", "COLETA DE HOJE", "COLETAS DO DIA"]:
                 resposta = responder_pergunta(pergunta, str(caminho))
 
                 self.assertEqual(resposta, "3787867806 - ASSAÍ (LAURO DE FREITAS) - @FA")
                 for termo in ["DATA", "M FABIO", "CL", "P 272", "V 992,17", "CNPJ", " FI "]:
                     self.assertNotIn(termo, resposta)
+
+    def test_cnpj_aparece_somente_nas_consultas_exatas_de_coletas_hoje(self):
+        hoje = date.today().strftime("%d/%m/%Y")
+        df = pd.DataFrame([
+            {
+                "data": hoje,
+                "motorista": "Fabio Souza",
+                "delivery": "3787867806",
+                "cliente": "ASSAI LAURO DE FREITAS",
+                "cnpj": "06.057.223/0381-44",
+            },
+        ])
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "coletas_hoje_cnpj_exato.csv"
+            df.to_csv(caminho, index=False)
+
+            for pergunta in ["COLETAS DE HOJE", "COLETA DE HOJE", "COLETAS HOJE"]:
+                resposta = responder_pergunta(pergunta, str(caminho))
+                self.assertIn("| CNPJ 06.057.223/0381-44", resposta)
+
+            for pergunta in ["COLETAS DO DIA", "STATUS DE HOJE", "STATUS DO DELIVERY 7806", "EM ABERTO"]:
+                resposta = responder_pergunta(pergunta, str(caminho))
+                self.assertNotIn("CNPJ", resposta)
 
 
     def test_coletas_de_ontem_e_do_dia_usam_formato_admin(self):

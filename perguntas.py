@@ -325,12 +325,13 @@ def _responder_coletas_motorista_periodo(df: pd.DataFrame, pergunta: str) -> str
     return "\n".join(linhas)
 
 
-def _responder_coletas_hoje_admin(df: pd.DataFrame) -> str:
+def _responder_coletas_hoje_admin(df: pd.DataFrame, incluir_cnpj: bool = True) -> str:
     base = _periodo_hoje(df)
     if base.empty:
         return "Nenhuma coleta encontrada para hoje."
-    linhas = [_linha_coleta_admin(row, incluir_cnpj=True) for _, row in base.iterrows()]
+    linhas = [_linha_coleta_admin(row, incluir_cnpj=incluir_cnpj) for _, row in base.iterrows()]
     return "\n".join(linhas)
+
 
 def _normalizar_colunas(df: pd.DataFrame) -> pd.DataFrame:
     logger.debug("Normalizando dataframe para perguntas. Colunas originais: %s", list(df.columns))
@@ -596,14 +597,7 @@ def _linha_operacional(row: pd.Series) -> str:
     obs = _campo_operacional("O", row.get("observacoes"))
     if obs:
         partes.append(obs)
-    return _adicionar_cnpj_conferencia(" ".join(partes), row)
-
-
-def _adicionar_cnpj_conferencia(linha: str, row: pd.Series) -> str:
-    cnpj = _texto_valido(row.get("cnpj"))
-    if not cnpj:
-        return linha
-    return f"{linha} | CNPJ {cnpj}"
+    return " ".join(partes)
 
 
 def _linha_status_individual(row: pd.Series) -> str:
@@ -623,7 +617,7 @@ def _linha_status_individual(row: pd.Series) -> str:
         parte = _campo_operacional(rotulo, valor)
         if parte:
             partes.append(parte)
-    return _adicionar_cnpj_conferencia(" ".join(partes), row)
+    return " ".join(partes)
 
 
 def _responder_status_delivery(df: pd.DataFrame, pergunta: str) -> str:
@@ -709,6 +703,9 @@ def _linhas_resumo(df: pd.DataFrame) -> str:
             if not _valor_vazio(valor):
                 partes.append(str(valor))
         linha = " - " + " | ".join(partes)
+        linhas.append(linha)
+    sufixo = "" if len(df) <= 50 else f"\n... e mais {len(df) - 50} coleta(s)."
+    return "\n".join(linhas) + sufixo
         linhas.append(_adicionar_cnpj_conferencia(linha, row))
     return "\n".join(linhas)
 
@@ -738,6 +735,9 @@ def _linhas_resumo_sem_fi(df: pd.DataFrame) -> str:
             _formatar_campo_horario_resumo("FI", row.get("f_horario")),
         ]
         linha = " - " + " | ".join(partes)
+        linhas.append(linha)
+    sufixo = "" if len(df) <= 50 else f"\n... e mais {len(df) - 50} coleta(s)."
+    return "\n".join(linhas) + sufixo
         linhas.append(_adicionar_cnpj_conferencia(linha, row))
     return "\n".join(linhas)
 
@@ -1010,6 +1010,12 @@ def _responder_cliente(df: pd.DataFrame, pergunta: str, motorista: str) -> str:
     return f"Coletas do cliente {cliente}: {len(base)}\n{_linhas_resumo(base)}"
 
 
+
+def _eh_consulta_coletas_hoje_com_cnpj(pergunta_norm: str) -> bool:
+    """Identifica as únicas consultas que devem exibir CNPJ na Conversação."""
+    return bool(re.fullmatch(r"\s*(?:COLETAS\s+DE\s+HOJE|COLETA\s+DE\s+HOJE|COLETAS\s+HOJE)\s*", pergunta_norm))
+
+
 def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
     """Responde perguntas operacionais sobre um DataFrame já carregado.
 
@@ -1026,11 +1032,11 @@ def responder_pergunta_df(pergunta: str, dados: pd.DataFrame) -> str:
     motorista = _extrair_motorista(pergunta, df["motorista"].dropna().astype(str))
     veiculo = _extrair_veiculo(pergunta)
 
-    if re.fullmatch(r"\s*COLETAS\s+(?:DE\s+)?HOJE\s*", pergunta_norm):
-        return _responder_coletas_hoje_admin(df)
+    if _eh_consulta_coletas_hoje_com_cnpj(pergunta_norm):
+        return _responder_coletas_hoje_admin(df, incluir_cnpj=True)
 
     if re.fullmatch(r"\s*COLETAS\s+DO\s+DIA\s*", pergunta_norm):
-        return _responder_coletas_hoje_admin(df)
+        return _responder_coletas_hoje_admin(df, incluir_cnpj=False)
 
     if re.fullmatch(r"\s*COLETAS\s+(?:DE\s+ONTEM|DO\s+DIA\s+\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\s*", pergunta_norm):
         return _responder_coletas_motorista_periodo(df, pergunta)
