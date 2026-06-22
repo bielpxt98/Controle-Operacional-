@@ -27,6 +27,7 @@ FUNCOES_NECESSARIAS = {
     "extrair_observacao_livre_conversa",
     "remover_observacao_livre_conversa",
     "combinar_observacoes_conversa",
+    "observacao_status_operacional",
     "detectar_modo_conversa",
     "parse_atualizacao_conversa",
     "campos_atualizacao_conversa",
@@ -133,11 +134,11 @@ def test_conversa_bloqueio_com_observacao_livre_concatena_o_campo_o():
     assert erro is None
     assert parsed["horario"] == "16:22"
     assert parsed["acao"] == "BLOQUEIO"
-    assert parsed["observacoes"] == "BLOQUEIO 16:22 | CLIENTE NAO QUIS CARREGAR"
+    assert parsed["observacoes"] == "BLOQUEIO AS 16:22 - CLIENTE NAO QUIS CARREGAR"
 
     campos = app["campos_atualizacao_conversa"](parsed)
     assert campos["f_horario"] == "16:22"
-    assert campos["observacoes"] == "BLOQUEIO 16:22 | CLIENTE NAO QUIS CARREGAR"
+    assert campos["observacoes"] == "BLOQUEIO AS 16:22 - CLIENTE NAO QUIS CARREGAR"
 
 
 def test_conversa_atualiza_l_c_pc_por_frase_natural_e_confirma_sem_setas():
@@ -187,11 +188,11 @@ def test_conversa_deslocamento_e_bloqueio_salvam_fi_observacao_e_status():
 
     assert erro is None
     assert campos_deslocamento["f_horario"] == "14:05"
-    assert campos_deslocamento["observacoes"] == "DESLOCAMENTO 14:05"
+    assert campos_deslocamento["observacoes"] == "DESLOCAMENTO AS 14:05"
     assert campos_deslocamento["status"] == "DESLOCAMENTO"
     assert erro_bloqueio is None
     assert campos_bloqueio["f_horario"] == "16:20"
-    assert campos_bloqueio["observacoes"] == "BLOQUEIO 16:20"
+    assert campos_bloqueio["observacoes"] == "BLOQUEIO AS 16:20"
     assert campos_bloqueio["status"] == "BLOQUEIO"
 
 
@@ -354,12 +355,12 @@ def test_atualizacao_rapida_preserva_observacao_livre_apos_o_com_d_horario():
     assert parsed["campos"]["delivery"] == "3787849331"
     assert parsed["campos"]["l_horario"] == "12:00"
     assert parsed["campos"]["f_horario"] == "15:46"
-    assert parsed["campos"]["observacoes"] == "O SEM AJUDANTE"
+    assert parsed["campos"]["observacoes"] == "DESLOCAMENTO AS 15:46 - SEM AJUDANTE"
     assert app["resumo_atualizacao_rapida"](parsed, "atualizado") == (
         "D 3787849331 OK\n"
         "L 12:00\n"
         "FI 15:46\n"
-        "O SEM AJUDANTE"
+        "O DESLOCAMENTO AS 15:46 - SEM AJUDANTE"
     )
 
 def test_atualizacao_rapida_processa_linhas_independentes_com_mesmos_campos():
@@ -630,7 +631,7 @@ def test_status_automatico_regras_observacao():
     assert app["calcular_status_automatico"]("bloqueio") == "BLOQUEIO"
     assert app["calcular_status_automatico"]("O BLOQUEIO") == "BLOQUEIO"
     assert app["calcular_status_automatico"]("deslocamento sem carga") == "DESLOCAMENTO"
-    assert app["calcular_status_automatico"]("BLOQUEIO e DESLOCAMENTO") == "DESLOCAMENTO"
+    assert app["calcular_status_automatico"]("BLOQUEIO e DESLOCAMENTO") == "BLOQUEIO"
     assert app["calcular_status_automatico"]("cliente pediu comprovante") == "EM ABERTO"
     assert app["calcular_status_automatico"]("", "") == "EM ABERTO"
     assert app["calcular_status_automatico"]("cliente pediu comprovante", "13:44") == "FINALIZADO"
@@ -737,8 +738,36 @@ def test_d_horario_vira_deslocamento_com_prioridade_sobre_finalizado():
     assert erro is None
     assert parsed["campos"]["cliente"] == "WMS MAX ATACADO ALAGOINHAS"
     assert parsed["campos"]["f_horario"] == "14:05"
-    assert parsed["campos"]["observacoes"] == "DESLOCAMENTO 14:05"
+    assert parsed["campos"]["observacoes"] == "DESLOCAMENTO AS 14:05"
     assert parsed["campos"]["status"] == "DESLOCAMENTO"
+
+
+def test_atualizacao_rapida_b_horario_com_observacao_salva_bloqueio_as_horario():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_atualizacao_rapida"](
+        "19/06/2026 | LUIS CARLOS | 3402204834 | BOOMIX | B 16:07 O PALETES MOLHADOS"
+    )
+
+    assert erro is None
+    assert parsed["campos"]["f_horario"] == "16:07"
+    assert parsed["campos"]["observacoes"] == "BLOQUEIO AS 16:07 - PALETES MOLHADOS"
+    assert parsed["campos"]["status"] == "BLOQUEIO"
+
+
+def test_conversa_d_horario_com_l_e_observacao_salva_deslocamento_as_horario():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_atualizacao_conversa"](
+        "19/06/2026 | FABIO SOUZA | 3787867806 | ASSAÍ LAURO DE FREITAS | L 11:28 | D 13:02 O SEM PALETES"
+    )
+    campos = app["campos_atualizacao_conversa"](parsed)
+
+    assert erro is None
+    assert campos["l_horario"] == "11:28"
+    assert campos["f_horario"] == "13:02"
+    assert campos["observacoes"] == "DESLOCAMENTO AS 13:02 - SEM PALETES"
+    assert campos["status"] == "DESLOCAMENTO"
 
 
 def test_conversacao_enriquece_cnpj_da_tabela_clientes_sem_mensagem_de_nao_encontrado():
@@ -1094,7 +1123,7 @@ def test_delivery_valido_tem_exatamente_10_digitos_e_busca_final_nao_cria_codigo
     assert len(resultados) == 2
     assert campos["f_horario"] == "16:07"
     assert campos["status"] == "BLOQUEIO"
-    assert campos["observacoes"] == "BLOQUEIO 16:07 | RECUSADO PELO CLIENTE | REEMBOLSO 664,22"
+    assert campos["observacoes"] == "BLOQUEIO AS 16:07 | RECUSADO PELO CLIENTE | REEMBOLSO 664,22"
 
 
 def test_busca_rapida_por_final_do_delivery_e_preserva_observacao_antiga_sem_duplicar():
@@ -1116,4 +1145,4 @@ def test_busca_rapida_por_final_do_delivery_e_preserva_observacao_antiga_sem_dup
     assert len(resultados) == 1
     assert parsed["campos"]["f_horario"] == "15:19"
     assert parsed["campos"]["status"] == "DESLOCAMENTO"
-    assert preparados["observacoes"] == "RECUSADO PELO CLIENTE | DESLOCAMENTO 15:19 | REEMBOLSO 664,22"
+    assert preparados["observacoes"] == "RECUSADO PELO CLIENTE | DESLOCAMENTO AS 15:19 | REEMBOLSO 664,22"

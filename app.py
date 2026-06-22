@@ -192,13 +192,13 @@ def aplicar_padronizacao_motoristas(df_preview):
 
 
 def calcular_status_automatico(observacoes, f_horario=None):
-    """Calcula STATUS pela prioridade oficial: O, BLOQUEIO, FI e EM ABERTO."""
+    """Calcula STATUS pela prioridade oficial: BLOQUEIO, DESLOCAMENTO, FI e EM ABERTO."""
     obs = limpar_busca(observacoes)
 
-    if "DESLOC" in obs:
-        return "DESLOCAMENTO"
     if re.search(r"\bBLOQ(?:UEIO)?\b", obs):
         return "BLOQUEIO"
+    if "DESLOC" in obs:
+        return "DESLOCAMENTO"
     if texto(f_horario):
         return "FINALIZADO"
     return "EM ABERTO"
@@ -1744,7 +1744,7 @@ def extrair_regra_bloqueio_deslocamento(linha):
     if reembolso:
         valor_reembolso = texto(reembolso.group(1)).strip()
         extras.append(f"REEMBOLSO {valor_reembolso}".strip())
-    observacao = combinar_observacoes_conversa(f"{acao} {horario}" if horario else acao, *extras)
+    observacao = combinar_observacoes_conversa(observacao_status_operacional(acao, horario), *extras)
     return linha_sem_marcadores, horario or None, observacao
 
 
@@ -1929,11 +1929,17 @@ def preparar_linha_atualizacao_rapida(original):
     )
 
     # Quando existe O depois de D/B HH:MM, o texto após O é observação livre
-    # digitada pelo usuário. Nesse caso D/B HH:MM deve alimentar FI, sem gerar
-    # automaticamente O DESLOCAMENTO/BLOQUEIO nem descartar a observação livre.
-    if padrao_bd_observacao.search(original):
+    # digitada pelo usuário. D/B HH:MM deve alimentar FI e gerar a observação
+    # operacional com prioridade sobre finalização normal.
+    match_bd_observacao = padrao_bd_observacao.search(original)
+    if match_bd_observacao:
+        tipo = match_bd_observacao.group(1).upper()
+        horario = normalizar_horario(match_bd_observacao.group(2) or match_bd_observacao.group(3))
+        observacao_livre_match = re.search(r"(?<!\w)O\s+(.+)$", original, flags=re.IGNORECASE | re.UNICODE)
+        observacao_livre = observacao_livre_match.group(1) if observacao_livre_match else ""
+        acao = "DESLOCAMENTO" if tipo == "D" else "BLOQUEIO"
         linha_preparada = padrao_bd_observacao.sub(lambda m: f"FI {m.group(2) or m.group(3)}", original)
-        return linha_preparada, None, None
+        return linha_preparada, horario or None, observacao_status_operacional(acao, horario, observacao_livre)
 
     return extrair_regra_bloqueio_deslocamento(original)
 
@@ -2584,6 +2590,20 @@ def combinar_observacoes_conversa(*observacoes):
     return " | ".join(partes) if partes else None
 
 
+def observacao_status_operacional(acao, horario, observacao_livre=""):
+    """Monta O para B/D: STATUS AS HH:MM - OBS, quando houver observação."""
+    acao_limpa = limpar_busca(acao)
+    horario_limpo = normalizar_horario(horario)
+    if horario_limpo:
+        base = f"{acao_limpa} AS {horario_limpo}"
+    else:
+        base = acao_limpa
+    observacao_limpa = texto(observacao_livre).strip(" :-|")
+    if observacao_limpa:
+        return f"{base} - {limpar_busca(observacao_limpa)}"
+    return base
+
+
 def extrair_observacoes_especiais(frase):
     """Reconhece automaticamente recusa do cliente e reembolso na atualização."""
     original = texto(frase)
@@ -2679,6 +2699,15 @@ def parse_atualizacao_conversa(frase):
 
     codigo = extrair_codigo_conversa(original_sem_observacao)
     acao = identificar_acao_conversa(original_sem_observacao)
+    if acao in {"BLOQUEIO", "DESLOCAMENTO"}:
+        marcador_acao = "B" if acao == "BLOQUEIO" else "D"
+        horarios_acao = re.findall(
+            rf"(?<!\w){marcador_acao}\s*(?:\(\s*([0-2]?\d[:hH][0-5]\d)\s*\)|\s+([0-2]?\d[:hH][0-5]\d)\b)",
+            original_sem_observacao,
+            flags=re.IGNORECASE | re.UNICODE,
+        )
+        if horarios_acao:
+            horario = normalizar_horario(horarios_acao[-1][0] or horarios_acao[-1][1])
     motorista_alteracao, cliente_alteracao = extrair_valores_alteracao_conversa(original_sem_observacao, codigo)
     eh_alteracao = bool(
         re.search(r"\b(MUDAR|TROCAR|ALTERAR|CORRIGIR|AGORA)\b", limpar_busca(original))
@@ -2730,9 +2759,11 @@ def parse_atualizacao_conversa(frase):
 
     observacao_acao = None
     if acao == "BLOQUEIO":
-        observacao_acao = f"BLOQUEIO {horario}"
+        observacao_acao = observacao_status_operacional("BLOQUEIO", horario, observacao_livre)
+        observacao_livre = ""
     elif acao == "DESLOCAMENTO":
-        observacao_acao = f"DESLOCAMENTO {horario}"
+        observacao_acao = observacao_status_operacional("DESLOCAMENTO", horario, observacao_livre)
+        observacao_livre = ""
     extras = []
     normalizado_original = limpar_busca(original_sem_observacao)
     if "RECUSADO PELO CLIENTE" in normalizado_original or "RECUSA PELO CLIENTE" in normalizado_original:
