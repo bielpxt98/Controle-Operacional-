@@ -74,6 +74,9 @@ FUNCOES_NECESSARIAS = {
     "rotulos_cadastro_cliente_presentes",
     "parse_cadastro_cliente_conversa",
     "parece_cadastro_cliente_conversa",
+    "texto_tem_rotulos_cliente_e_cnpj",
+    "separar_blocos_atualizacao_rapida",
+    "buscar_cliente_por_cnpj",
     "observacao_cadastro_cliente_conversa",
     "payload_cadastro_cliente_conversa",
     "preparar_payload_cliente_para_salvar",
@@ -112,6 +115,9 @@ def carregar_funcoes_app():
             return self
 
         def eq(self, *args, **kwargs):
+            return self
+
+        def upsert(self, *args, **kwargs):
             return self
 
         def execute(self):
@@ -941,6 +947,45 @@ def test_cadastro_cliente_payload_preserva_glid_com_zeros():
     assert erro is None
     assert parsed["glid"] == "000000000"
     assert payload["glid"] == "000000000"
+
+
+def test_atualizacao_rapida_preserva_bloco_cadastro_cliente_com_cnpj():
+    app = carregar_funcoes_app()
+
+    bloco = """CLIENTE: ATACADÃO BR 324 CD
+NOME_EXIBICAO: ATACADÃO BR 324 CD
+RAZAO_SOCIAL: ATACADÃO S.A.
+CNPJ: 75.315.333/0341-94
+CIDADE: SIMÕES FILHO
+ENDERECO: ACESSO II BR 324, 1796 - CIA SUL
+GLID: 1000054613
+OBSERVACAO: DLIS"""
+
+    assert app["texto_tem_rotulos_cliente_e_cnpj"](bloco)
+    assert app["separar_blocos_atualizacao_rapida"](bloco) == [bloco]
+
+    parsed, erro = app["parse_cadastro_cliente_conversa"](bloco)
+    payload = app["payload_cadastro_cliente_conversa"](parsed)
+
+    assert erro is None
+    assert parsed["cliente_operacao"] == "ATACADÃO BR 324 CD"
+    assert parsed["cnpj"] == "75.315.333/0341-94"
+    assert payload["cliente"] == "ATACADÃO BR 324 CD"
+    assert payload["cidade"] == "SIMÕES FILHO"
+    assert payload["endereco_referencia"] == "ACESSO II BR 324, 1796 - CIA SUL"
+    assert payload["glid"] == "1000054613"
+    assert payload["observacao"] == "DLIS"
+
+
+def test_atualizacao_rapida_sem_cadastro_continua_separando_por_linha():
+    app = carregar_funcoes_app()
+
+    texto = "D 3787762754 FI 11:03\nD 3787833608 PC 102"
+
+    assert app["separar_blocos_atualizacao_rapida"](texto) == [
+        "D 3787762754 FI 11:03",
+        "D 3787833608 PC 102",
+    ]
 
 def test_conversa_reconhece_cadastro_assistido_cliente():
     app = carregar_funcoes_app()
