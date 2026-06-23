@@ -1441,6 +1441,22 @@ def parece_cadastro_cliente_conversa(frase):
     return parsed is not None
 
 
+def texto_tem_rotulos_cliente_e_cnpj(frase):
+    """Identifica blocos de cadastro de cliente colados na atualização rápida."""
+    rotulos = rotulos_cadastro_cliente_presentes(frase)
+    return "CLIENTE" in rotulos and "CNPJ" in rotulos
+
+
+def separar_blocos_atualizacao_rapida(texto_entrada):
+    """Preserva cadastro de cliente como um único bloco; demais textos seguem por linha."""
+    original = texto(texto_entrada)
+    if not original:
+        return []
+    if texto_tem_rotulos_cliente_e_cnpj(original):
+        return [original]
+    return [linha.strip() for linha in original.splitlines() if linha.strip()]
+
+
 def observacao_cadastro_cliente_conversa(parsed):
     partes = []
     for rotulo, chave in [
@@ -1501,16 +1517,38 @@ def buscar_cliente_por_nome_exibicao(nome_exibicao):
     return (res.data[0] if res.data else None), None
 
 
+def buscar_cliente_por_cnpj(cnpj):
+    cnpj_formatado = formatar_cnpj_cliente(cnpj)
+    if not cnpj_formatado:
+        return None, "CNPJ é obrigatório para localizar o cadastro do cliente."
+
+    try:
+        res = supabase.table(TABELA_CLIENTES_CNPJ).select("*").eq("cnpj", cnpj_formatado).limit(1).execute()
+    except Exception as exc:
+        logger.warning("Não foi possível consultar cliente por CNPJ em %s: %s", TABELA_CLIENTES_CNPJ, exc)
+        return None, "Não foi possível consultar o cadastro de clientes por CNPJ agora."
+    return (res.data[0] if res.data else None), None
+
+
 def salvar_cadastro_cliente_conversa(parsed, existente=None):
     payload = preparar_payload_cliente_para_salvar(payload_cadastro_cliente_conversa(parsed), existente)
     if not payload.get("razao_social"):
         raise ValueError("RAZÃO_SOCIAL é obrigatória para salvar o cliente.")
+    if not payload.get("cnpj"):
+        raise ValueError("CNPJ é obrigatório para salvar/atualizar o cliente.")
+
+    payload_upsert = dict(payload)
     if existente:
-        supabase.table(TABELA_CLIENTES_CNPJ).update(payload).eq("id", int(existente["id"])).execute()
-        return {**existente, **payload}
-    payload["data_cadastro"] = datetime.now().isoformat()
-    res = inserir_cliente_com_diagnostico(payload)
-    return (res.data or [payload])[0]
+        payload_upsert["data_cadastro"] = existente.get("data_cadastro") or payload_upsert.get("data_cadastro")
+    else:
+        payload_upsert["data_cadastro"] = datetime.now().isoformat()
+
+    try:
+        res = supabase.table(TABELA_CLIENTES_CNPJ).upsert(payload_upsert, on_conflict="cnpj").execute()
+        return (res.data or [{**(existente or {}), **payload_upsert}])[0]
+    except TypeError:
+        res = supabase.table(TABELA_CLIENTES_CNPJ).upsert(payload_upsert).execute()
+        return (res.data or [{**(existente or {}), **payload_upsert}])[0]
 
 
 def resumo_cadastro_cliente_conversa(parsed, existente=None):
@@ -4175,7 +4213,7 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
         )
 
         if st.button("Pré-visualizar atualizações", type="primary"):
-            linhas = [linha.strip() for linha in texto_rapido.splitlines() if linha.strip()]
+            linhas = separar_blocos_atualizacao_rapida(texto_rapido)
 
             if not linhas:
                 st.warning("Digite pelo menos uma atualização.")
@@ -4187,6 +4225,25 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
 
                 for idx, linha in enumerate(linhas, start=1):
                     try:
+                        if texto_tem_rotulos_cliente_e_cnpj(linha):
+                            parsed_cliente, erro_cliente = parse_cadastro_cliente_conversa(linha)
+                            if erro_cliente:
+                                erros.append(f"Linha {idx}: {erro_cliente} — cadastro de cliente")
+                                continue
+                            existente, erro_busca = buscar_cliente_por_cnpj(parsed_cliente.get("cnpj"))
+                            if erro_busca:
+                                erros.append(f"Linha {idx}: {erro_busca} — cadastro de cliente")
+                                continue
+                            pendentes.append({
+                                "linha": idx,
+                                "texto": linha,
+                                "parsed": parsed_cliente,
+                                "cliente_existente": existente,
+                                "resultados": [],
+                                "cadastro_cliente_cnpj": True,
+                            })
+                            continue
+
                         parsed_glid, erro_glid = parse_glid_envio_rapido(linha)
                         if erro_glid:
                             erros.append(f"Linha {idx}: {erro_glid} — {linha}")
@@ -4293,6 +4350,12 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
             for i, item_pendente in enumerate(pendentes_rapida):
                 parsed = item_pendente["parsed"]
                 resultados = item_pendente["resultados"]
+                if item_pendente.get("cadastro_cliente_cnpj"):
+                    existente_cliente = item_pendente.get("cliente_existente")
+                    acao_cliente = "atualizado" if existente_cliente else "criado"
+                    st.write(f"Linha {item_pendente['linha']}: cliente será {acao_cliente} em clientes_cnpj somente após confirmação.")
+                    st.code(resumo_cadastro_cliente_conversa(parsed, existente_cliente))
+                    continue
                 if item_pendente.get("criar_ou_atualizar"):
                     st.write(f"Linha {item_pendente['linha']}: registro completo será criado ou atualizado somente após confirmação.")
                     st.code(resumo_atualizacao_rapida(parsed, "pré-visualização"))
@@ -4344,6 +4407,15 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                 for i, item_pendente in enumerate(pendentes_rapida):
                     parsed = item_pendente["parsed"]
                     resultados = item_pendente["resultados"]
+                    if item_pendente.get("cadastro_cliente_cnpj"):
+                        try:
+                            existente_cliente = item_pendente.get("cliente_existente")
+                            salvar_cadastro_cliente_conversa(parsed, existente_cliente)
+                            atualizados += 1
+                            resumos.append("CLIENTE ATUALIZADO NA BASE DE CLIENTES." if existente_cliente else "CLIENTE SALVO NA BASE DE CLIENTES.")
+                        except Exception as e:
+                            erros.append(f"Linha {item_pendente['linha']}: {e}")
+                        continue
                     if item_pendente.get("criar_ou_atualizar"):
                         try:
                             resultado = atualizar_rapido_no_supabase(parsed)
@@ -4459,7 +4531,7 @@ if pagina_atual == "conversa":
                 if erro:
                     st.error(erro)
                 else:
-                    existente, erro_busca = buscar_cliente_por_nome_exibicao(parsed_cliente.get("nome_exibicao"))
+                    existente, erro_busca = buscar_cliente_por_cnpj(parsed_cliente.get("cnpj"))
                     if erro_busca:
                         st.error(erro_busca)
                     else:
