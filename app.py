@@ -1557,6 +1557,37 @@ def salvar_cadastro_cliente_conversa(parsed, existente=None):
     payload_salvar["data_cadastro"] = datetime.now().isoformat()
     res = supabase.table(TABELA_CLIENTES_CNPJ).insert(payload_salvar).execute()
     return (res.data or [payload_salvar])[0]
+def salvar_cliente_por_cnpj(payload, existente=None, usuario="ADMIN"):
+    """Salva cliente com fluxo explícito por CNPJ: busca, atualiza se existir ou insere se não existir."""
+    payload = preparar_payload_cliente_para_salvar(payload, existente)
+    if not payload.get("razao_social"):
+        raise ValueError("RAZÃO_SOCIAL é obrigatória para salvar o cliente.")
+    if not payload.get("cnpj"):
+        raise ValueError("CNPJ é obrigatório para salvar/atualizar o cliente.")
+
+    cliente_atual = existente
+    if not cliente_atual:
+        cliente_atual, erro = buscar_cliente_por_cnpj(payload.get("cnpj"))
+        if erro:
+            raise RuntimeError(erro)
+
+    if cliente_atual:
+        payload_atualizacao = dict(payload)
+        payload_atualizacao["data_cadastro"] = cliente_atual.get("data_cadastro") or payload_atualizacao.get("data_cadastro")
+        res = supabase.table(TABELA_CLIENTES_CNPJ).update(payload_atualizacao).eq("id", int(cliente_atual["id"])).execute()
+        registrar_historico_campos(TABELA_CLIENTES_CNPJ, cliente_atual.get("id"), cliente_atual, payload_atualizacao, usuario)
+        return (res.data or [{**cliente_atual, **payload_atualizacao}])[0]
+
+    payload_insercao = dict(payload)
+    payload_insercao["data_cadastro"] = payload_insercao.get("data_cadastro") or datetime.now().isoformat()
+    res = supabase.table(TABELA_CLIENTES_CNPJ).insert(payload_insercao).execute()
+    registrar_historico_campos(TABELA_CLIENTES_CNPJ, payload_insercao.get("cnpj"), {}, payload_insercao, usuario)
+    return (res.data or [payload_insercao])[0]
+
+
+def salvar_cadastro_cliente_conversa(parsed, existente=None):
+    payload = payload_cadastro_cliente_conversa(parsed)
+    return salvar_cliente_por_cnpj(payload, existente, "ADMIN")
 
 
 def resumo_cadastro_cliente_conversa(parsed, existente=None):
