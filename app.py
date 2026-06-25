@@ -2403,9 +2403,47 @@ def buscar_registros_atualizacao_rapida(df_base, parsed):
     return []
 
 
+
+def atualizar_cliente_delivery_direto(delivery, novo_cliente, registro_atual=None):
+    """Atualiza somente o cliente da delivery informada, sem upsert e sem depender de ID."""
+    delivery_limpa = limpar_codigo_delivery(delivery)
+    cliente_normalizado = texto(novo_cliente).upper()
+    if not delivery_limpa:
+        raise ValueError("Delivery é obrigatório para atualizar cliente.")
+    if not cliente_normalizado:
+        raise ValueError("Novo cliente é obrigatório para atualizar cliente.")
+
+    payload = {
+        "cliente": cliente_normalizado,
+        "atualizado_em": datetime.now().isoformat(),
+    }
+    res = supabase.table(TABELA_DELIVERIES).update(payload).eq("delivery", delivery_limpa).execute()
+    registrar_historico_campos(
+        TABELA_DELIVERIES,
+        delivery_limpa,
+        registro_atual or {},
+        payload,
+        "ADMIN",
+    )
+    atualizar_dataframe_principal()
+    return (res.data or [{**(registro_atual or {}), **payload, "delivery": delivery_limpa}])[0]
+
+
+def resumo_mudanca_cliente_rapida(registro_atual, novo_cliente):
+    return "\n".join([
+        f"CLIENTE ATUAL: {texto((registro_atual or {}).get('cliente')) or '—'}",
+        f"NOVO CLIENTE: {texto(novo_cliente).upper() or '—'}",
+    ])
+
 def atualizar_rapido_registro_no_supabase(id_registro, parsed):
     atual = supabase.table(TABELA_DELIVERIES).select("*").eq("id", int(id_registro)).limit(1).execute()
     dados_atuais = atual.data[0] if atual.data else {}
+    if parsed.get("campos", {}).get("cliente"):
+        return atualizar_cliente_delivery_direto(
+            dados_atuais.get("delivery") or parsed.get("valor_busca"),
+            parsed["campos"].get("cliente"),
+            dados_atuais,
+        )
     campos_salvar = preparar_campos_deliveries_para_salvar(parsed["campos"], dados_atuais)
     campos_salvar.pop("delivery", None)
     campos_salvar.pop("sr", None)
@@ -4418,6 +4456,8 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                         key=f"rapida_escolha_{i}",
                     )
                 ]
+                if parsed.get("campos", {}).get("cliente"):
+                    st.code(resumo_mudanca_cliente_rapida(item_escolhido, parsed["campos"].get("cliente")))
                 st.code(resumo_confirmacao_conversa(item_escolhido, {
                     **parsed["campos"],
                     "horario": parsed["campos"].get("f_horario"),

@@ -50,6 +50,9 @@ FUNCOES_NECESSARIAS = {
     "resumo_glid_envio_rapido",
     "buscar_clientes_glid_envio_rapido",
     "resumo_atualizacao_rapida",
+    "atualizar_cliente_delivery_direto",
+    "resumo_mudanca_cliente_rapida",
+    "atualizar_rapido_registro_no_supabase",
     "buscar_registros_atualizacao_rapida",
     "numero_operacional_visual",
     "montar_registro",
@@ -63,6 +66,8 @@ FUNCOES_NECESSARIAS = {
     "colunas_reais_deliveries",
     "resolver_coluna_delivery",
     "preparar_campos_deliveries_para_salvar",
+    "registrar_historico_campos",
+    "registrar_historico_alteracao",
     "juntar_observacoes_sem_duplicar",
     "valor_campo_delivery",
     "colunas_reais_clientes",
@@ -95,6 +100,7 @@ CONSTANTES_NECESSARIAS = {
     "CAMPOS_CADASTRO_CLIENTE_CONVERSA",
     "TABELA_DELIVERIES",
     "TABELA_CLIENTES_CNPJ",
+    "TABELA_AUDITORIA",
     "COLUNAS_LOGICAS_DELIVERIES",
     "ABREVIACOES_LOCALIDADE_CNPJ",
 }
@@ -1631,3 +1637,116 @@ def test_salvar_cliente_por_cnpj_insere_quando_cnpj_nao_existe():
     assert chamadas[0][0] == "insert"
     assert not any(chamada[0] == "update" for chamada in chamadas)
     assert historico
+
+
+def test_resumo_mudanca_cliente_rapida_mostra_cliente_atual_e_novo():
+    app = carregar_funcoes_app()
+
+    resumo = app["resumo_mudanca_cliente_rapida"](
+        {"cliente": "ATACADÃO CT SUL"},
+        "ATACADÃO CENTRO SUL CD",
+    )
+
+    assert "CLIENTE ATUAL: ATACADÃO CT SUL" in resumo
+    assert "NOVO CLIENTE: ATACADÃO CENTRO SUL CD" in resumo
+
+
+def test_atualizar_cliente_delivery_direto_usa_delivery_e_payload_minimo_sem_id():
+    app = carregar_funcoes_app()
+    chamadas = []
+
+    class Resultado:
+        data = []
+
+    class Query:
+        def __init__(self):
+            self.payload = None
+            self.filtros = []
+
+        def update(self, payload):
+            self.payload = payload
+            chamadas.append(("update", payload))
+            return self
+
+        def eq(self, coluna, valor):
+            self.filtros.append((coluna, valor))
+            chamadas.append(("eq", coluna, valor))
+            return self
+
+        def execute(self):
+            chamadas.append(("execute", self.payload, tuple(self.filtros)))
+            return Resultado()
+
+    class SupabaseFake:
+        def table(self, tabela):
+            chamadas.append(("table", tabela))
+            return Query()
+
+    app["supabase"] = SupabaseFake()
+    app["registrar_historico_campos"] = lambda *args, **kwargs: None
+    app["atualizar_dataframe_principal"] = lambda: chamadas.append(("reload",))
+
+    salvo = app["atualizar_cliente_delivery_direto"](
+        "3787904257",
+        "ATACADÃO CENTRO SUL CD",
+        {"id": 99, "delivery": "3787904257", "cliente": "ATACADÃO CT SUL", "motorista": "NÃO ALTERAR"},
+    )
+
+    update = next(item for item in chamadas if item[0] == "update")
+    assert update[1]["cliente"] == "ATACADÃO CENTRO SUL CD"
+    assert set(update[1]) == {"cliente", "atualizado_em"}
+    assert ("eq", "delivery", "3787904257") in chamadas
+    assert not any(item[0] == "eq" and item[1] == "id" for item in chamadas)
+    assert ("reload",) in chamadas
+    assert salvo["cliente"] == "ATACADÃO CENTRO SUL CD"
+
+
+def test_atualizar_rapido_registro_cliente_busca_id_mas_salva_por_delivery_sem_alterar_outros_campos():
+    app = carregar_funcoes_app()
+    chamadas = []
+
+    class Resultado:
+        data = [{"id": 7, "delivery": "3787904257", "cliente": "ATACADÃO CT SUL", "motorista": "MANTER"}]
+
+    class Query:
+        def __init__(self):
+            self.payload = None
+            self.filtros = []
+
+        def select(self, *_args):
+            return self
+
+        def update(self, payload):
+            self.payload = payload
+            chamadas.append(("update", payload))
+            return self
+
+        def eq(self, coluna, valor):
+            self.filtros.append((coluna, valor))
+            chamadas.append(("eq", coluna, valor))
+            return self
+
+        def limit(self, *_args):
+            return self
+
+        def execute(self):
+            return Resultado()
+
+    class SupabaseFake:
+        def table(self, tabela):
+            chamadas.append(("table", tabela))
+            return Query()
+
+    app["supabase"] = SupabaseFake()
+    app["registrar_historico_campos"] = lambda *args, **kwargs: None
+    app["atualizar_dataframe_principal"] = lambda: chamadas.append(("reload",))
+
+    app["atualizar_rapido_registro_no_supabase"](7, {
+        "valor_busca": "3787904257",
+        "campos": {"delivery": "3787904257", "cliente": "ATACADÃO CENTRO SUL CD", "status": "PENDENTE"},
+    })
+
+    update = next(item for item in chamadas if item[0] == "update")
+    assert set(update[1]) == {"cliente", "atualizado_em"}
+    assert ("eq", "delivery", "3787904257") in chamadas
+    assert not any(item[0] == "update" and "status" in item[1] for item in chamadas)
