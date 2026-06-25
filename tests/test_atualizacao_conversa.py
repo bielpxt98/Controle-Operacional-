@@ -1367,6 +1367,23 @@ def test_atualizacao_rapida_parcial_por_final_atualiza_somente_campos_informados
         assert not app["eh_cadastro_completo_atualizacao_rapida"](parsed)
 
 
+def test_atualizacao_rapida_troca_cliente_usa_texto_apos_marcador():
+    app = carregar_funcoes_app()
+    casos = [
+        "D 4257 CL ATACADÃO CENTRO SUL CD",
+        "D 3787904257 CL ATACADÃO CENTRO SUL CD",
+        "3787904257 cliente ATACADÃO CENTRO SUL CD",
+        "3787904257 mudou CL ATACADÃO CENTRO SUL CD",
+        "3787904257 nome ATACADÃO CENTRO SUL CD",
+    ]
+
+    for linha in casos:
+        parsed, erro = app["parse_atualizacao_rapida"](linha)
+
+        assert erro is None
+        assert parsed["campos"]["cliente"] == "ATACADÃO CENTRO SUL CD"
+
+
 def test_atualizacao_rapida_parcial_por_final_encontra_delivery_sem_exigir_cadastro_completo():
     app = carregar_funcoes_app()
     df = pd.DataFrame([
