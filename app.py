@@ -1531,24 +1531,32 @@ def buscar_cliente_por_cnpj(cnpj):
 
 
 def salvar_cadastro_cliente_conversa(parsed, existente=None):
-    payload = preparar_payload_cliente_para_salvar(payload_cadastro_cliente_conversa(parsed), existente)
-    if not payload.get("razao_social"):
-        raise ValueError("RAZÃO_SOCIAL é obrigatória para salvar o cliente.")
-    if not payload.get("cnpj"):
+    payload_base = payload_cadastro_cliente_conversa(parsed)
+    cnpj = payload_base.get("cnpj")
+    if not cnpj:
         raise ValueError("CNPJ é obrigatório para salvar/atualizar o cliente.")
 
-    payload_upsert = dict(payload)
-    if existente:
-        payload_upsert["data_cadastro"] = existente.get("data_cadastro") or payload_upsert.get("data_cadastro")
-    else:
-        payload_upsert["data_cadastro"] = datetime.now().isoformat()
+    cliente_encontrado, erro_busca = buscar_cliente_por_cnpj(cnpj)
+    if erro_busca:
+        raise RuntimeError(erro_busca)
+    existente_atual = cliente_encontrado or existente
 
-    try:
-        res = supabase.table(TABELA_CLIENTES_CNPJ).upsert(payload_upsert, on_conflict="cnpj").execute()
-        return (res.data or [{**(existente or {}), **payload_upsert}])[0]
-    except TypeError:
-        res = supabase.table(TABELA_CLIENTES_CNPJ).upsert(payload_upsert).execute()
-        return (res.data or [{**(existente or {}), **payload_upsert}])[0]
+    payload = preparar_payload_cliente_para_salvar(payload_base, existente_atual)
+    if not payload.get("razao_social"):
+        raise ValueError("RAZÃO_SOCIAL é obrigatória para salvar o cliente.")
+
+    payload_salvar = dict(payload)
+    if existente_atual:
+        cliente_id = existente_atual.get("id")
+        if not cliente_id:
+            raise ValueError("ID do cliente é obrigatório para atualizar o cadastro existente.")
+        payload_salvar["data_cadastro"] = existente_atual.get("data_cadastro") or payload_salvar.get("data_cadastro")
+        res = supabase.table(TABELA_CLIENTES_CNPJ).update(payload_salvar).eq("id", cliente_id).execute()
+        return (res.data or [{**existente_atual, **payload_salvar}])[0]
+
+    payload_salvar["data_cadastro"] = datetime.now().isoformat()
+    res = supabase.table(TABELA_CLIENTES_CNPJ).insert(payload_salvar).execute()
+    return (res.data or [payload_salvar])[0]
 
 
 def resumo_cadastro_cliente_conversa(parsed, existente=None):
