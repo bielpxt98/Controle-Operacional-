@@ -1872,7 +1872,7 @@ def normalizar_cliente_rapido(v):
         base = "JDE CAFÉ"
     elif "SC" in s_sem_local and ("DIST" in s_sem_local or "DISTRIB" in s_sem_local or "CAMACARI" in s_limpo_sem_local):
         base = "SC DIST. CAMAÇARI"
-    elif "ATACADAO" in s_limpo_sem_local and ("CT" in s_sem_local or "SUL" in s_sem_local):
+    elif "ATACADAO" in s_limpo_sem_local and re.search(r"\bCT\b", s_limpo_sem_local):
         base = "ATACADÃO CT SUL"
     elif "DROGARIA" in s_sem_local and "SAO PAULO" in s_limpo_sem_local:
         base = "DROGARIA SÃO PAULO"
@@ -2233,7 +2233,7 @@ def parse_atualizacao_rapida(linha):
     # Não aceita mais campo S.
     # S.F e L.F devem vir dentro do CL, não no O nem no FI.
     padrao = re.compile(
-        r"(?<!\S)(DATA|DF|SR|FI|F|CL|PC|M|D|P|V|L|C|O)(?=\s*:|\s+)\s*:?\s*",
+        r"(?<!\S)(DATA|DF|SR|FI|F|CLIENTE|NOME|CL|PC|M|D|P|V|L|C|O)(?=\s*:|\s+)\s*:?\s*",
         re.IGNORECASE,
     )
     matches = list(padrao.finditer(original_parse))
@@ -2305,8 +2305,9 @@ def parse_atualizacao_rapida(linha):
         campos["delivery"] = delivery
     if sr:
         campos["sr"] = sr
-    if dados.get("CL"):
-        campos["cliente"] = normalizar_cliente_rapido(dados.get("CL")) or None
+    cliente_informado = dados.get("CL") or dados.get("CLIENTE") or dados.get("NOME")
+    if cliente_informado:
+        campos["cliente"] = normalizar_cliente_rapido(cliente_informado) or None
     if dados.get("P"):
         campos["paletes"] = numero(dados.get("P"))
     if dados.get("PC"):
