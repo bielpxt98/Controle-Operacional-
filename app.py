@@ -2307,7 +2307,18 @@ def parse_atualizacao_rapida(linha):
         campos["sr"] = sr
     cliente_informado = dados.get("CL") or dados.get("CLIENTE") or dados.get("NOME")
     if cliente_informado:
-        campos["cliente"] = normalizar_cliente_rapido(cliente_informado) or None
+        tem_outros_campos_operacionais = any(
+            texto(dados.get(campo))
+            for campo in ["DATA", "DF", "M", "P", "PC", "V", "L", "C", "FI", "F", "O"]
+        ) or bool(horario_bd or observacao_bd)
+        atualizacao_manual_cliente = (
+            bool(re.search(r"\b(?:MUDOU|MUDAR|TROCAR|ALTERAR|CORRIGIR)\b", original, flags=re.IGNORECASE | re.UNICODE))
+            or not tem_outros_campos_operacionais
+        )
+        if atualizacao_manual_cliente:
+            campos["cliente"] = texto(cliente_informado) or None
+        else:
+            campos["cliente"] = normalizar_cliente_rapido(cliente_informado) or None
     if dados.get("P"):
         campos["paletes"] = numero(dados.get("P"))
     if dados.get("PC"):
@@ -2408,7 +2419,7 @@ def buscar_registros_atualizacao_rapida(df_base, parsed):
 def atualizar_cliente_delivery_direto(delivery, novo_cliente, registro_atual=None):
     """Atualiza somente o cliente da delivery informada, sem upsert e sem depender de ID."""
     delivery_limpa = limpar_codigo_delivery(delivery)
-    cliente_normalizado = texto(novo_cliente).upper()
+    cliente_normalizado = texto(novo_cliente)
     if not delivery_limpa:
         raise ValueError("Delivery é obrigatório para atualizar cliente.")
     if not cliente_normalizado:
@@ -2433,7 +2444,7 @@ def atualizar_cliente_delivery_direto(delivery, novo_cliente, registro_atual=Non
 def resumo_mudanca_cliente_rapida(registro_atual, novo_cliente):
     return "\n".join([
         f"CLIENTE ATUAL: {texto((registro_atual or {}).get('cliente')) or '—'}",
-        f"NOVO CLIENTE: {texto(novo_cliente).upper() or '—'}",
+        f"NOVO CLIENTE: {texto(novo_cliente) or '—'}",
     ])
 
 def atualizar_rapido_registro_no_supabase(id_registro, parsed):
@@ -2722,12 +2733,13 @@ def extrair_valores_alteracao_conversa(frase, codigo):
     motorista = ""
     cliente = ""
 
-    def limpar_valor_alteracao(valor):
-        valor_limpo = limpar_busca(valor)
+    def limpar_valor_alteracao(valor, normalizar=True):
+        valor_limpo = limpar_busca(valor) if normalizar else texto(valor)
         valor_limpo = re.sub(
             r"^(?:MUDAR|TROCAR|ALTERAR|CORRIGIR|PARA|DE|DO|DA|DOS|DAS)\s+",
             "",
             valor_limpo,
+            flags=re.IGNORECASE | re.UNICODE,
         ).strip(" :-|\n\t")
         return valor_limpo
 
@@ -2737,22 +2749,26 @@ def extrair_valores_alteracao_conversa(frase, codigo):
     )
     for marcador in marcador_re.finditer(frase_sem_codigo):
         chave = limpar_busca(marcador.group(1))
-        valor = limpar_valor_alteracao(marcador.group(2))
+        valor = limpar_valor_alteracao(marcador.group(2), normalizar=chave in {"M", "MOTORISTA"})
         if not valor:
             continue
         if chave in {"M", "MOTORISTA"}:
             motorista = normalizar_motorista(valor)
         elif chave in {"CL", "CLIENTE"}:
-            cliente = normalizar_cliente_rapido(valor)
+            cliente = valor
 
 
     m = re.search(r"\bMOTORISTA\s+(?:DA\s+|DO\s+|DE\s+)?(?:\d{4,}\s+)?PARA\s+(.+?)(?:\s+E\s+CLIENTE\s+PARA\s+|\s+NA\s+|\s+NO\s+|$)", texto_limpo)
     if m:
         motorista = normalizar_motorista(m.group(1))
 
-    m = re.search(r"\bCLIENTE\s+(?:DA\s+|DO\s+|DE\s+)?(?:\d{4,}\s+)?PARA\s+(.+?)(?:\s+E\s+MOTORISTA\s+PARA\s+|\s+NA\s+|\s+NO\s+|$)", texto_limpo)
+    m = re.search(
+        r"\bCLIENTE\s+(?:DA\s+|DO\s+|DE\s+)?(?:\d{4,}\s+)?PARA\s+(.+?)(?:\s+E\s+MOTORISTA\s+PARA\s+|\s+NA\s+|\s+NO\s+|$)",
+        frase_sem_codigo,
+        flags=re.IGNORECASE | re.UNICODE | re.DOTALL,
+    )
     if m:
-        cliente = normalizar_cliente_rapido(m.group(1))
+        cliente = texto(m.group(1)).strip(" :-|\n\t")
 
     m = re.search(r"\bTROCAR\s+(.+?)\s+POR\s+(.+?)(?:\s+NA\s+|\s+NO\s+|$)", texto_limpo)
     if m and not motorista:
@@ -2764,11 +2780,11 @@ def extrair_valores_alteracao_conversa(frase, codigo):
         partes_agora = [p.strip() for p in re.split(r"\s+E\s+", valor_agora, maxsplit=1) if p.strip()]
         if len(partes_agora) == 2:
             motorista = motorista or normalizar_motorista(partes_agora[0])
-            cliente = normalizar_cliente_rapido(partes_agora[1])
+            cliente = texto(partes_agora[1])
         elif any(re.search(rf"\b{re.escape(nome.split()[0])}\b", valor_agora) for nome in MOTORISTAS_FIXOS):
             motorista = motorista or normalizar_motorista(valor_agora)
         else:
-            cliente = normalizar_cliente_rapido(valor_agora)
+            cliente = texto(valor_agora)
         antes = texto_limpo[:m.start()].strip()
         palavras = [p for p in antes.split() if p not in PALAVRAS_COMANDO_CONVERSA and not p.isdigit()]
         if palavras and not motorista:
@@ -2780,7 +2796,7 @@ def extrair_valores_alteracao_conversa(frase, codigo):
             if any(re.search(rf"\b{re.escape(nome.split()[0])}\b", valor) for nome in MOTORISTAS_FIXOS):
                 motorista = normalizar_motorista(valor)
             else:
-                cliente = normalizar_cliente_rapido(valor)
+                cliente = texto(valor)
 
     return motorista.strip(), cliente.strip()
 
@@ -3158,7 +3174,7 @@ def campos_atualizacao_conversa(parsed, f_horario_atual=None):
     if parsed.get("novo_motorista"):
         campos["motorista"] = normalizar_motorista(parsed["novo_motorista"])
     if parsed.get("novo_cliente"):
-        campos["cliente"] = normalizar_cliente_rapido(parsed["novo_cliente"])
+        campos["cliente"] = texto(parsed["novo_cliente"])
     if parsed.get("observacoes"):
         campos["observacoes"] = parsed["observacoes"]
     if parsed.get("observacoes") or parsed.get("horario"):
@@ -3223,7 +3239,7 @@ def resumo_confirmacao_conversa(item, parsed):
     if parsed.get("novo_motorista"):
         alteracoes.append(f"M {normalizar_motorista(parsed['novo_motorista'])}")
     if parsed.get("novo_cliente"):
-        alteracoes.append(f"CL {normalizar_cliente_rapido(parsed['novo_cliente'])}")
+        alteracoes.append(f"CL {texto(parsed['novo_cliente'])}")
     if parsed.get("l_horario"):
         alteracoes.append(f"L {parsed['l_horario']}")
     if parsed.get("c_horario"):

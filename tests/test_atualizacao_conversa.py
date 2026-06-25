@@ -193,6 +193,27 @@ def test_conversa_atualiza_l_c_pc_por_frase_natural_e_confirma_sem_setas():
     assert "ALTERAÇÕES:\nL 08:02\nC 09:24\nPC 76" in resumo
 
 
+def test_alteracao_manual_cliente_preserva_texto_digitado_sem_normalizar():
+    app = carregar_funcoes_app()
+    novo_cliente = "PANPHARMA (SC DISTRIBUIÇÃO (CAMAÇARI)"
+
+    rapido, erro_rapido = app["parse_atualizacao_rapida"](f"D 2669 CL {novo_cliente}")
+    conversa, erro_conversa = app["parse_atualizacao_conversa"](f"D 2669 CL {novo_cliente}")
+    campos_conversa = app["campos_atualizacao_conversa"](conversa)
+    resumo_rapido = app["resumo_mudanca_cliente_rapida"](
+        {"delivery": "3787802669", "cliente": "SC DIST. CAMAÇARI"},
+        rapido["campos"]["cliente"],
+    )
+
+    assert erro_rapido is None
+    assert erro_conversa is None
+    assert rapido["campos"]["cliente"] == novo_cliente
+    assert conversa["novo_cliente"] == novo_cliente
+    assert campos_conversa["cliente"] == novo_cliente
+    assert "CLIENTE ATUAL: SC DIST. CAMAÇARI" in resumo_rapido
+    assert f"NOVO CLIENTE: {novo_cliente}" in resumo_rapido
+
+
 def test_conversa_filtra_por_cliente_quando_final_tem_mais_de_um_resultado():
     app = carregar_funcoes_app()
     df = pd.DataFrame([
@@ -539,8 +560,9 @@ def test_conversa_altera_cliente_por_aliases_e_busca_delivery_completo_final_e_l
 
         assert erro is None
         assert parsed["tipo_atualizacao"] == "alteracao"
-        assert parsed["novo_cliente"] == "ASSAÍ URUGUAI"
-        assert campos["cliente"] == "ASSAÍ URUGUAI"
+        cliente_esperado = "ASSAI URUGUAI" if "ASSAI" in frase else "ASSAÍ URUGUAI"
+        assert parsed["novo_cliente"] == cliente_esperado
+        assert campos["cliente"] == cliente_esperado
         assert len(resultados) == 1
         assert resultados.iloc[0]["id"] == 1
 
