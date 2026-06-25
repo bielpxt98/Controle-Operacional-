@@ -1530,6 +1530,33 @@ def buscar_cliente_por_cnpj(cnpj):
     return (res.data[0] if res.data else None), None
 
 
+def salvar_cadastro_cliente_conversa(parsed, existente=None):
+    payload_base = payload_cadastro_cliente_conversa(parsed)
+    cnpj = payload_base.get("cnpj")
+    if not cnpj:
+        raise ValueError("CNPJ é obrigatório para salvar/atualizar o cliente.")
+
+    cliente_encontrado, erro_busca = buscar_cliente_por_cnpj(cnpj)
+    if erro_busca:
+        raise RuntimeError(erro_busca)
+    existente_atual = cliente_encontrado or existente
+
+    payload = preparar_payload_cliente_para_salvar(payload_base, existente_atual)
+    if not payload.get("razao_social"):
+        raise ValueError("RAZÃO_SOCIAL é obrigatória para salvar o cliente.")
+
+    payload_salvar = dict(payload)
+    if existente_atual:
+        cliente_id = existente_atual.get("id")
+        if not cliente_id:
+            raise ValueError("ID do cliente é obrigatório para atualizar o cadastro existente.")
+        payload_salvar["data_cadastro"] = existente_atual.get("data_cadastro") or payload_salvar.get("data_cadastro")
+        res = supabase.table(TABELA_CLIENTES_CNPJ).update(payload_salvar).eq("id", cliente_id).execute()
+        return (res.data or [{**existente_atual, **payload_salvar}])[0]
+
+    payload_salvar["data_cadastro"] = datetime.now().isoformat()
+    res = supabase.table(TABELA_CLIENTES_CNPJ).insert(payload_salvar).execute()
+    return (res.data or [payload_salvar])[0]
 def salvar_cliente_por_cnpj(payload, existente=None, usuario="ADMIN"):
     """Salva cliente com fluxo explícito por CNPJ: busca, atualiza se existir ou insere se não existir."""
     payload = preparar_payload_cliente_para_salvar(payload, existente)

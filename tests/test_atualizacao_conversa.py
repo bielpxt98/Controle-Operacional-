@@ -82,6 +82,7 @@ FUNCOES_NECESSARIAS = {
     "observacao_cadastro_cliente_conversa",
     "payload_cadastro_cliente_conversa",
     "preparar_payload_cliente_para_salvar",
+    "salvar_cadastro_cliente_conversa",
     "resumo_cadastro_cliente_conversa",
 }
 
@@ -119,8 +120,14 @@ def carregar_funcoes_app():
         def eq(self, *args, **kwargs):
             return self
 
-        def upsert(self, *args, **kwargs):
+        def insert(self, *args, **kwargs):
             return self
+
+        def update(self, *args, **kwargs):
+            return self
+
+        def upsert(self, *args, **kwargs):
+            raise AssertionError("clientes_cnpj não deve usar upsert")
 
         def execute(self):
             return _ExecResult()
@@ -978,6 +985,151 @@ OBSERVACAO: DLIS"""
     assert payload["glid"] == "1000054613"
     assert payload["observacao"] == "DLIS"
 
+
+def test_salvar_cadastro_cliente_conversa_atualiza_por_id_sem_upsert_quando_cnpj_existe():
+    app = carregar_funcoes_app()
+    operacoes = []
+    existente = {
+        "id": 42,
+        "cliente": "WMS ANTIGO",
+        "nome_exibicao": "WMS ANTIGO",
+        "razao_social": "WMS SUPERMERCADOS DO BRASIL LTDA.",
+        "cnpj": "93.209.765/0695-83",
+        "data_cadastro": "2026-01-01T00:00:00",
+    }
+
+    class Resultado:
+        def __init__(self, data):
+            self.data = data
+
+    class TabelaFake:
+        def __init__(self):
+            self.operacao = None
+            self.payload = None
+
+        def select(self, *args, **kwargs):
+            self.operacao = "select"
+            return self
+
+        def update(self, payload):
+            self.operacao = "update"
+            self.payload = payload
+            operacoes.append(("update", payload))
+            return self
+
+        def insert(self, payload):
+            operacoes.append(("insert", payload))
+            raise AssertionError("não deve inserir quando CNPJ já existe")
+
+        def upsert(self, *args, **kwargs):
+            raise AssertionError("clientes_cnpj não deve usar upsert")
+
+        def eq(self, coluna, valor):
+            operacoes.append(("eq", coluna, valor))
+            return self
+
+        def limit(self, *args, **kwargs):
+            return self
+
+        def execute(self):
+            if self.operacao == "select":
+                return Resultado([existente])
+            if self.operacao == "update":
+                return Resultado([{**existente, **self.payload}])
+            return Resultado([])
+
+    class SupabaseFake:
+        def table(self, nome):
+            assert nome == app["TABELA_CLIENTES_CNPJ"]
+            return TabelaFake()
+
+    app["supabase"] = SupabaseFake()
+    parsed, erro = app["parse_cadastro_cliente_conversa"]("""CLIENTE: WMS MAX ATACADO CENTENARIO
+NOME_EXIBICAO: WMS MAX ATACADO CENTENARIO
+RAZAO_SOCIAL: WMS SUPERMERCADOS DO BRASIL LTDA.
+CNPJ: 93.209.765/0695-83
+CIDADE: SALVADOR
+ENDERECO: AVENIDA CENTENARIO, 2786
+GLID: 1000238063""")
+
+    salvo = app["salvar_cadastro_cliente_conversa"](parsed)
+
+    assert erro is None
+    assert salvo["id"] == 42
+    assert salvo["cliente"] == "WMS MAX ATACADO CENTENARIO"
+    assert ("eq", "cnpj", "93.209.765/0695-83") in operacoes
+    assert ("eq", "id", 42) in operacoes
+    assert any(op[0] == "update" for op in operacoes)
+    assert not any(op[0] == "insert" for op in operacoes)
+
+
+def test_salvar_cadastro_cliente_conversa_insere_sem_upsert_quando_cnpj_nao_existe():
+    app = carregar_funcoes_app()
+    operacoes = []
+
+    class Resultado:
+        def __init__(self, data):
+            self.data = data
+
+    class TabelaFake:
+        def __init__(self):
+            self.operacao = None
+            self.payload = None
+
+        def select(self, *args, **kwargs):
+            self.operacao = "select"
+            return self
+
+        def insert(self, payload):
+            self.operacao = "insert"
+            self.payload = payload
+            operacoes.append(("insert", payload))
+            return self
+
+        def update(self, payload):
+            operacoes.append(("update", payload))
+            raise AssertionError("não deve atualizar quando CNPJ não existe")
+
+        def upsert(self, *args, **kwargs):
+            raise AssertionError("clientes_cnpj não deve usar upsert")
+
+        def eq(self, coluna, valor):
+            operacoes.append(("eq", coluna, valor))
+            return self
+
+        def limit(self, *args, **kwargs):
+            return self
+
+        def execute(self):
+            if self.operacao == "select":
+                return Resultado([])
+            if self.operacao == "insert":
+                return Resultado([self.payload])
+            return Resultado([])
+
+    class SupabaseFake:
+        def table(self, nome):
+            assert nome == app["TABELA_CLIENTES_CNPJ"]
+            return TabelaFake()
+
+    app["supabase"] = SupabaseFake()
+    parsed, erro = app["parse_cadastro_cliente_conversa"]("""CLIENTE: ATACADÃO BR 324 CD
+NOME_EXIBICAO: ATACADÃO BR 324 CD
+RAZAO_SOCIAL: ATACADÃO S.A.
+CNPJ: 75.315.333/0341-94
+CIDADE: SIMÕES FILHO
+ENDERECO: ACESSO II BR 324, 1796 - CIA SUL
+GLID: 1000054613
+OBSERVACAO: DLIS""")
+
+    salvo = app["salvar_cadastro_cliente_conversa"](parsed)
+
+    assert erro is None
+    assert salvo["cliente"] == "ATACADÃO BR 324 CD"
+    assert salvo["cnpj"] == "75.315.333/0341-94"
+    assert ("eq", "cnpj", "75.315.333/0341-94") in operacoes
+    assert any(op[0] == "insert" for op in operacoes)
+    assert not any(op[0] == "update" for op in operacoes)
 
 def test_atualizacao_rapida_sem_cadastro_continua_separando_por_linha():
     app = carregar_funcoes_app()
