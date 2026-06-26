@@ -1261,14 +1261,37 @@ def preparar_payload_cliente_para_salvar(payload, registro_atual=None):
 
     if "nome_exibicao" not in colunas_reais:
         preparado.pop("nome_exibicao", None)
-    if "endereco_referencia" in colunas_reais:
+    if endereco and "endereco_referencia" in colunas_reais:
         preparado["endereco_referencia"] = endereco
         preparado.pop("endereco", None)
-    elif "endereco" in colunas_reais:
+    elif endereco and "endereco" in colunas_reais:
         preparado["endereco"] = endereco
         preparado.pop("endereco_referencia", None)
 
     return {campo: valor for campo, valor in preparado.items() if campo in colunas_reais}
+
+
+def remover_campos_vazios_cliente(payload):
+    """Remove campos vazios para edições parciais não apagarem dados existentes."""
+    return {
+        campo: valor
+        for campo, valor in (payload or {}).items()
+        if campo == "data_ultima_atualizacao" or texto(valor)
+    }
+
+
+def atualizar_cliente_por_id_preservando_vazios(id_cliente, payload_base, usuario="ADMIN"):
+    """Atualiza cliente por ID mantendo valores antigos quando o formulário vier vazio."""
+    res_atual = supabase.table(TABELA_CLIENTES_CNPJ).select("*").eq("id", int(id_cliente)).limit(1).execute()
+    antes = res_atual.data[0] if res_atual.data else {}
+    if not antes:
+        raise ValueError("ID não encontrado.")
+
+    payload_preenchido = remover_campos_vazios_cliente(payload_base)
+    payload = preparar_payload_cliente_para_salvar(payload_preenchido, antes)
+    supabase.table(TABELA_CLIENTES_CNPJ).update(payload).eq("id", int(id_cliente)).execute()
+    registrar_historico_campos(TABELA_CLIENTES_CNPJ, id_cliente, antes, payload, usuario)
+    return {**antes, **payload}
 
 def listar_clientes():
     try:
@@ -1655,6 +1678,7 @@ def render_clientes_cnpj(admin):
         return
     with st.form("form_cliente_cnpj"):
         st.markdown("### Adicionar / editar cliente")
+        st.info("Campos vazios serão mantidos como estavam.")
         id_cliente = st.text_input("ID para editar (deixe vazio para adicionar)")
         c1, c2 = st.columns(2)
         cliente = c1.text_input("Cliente")
@@ -1666,18 +1690,19 @@ def render_clientes_cnpj(admin):
         observacao = st.text_area("Observação")
         salvar_cliente = st.form_submit_button("Salvar cliente", type="primary")
     if salvar_cliente:
-        if not texto(razao):
+        editando_cliente = bool(id_cliente.strip())
+        if not editando_cliente and not texto(razao):
             st.error("Razão Social é obrigatória.")
             return
         agora = datetime.now().isoformat()
         nome_cliente = texto(cliente).upper()
         payload_base = {"cliente": nome_cliente, "nome_exibicao": nome_cliente, "cidade": cidade.upper(), "endereco": endereco.upper(), "cnpj": cnpj, "razao_social": razao.upper(), "glid": texto(glid), "observacao": observacao, "data_ultima_atualizacao": agora}
-        if id_cliente.strip():
-            atual = supabase.table(TABELA_CLIENTES_CNPJ).select("*").eq("id", int(id_cliente)).limit(1).execute()
-            antes = atual.data[0] if atual.data else {}
-            payload = preparar_payload_cliente_para_salvar(payload_base, antes)
-            supabase.table(TABELA_CLIENTES_CNPJ).update(payload).eq("id", int(id_cliente)).execute()
-            registrar_historico_campos(TABELA_CLIENTES_CNPJ, id_cliente, antes, payload, "ADMIN")
+        if editando_cliente:
+            try:
+                atualizar_cliente_por_id_preservando_vazios(id_cliente, payload_base, "ADMIN")
+            except ValueError as exc:
+                st.error(str(exc))
+                return
         else:
             payload = preparar_payload_cliente_para_salvar(payload_base)
             payload["data_cadastro"] = agora
