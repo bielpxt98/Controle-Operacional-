@@ -105,6 +105,8 @@ CONSTANTES_NECESSARIAS = {
     "TABELA_AUDITORIA",
     "COLUNAS_LOGICAS_DELIVERIES",
     "ABREVIACOES_LOCALIDADE_CNPJ",
+    "COLUNAS_PRINCIPAIS_VISUAL",
+    "ROTULOS_COLUNAS_VISUAL",
 }
 
 
@@ -1349,6 +1351,46 @@ def test_atualizacao_rapida_cadastro_completo_usa_delivery_completo_sem_busca_po
     assert parsed["campos"]["l_horario"] == "08:34"
     assert app["eh_cadastro_completo_atualizacao_rapida"]({**parsed, "campos": parsed["campos"]})
     assert resultados == []
+
+
+def test_sr_atualizacao_rapida_salva_somente_no_campo_sr_e_nao_finaliza():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_atualizacao_rapida"]("D 7835 SR 42535594")
+
+    assert erro is None
+    assert parsed["campos"]["delivery"] == "7835"
+    assert parsed["campos"]["sr"] == "42535594"
+    assert "observacoes" not in parsed["campos"]
+    assert "f_horario" not in parsed["campos"]
+    assert parsed["campos"]["status"] == "EM ABERTO"
+
+
+def test_sr_com_fi_so_finaliza_por_fi():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_atualizacao_rapida"]("D 7835 SR 42535594 FI 08:26")
+
+    assert erro is None
+    assert parsed["campos"]["sr"] == "42535594"
+    assert parsed["campos"]["f_horario"] == "08:26"
+    assert "observacoes" not in parsed["campos"]
+    assert parsed["campos"]["status"] == "FINALIZADO"
+
+
+def test_normalizar_observacao_remove_sr_para_nao_salvar_em_observacoes():
+    app = carregar_funcoes_app()
+
+    assert app["normalizar_observacao"]("SR 42535594") is None
+    assert app["normalizar_observacao"]("SR 42535594 reembolso") == "O REEMBOLSO"
+
+
+def test_coluna_sr_aparece_antes_de_observacoes_na_visualizacao_principal():
+    app = carregar_funcoes_app()
+    colunas = app["COLUNAS_PRINCIPAIS_VISUAL"]
+
+    assert colunas.index("sr") < colunas.index("observacoes")
+    assert app["ROTULOS_COLUNAS_VISUAL"]["sr"] == "SR"
 
 
 def test_atualizacao_rapida_parcial_continua_busca_por_final_do_delivery():
