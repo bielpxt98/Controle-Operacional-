@@ -1943,11 +1943,17 @@ def normalizar_observacao(v):
         "FALTA DE MERCADORIA",
     ]
 
-    sr_numero = re.search(r"\bSR\s*(\d{3,})\b", obs_limpo)
-    if sr_numero and "REEMB" in obs_limpo:
-        return f"O SR {sr_numero.group(1)} REEMBOLSO"
-    if re.search(r"\bS\.?R\b", obs_limpo) or "REEMB" in obs_limpo or "SOLICITACAO DE REEMBOLSO" in obs_limpo:
-        return "O SR/REEMBOLSO"
+    # SR é delivery secundária e deve ficar somente no campo SR.
+    # Quando o texto de observação vier contaminado com "SR 123", removemos
+    # esse trecho antes de classificar o restante para não salvar SR em OBS.
+    obs_sem_sr = re.sub(r"\bS\.?R\s*\d{3,}\b", " ", obs_limpo).strip()
+    obs_sem_sr = re.sub(r"\s+", " ", obs_sem_sr)
+    if not obs_sem_sr and re.search(r"\bS\.?R\s*\d{3,}\b", obs_limpo):
+        return None
+    obs_limpo = obs_sem_sr or obs_limpo
+
+    if "REEMB" in obs_limpo or "SOLICITACAO DE REEMBOLSO" in obs_limpo:
+        return "O REEMBOLSO"
 
     if "DESLOC" in obs_limpo:
         for motivo in motivos_deslocamento:
@@ -3299,10 +3305,10 @@ def resumo_registro_salvo_conversa(item):
 
 COLUNAS_PRINCIPAIS_VISUAL = [
     "id", "data", "motorista", "delivery", "cliente", "paletes", "pc", "valor_frete",
-    "l_horario", "c_horario", "f_horario", "status", "observacoes",
+    "l_horario", "c_horario", "f_horario", "status", "sr", "observacoes",
 ]
-ROTULOS_COLUNAS_VISUAL = {"id": "ID", "data": "DATA", "motorista": "MOTORISTA", "delivery": "DELIVERY", "cliente": "CLIENTE", "paletes": "PALETES", "pc": "PC", "valor_frete": "VALOR", "l_horario": "LOCAL", "c_horario": "COLETADO", "f_horario": "FINALIZADO", "status": "STATUS", "observacoes": "OBSERVAÇÕES"}
-COLUNAS_DETALHES_VISUAL = ["id", "cpf", "cavalo", "carreta", "sr", "data_finalizacao"]
+ROTULOS_COLUNAS_VISUAL = {"id": "ID", "data": "DATA", "motorista": "MOTORISTA", "delivery": "DELIVERY", "cliente": "CLIENTE", "paletes": "PALETES", "pc": "PC", "valor_frete": "VALOR", "l_horario": "LOCAL", "c_horario": "COLETADO", "f_horario": "FINALIZADO", "status": "STATUS", "sr": "SR", "observacoes": "OBSERVAÇÕES"}
+COLUNAS_DETALHES_VISUAL = ["id", "cpf", "cavalo", "carreta", "data_finalizacao"]
 ROTULOS_DETALHES_VISUAL = {"id": "ID", "cpf": "CPF", "cavalo": "CAVALO", "carreta": "CARRETA", "sr": "SR", "data_finalizacao": "DATA FINALIZAÇÃO"}
 
 def valor_visual(v):
