@@ -87,6 +87,8 @@ FUNCOES_NECESSARIAS = {
     "observacao_cadastro_cliente_conversa",
     "payload_cadastro_cliente_conversa",
     "preparar_payload_cliente_para_salvar",
+    "remover_campos_vazios_cliente",
+    "atualizar_cliente_por_id_preservando_vazios",
     "salvar_cadastro_cliente_conversa",
     "resumo_cadastro_cliente_conversa",
 }
@@ -1611,6 +1613,94 @@ def test_salvar_cliente_por_cnpj_atualiza_quando_cnpj_ja_existe():
     assert any(chamada[0] == "update" for chamada in chamadas)
     assert not any(chamada[0] == "insert" for chamada in chamadas)
     assert historico
+
+
+def test_atualizar_cliente_por_id_preserva_campos_vazios_do_formulario():
+    app = carregar_funcoes_app()
+    chamadas = []
+    atual = {
+        "id": 18,
+        "cliente": "CLIENTE ANTIGO",
+        "nome_exibicao": "CLIENTE ANTIGO",
+        "cnpj": "11.222.333/0001-44",
+        "razao_social": "RAZAO ANTIGA",
+        "cidade": "SALVADOR",
+        "endereco": "RUA ANTIGA",
+        "glid": "000123",
+        "observacao": "OBS ANTIGA",
+    }
+
+    class Resultado:
+        def __init__(self, data):
+            self.data = data
+
+    class TabelaFake:
+        def __init__(self):
+            self.operacao = None
+            self.payload = None
+
+        def select(self, *args, **kwargs):
+            self.operacao = "select"
+            return self
+
+        def update(self, payload):
+            self.operacao = "update"
+            self.payload = payload
+            chamadas.append(("update", payload))
+            return self
+
+        def eq(self, campo, valor):
+            chamadas.append(("eq", campo, valor))
+            return self
+
+        def limit(self, *args, **kwargs):
+            return self
+
+        def execute(self):
+            if self.operacao == "select":
+                return Resultado([atual])
+            if self.operacao == "update":
+                return Resultado([{**atual, **self.payload}])
+            return Resultado([])
+
+    class SupabaseFake:
+        def table(self, tabela):
+            assert tabela == app["TABELA_CLIENTES_CNPJ"]
+            return TabelaFake()
+
+    app["supabase"] = SupabaseFake()
+    app["registrar_historico_campos"] = lambda *args: chamadas.append(("historico", args))
+    app["colunas_reais_clientes"] = lambda registro_atual=None: set(atual) | {"data_ultima_atualizacao"}
+
+    salvo = app["atualizar_cliente_por_id_preservando_vazios"](
+        18,
+        {
+            "cliente": "MULTICOM ATACADO F.S",
+            "nome_exibicao": "MULTICOM ATACADO F.S",
+            "cnpj": "",
+            "razao_social": "",
+            "cidade": "",
+            "endereco": "",
+            "glid": "",
+            "observacao": "",
+            "data_ultima_atualizacao": "2026-06-26T12:00:00",
+        },
+    )
+
+    update = next(chamada[1] for chamada in chamadas if chamada[0] == "update")
+    assert update["cliente"] == "MULTICOM ATACADO F.S"
+    assert "cnpj" not in update
+    assert "razao_social" not in update
+    assert "cidade" not in update
+    assert "endereco" not in update
+    assert "glid" not in update
+    assert "observacao" not in update
+    assert salvo["cnpj"] == "11.222.333/0001-44"
+    assert salvo["razao_social"] == "RAZAO ANTIGA"
+    assert salvo["cidade"] == "SALVADOR"
+    assert salvo["endereco"] == "RUA ANTIGA"
+    assert salvo["glid"] == "000123"
+    assert salvo["observacao"] == "OBS ANTIGA"
 
 
 def test_salvar_cliente_por_cnpj_insere_quando_cnpj_nao_existe():
