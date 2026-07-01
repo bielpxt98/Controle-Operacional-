@@ -750,6 +750,48 @@ def test_validacao_salvar_usa_coluna_pc_mesmo_quando_registro_nao_tem_valor():
     assert app["valor_campo_delivery"]({"pc": 332}, "pc") == 332
 
 
+def test_atualizacao_rapida_com_pipe_reconhece_pc_apos_c_e_mostra_confirmacao():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_atualizacao_rapida"](
+        "25/06/2026 | VALDEMIR DE JESUS | 3787921710 | ASSAÍ (CABULA) | L 14:00 | C 14:27 PC 51 | FI 15:50"
+    )
+
+    assert erro is None
+    assert parsed["campos"]["data"] == "25/06/2026"
+    assert parsed["campos"]["motorista"] == "VALDEMIR DE JESUS"
+    assert parsed["campos"]["delivery"] == "3787921710"
+    assert parsed["campos"]["cliente"] == "ASSAÍ (CABULA)"
+    assert parsed["campos"]["l_horario"] == "14:00"
+    assert parsed["campos"]["c_horario"] == "14:27"
+    assert parsed["campos"]["pc"] == 51
+    assert parsed["campos"]["f_horario"] == "15:50"
+
+    resumo = app["resumo_confirmacao_conversa"](
+        {"delivery": "3787921710", "motorista": "VALDEMIR DE JESUS", "cliente": "ASSAÍ (CABULA)"},
+        {**parsed["campos"], "horario": parsed["campos"].get("f_horario")},
+    )
+
+    assert "L 14:00" in resumo
+    assert "C 14:27" in resumo
+    assert "PC 51" in resumo
+    assert "FI 15:50" in resumo
+
+
+def test_pc_usa_paletes_coletados_quando_coluna_pc_nao_existe():
+    app = carregar_funcoes_app()
+    app["colunas_reais_deliveries"] = lambda registro_atual=None: {
+        "id", "delivery", "paletes_coletados", "l_horario", "c_horario"
+    }
+
+    payload = app["preparar_campos_deliveries_para_salvar"](
+        {"l_horario": "14:00", "c_horario": "14:27", "pc": 51},
+        {"id": 1, "delivery": "3787921710"},
+    )
+
+    assert payload == {"l_horario": "14:00", "c_horario": "14:27", "paletes_coletados": 51}
+
+
 def test_exemplo_pc_rapido_e_conversa_mantem_pc_logico_ate_validacao():
     app = carregar_funcoes_app()
 

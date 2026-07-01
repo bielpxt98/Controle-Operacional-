@@ -1081,7 +1081,7 @@ TABELA_AUDITORIA = "historico_alteracoes"
 
 
 COLUNAS_LOGICAS_DELIVERIES = {
-    "pc": ["pc"],
+    "pc": ["pc", "paletes_coletados"],
 }
 
 
@@ -2264,7 +2264,7 @@ def parse_atualizacao_rapida(linha):
     partes_pipe = [parte.strip() for parte in prefixo_pipe.split("|")]
     if len(partes_pipe) >= 4:
         data_pipe, motorista_pipe, delivery_pipe = partes_pipe[:3]
-        cliente_pipe = " | ".join(partes_pipe[3:]).strip()
+        cliente_pipe = " | ".join(partes_pipe[3:]).strip(" |")
         delivery_pipe_limpo = limpar_codigo_delivery(delivery_pipe)
         if re.fullmatch(r"(?:378|340)\d{7}", delivery_pipe_limpo):
             original_parse = (
@@ -2302,7 +2302,7 @@ def parse_atualizacao_rapida(linha):
         chave = m.group(1).upper()
         inicio = m.end()
         fim = matches[i + 1].start() if i + 1 < len(matches) else len(original_parse)
-        valor = original_parse[inicio:fim].strip(" :-")
+        valor = original_parse[inicio:fim].strip(" :-|")
 
         if chave and valor:
             dados[chave] = valor
