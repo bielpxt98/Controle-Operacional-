@@ -65,7 +65,9 @@ FUNCOES_NECESSARIAS = {
     "resumo_confirmacao_conversa",
     "colunas_reais_deliveries",
     "resolver_coluna_delivery",
+    "valor_vazio_para_salvamento",
     "preparar_campos_deliveries_para_salvar",
+    "resumo_registro_salvo_conversa",
     "registrar_historico_campos",
     "registrar_historico_alteracao",
     "juntar_observacoes_sem_duplicar",
@@ -1921,3 +1923,101 @@ def test_atualizar_rapido_registro_cliente_busca_id_mas_salva_por_delivery_sem_a
     assert set(update[1]) == {"cliente", "atualizado_em"}
     assert ("eq", "delivery", "3787904257") in chamadas
     assert not any(item[0] == "update" and "status" in item[1] for item in chamadas)
+
+
+def test_preparar_campos_deliveries_nao_sobrescreve_com_vazios():
+    app = carregar_funcoes_app()
+    app["colunas_reais_deliveries"] = lambda registro_atual=None: {
+        "id", "l_horario", "c_horario", "pc", "f_horario", "data_finalizacao", "observacoes", "status", "atualizado_em"
+    }
+
+    payload = app["preparar_campos_deliveries_para_salvar"]({
+        "l_horario": "—",
+        "c_horario": None,
+        "pc": "",
+        "f_horario": "11:52",
+        "data_finalizacao": "-",
+        "observacoes": "BLOQUEIO AS 11:52",
+        "status": "BLOQUEIO",
+    }, {"observacoes": ""})
+
+    assert payload == {
+        "f_horario": "11:52",
+        "observacoes": "BLOQUEIO AS 11:52",
+        "status": "BLOQUEIO",
+    }
+
+
+def test_atualizar_rapido_registro_salva_cliente_e_campos_operacionais_juntos():
+    app = carregar_funcoes_app()
+    chamadas = []
+    registro = {
+        "id": 25,
+        "delivery": "3787905315",
+        "cliente": "ASSAÍ JORGE AMADO (CAMACARI)",
+        "motorista": "FABIO SOUZA",
+        "l_horario": "",
+        "c_horario": "",
+        "pc": "",
+        "f_horario": "",
+        "data_finalizacao": "",
+        "observacoes": "",
+        "status": "EM ABERTO",
+        "atualizado_em": "",
+    }
+
+    class Resultado:
+        def __init__(self, data):
+            self.data = data
+
+    class TabelaFake:
+        def __init__(self):
+            self.operacao = None
+            self.payload = None
+
+        def select(self, *args, **kwargs):
+            self.operacao = "select"
+            return self
+
+        def update(self, payload):
+            self.operacao = "update"
+            self.payload = payload
+            chamadas.append(payload)
+            registro.update(payload)
+            return self
+
+        def eq(self, *args):
+            return self
+
+        def limit(self, *args, **kwargs):
+            return self
+
+        def execute(self):
+            return Resultado([dict(registro)])
+
+    class SupabaseFake:
+        def table(self, tabela):
+            assert tabela == app["TABELA_DELIVERIES"]
+            return TabelaFake()
+
+    app["supabase"] = SupabaseFake()
+    app["registrar_historico_campos"] = lambda *args: None
+    app["atualizar_dataframe_principal"] = lambda: None
+    app["colunas_reais_deliveries"] = lambda registro_atual=None: set(registro.keys())
+
+    parsed = app["parse_atualizacao_rapida"](
+        "25/06/2026 | FABIO SOUZA | 3787905315 | ASSAÍ JORGE AMADO (CAMACARI) | L 07:42 | C 09:43 | FI 11:52"
+    )[0]
+    salvo = app["atualizar_rapido_registro_no_supabase"](25, parsed)
+
+    assert chamadas
+    assert chamadas[-1]["l_horario"] == "07:42"
+    assert chamadas[-1]["c_horario"] == "09:43"
+    assert chamadas[-1]["f_horario"] == "11:52"
+    assert salvo["l_horario"] == "07:42"
+    assert salvo["c_horario"] == "09:43"
+    assert salvo["f_horario"] == "11:52"
+    resumo = app["resumo_registro_salvo_conversa"](salvo)
+    assert "L 07:42" in resumo
+    assert "C 09:43" in resumo
+    assert "FI 11:52" in resumo

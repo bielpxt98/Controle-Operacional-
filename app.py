@@ -1123,9 +1123,22 @@ def juntar_observacoes_sem_duplicar(observacao_atual, observacao_nova):
     return " | ".join(partes) if partes else None
 
 
+def valor_vazio_para_salvamento(valor):
+    """Identifica valores que não podem sobrescrever dados já existentes."""
+    if valor is None:
+        return True
+    if isinstance(valor, str):
+        return texto(valor) in {"", "—", "-"}
+    return False
+
+
 def preparar_campos_deliveries_para_salvar(campos, registro_atual=None):
-    """Usa exatamente os nomes físicos existentes em deliveries no payload salvo."""
-    campos = dict(campos or {})
+    """Usa os nomes físicos existentes e remove vazios antes de salvar deliveries."""
+    campos = {
+        campo: valor
+        for campo, valor in dict(campos or {}).items()
+        if not valor_vazio_para_salvamento(valor)
+    }
     if registro_atual and campos.get("observacoes"):
         campos["observacoes"] = juntar_observacoes_sem_duplicar(
             registro_atual.get("observacoes"),
@@ -2481,13 +2494,15 @@ def resumo_mudanca_cliente_rapida(registro_atual, novo_cliente):
 def atualizar_rapido_registro_no_supabase(id_registro, parsed):
     atual = supabase.table(TABELA_DELIVERIES).select("*").eq("id", int(id_registro)).limit(1).execute()
     dados_atuais = atual.data[0] if atual.data else {}
-    if parsed.get("campos", {}).get("cliente"):
+    campos_parseados = dict(parsed.get("campos") or {})
+    campos_operacionais = {"l_horario", "c_horario", "pc", "f_horario", "data_finalizacao", "observacoes"}
+    if campos_parseados.get("cliente") and not any(campos_parseados.get(campo) for campo in campos_operacionais):
         return atualizar_cliente_delivery_direto(
             dados_atuais.get("delivery") or parsed.get("valor_busca"),
-            parsed["campos"].get("cliente"),
+            campos_parseados.get("cliente"),
             dados_atuais,
         )
-    campos_salvar = preparar_campos_deliveries_para_salvar(parsed["campos"], dados_atuais)
+    campos_salvar = preparar_campos_deliveries_para_salvar(campos_parseados, dados_atuais)
     campos_salvar.pop("delivery", None)
     campos_salvar.pop("sr", None)
     supabase.table(TABELA_DELIVERIES).update(campos_salvar).eq("id", int(id_registro)).execute()
