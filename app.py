@@ -2250,6 +2250,12 @@ def parse_atualizacao_rapida(linha):
 
     original_parse, horario_bd, observacao_bd = preparar_linha_atualizacao_rapida(original)
 
+    # Aceita data no início da linha sem exigir o marcador DATA.
+    # Ex.: "01/07/2026 M FABIO D 3787972555 ..."
+    data_inicial = re.match(r"^\s*(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\b\s+(.+)$", original_parse)
+    if data_inicial and not re.match(r"^\s*DATA\b", original_parse, flags=re.IGNORECASE):
+        original_parse = f"DATA {data_inicial.group(1)} {data_inicial.group(2)}"
+
     # Aceita a linha copiada do status no formato:
     # DATA | MOTORISTA | DELIVERY | CLIENTE L HH:MM C HH:MM ...
     # O prefixo com barras verticais é convertido para as abreviações oficiais
@@ -4438,12 +4444,14 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                             continue
 
                         if eh_cadastro_completo_atualizacao_rapida(parsed):
+                            resultados_existentes = buscar_registros_atualizacao_rapida(df, parsed)
                             pendentes.append({
                                 "linha": idx,
                                 "texto": linha,
                                 "parsed": parsed,
-                                "resultados": [],
+                                "resultados": resultados_existentes,
                                 "criar_ou_atualizar": True,
+                                "acao_prevista": "ATUALIZADO" if resultados_existentes else "CRIADO",
                             })
                             continue
 
@@ -4497,8 +4505,9 @@ M Fabio D 3787807939 CL C. Seis Irmãos V 1468,13 L 12:23 D(16:04)
                     st.code(resumo_cadastro_cliente_conversa(parsed, existente_cliente))
                     continue
                 if item_pendente.get("criar_ou_atualizar"):
-                    st.write(f"Linha {item_pendente['linha']}: registro completo será criado ou atualizado somente após confirmação.")
-                    st.code(resumo_atualizacao_rapida(parsed, "pré-visualização"))
+                    acao_prevista = item_pendente.get("acao_prevista") or "CRIADO/ATUALIZADO"
+                    st.write(f"Linha {item_pendente['linha']}: registro completo será {acao_prevista} somente após confirmação.")
+                    st.code(resumo_atualizacao_rapida(parsed, acao_prevista))
                     continue
                 if item_pendente.get("atualizar_todos"):
                     st.write(f"Linha {item_pendente['linha']}: {len(resultados)} coletas serão atualizadas.")
