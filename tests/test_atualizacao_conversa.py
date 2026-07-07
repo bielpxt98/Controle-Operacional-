@@ -2063,3 +2063,65 @@ def test_atualizar_rapido_registro_salva_cliente_e_campos_operacionais_juntos():
     assert "L 07:42" in resumo
     assert "C 09:43" in resumo
     assert "FI 11:52" in resumo
+
+
+def test_atualizacao_rapida_linha_completa_com_data_inicial_usa_delivery_completo_para_upsert():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_atualizacao_rapida"](
+        "01/07/2026 M FABIO D 3787972555 CL ARMAZÉM MATEUS P 476 PC 403 "
+        "V 2189,60 L 07:30 C 11:42 FI 08:46 DF 02/07"
+    )
+
+    assert erro is None
+    assert parsed["chave_busca"] == "delivery"
+    assert parsed["valor_busca"] == "3787972555"
+    assert parsed["campos"]["data"] == "01/07/2026"
+    assert parsed["campos"]["delivery"] == "3787972555"
+    assert parsed["campos"]["motorista"] == "FABIO SOUZA"
+    assert parsed["campos"]["cliente"] == "ARMAZÉM MATEUS"
+    assert parsed["campos"]["paletes"] == 476
+    assert parsed["campos"]["pc"] == 403
+    assert parsed["campos"]["valor_frete"] == 2189.60
+    assert parsed["campos"]["l_horario"] == "07:30"
+    assert parsed["campos"]["c_horario"] == "11:42"
+    assert parsed["campos"]["f_horario"] == "08:46"
+    assert parsed["campos"]["data_finalizacao"] == "02/07"
+    assert app["eh_cadastro_completo_atualizacao_rapida"](parsed)
+
+    df = pd.DataFrame(columns=["id", "delivery"])
+    assert app["buscar_registros_atualizacao_rapida"](df, parsed) == []
+
+
+def test_atualizacao_rapida_delivery_completo_nao_e_tratado_como_final():
+    app = carregar_funcoes_app()
+    df = pd.DataFrame([
+        {"id": 1, "delivery": "9999972555", "cliente": "ERRADO"},
+        {"id": 2, "delivery": "3787972555", "cliente": "CERTO"},
+    ])
+
+    parsed, erro = app["parse_atualizacao_rapida"]("D 3787972555 FI 08:46")
+    resultados = app["buscar_registros_atualizacao_rapida"](df, parsed)
+
+    assert erro is None
+    assert parsed["valor_busca"] == "3787972555"
+    assert len(resultados) == 1
+    assert resultados[0]["cliente"] == "CERTO"
+
+
+def test_atualizacao_rapida_d_horario_com_observacao_vira_deslocamento_sem_exigir_c_fi():
+    app = carregar_funcoes_app()
+
+    parsed, erro = app["parse_atualizacao_rapida"](
+        "01/07/2026 M JONES D 3787972557 CL AMERICANAS S.A. P 476 "
+        "V 899,64 L 11:34 D 15:00 O SEM ACESSO"
+    )
+
+    assert erro is None
+    assert parsed["valor_busca"] == "3787972557"
+    assert parsed["campos"]["f_horario"] == "15:00"
+    assert "DESLOCAMENTO" in parsed["campos"]["observacoes"]
+    assert "SEM ACESSO" in parsed["campos"]["observacoes"]
+    assert parsed["campos"].get("c_horario") is None
+    assert parsed["campos"]["status"] == "DESLOCAMENTO"
+    assert app["eh_cadastro_completo_atualizacao_rapida"](parsed)
