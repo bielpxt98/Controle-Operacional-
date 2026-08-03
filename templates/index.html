@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle Operacional - Relatórios Diários de Coleta</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-primary: #0b1120;
+            --bg-secondary: #131c31;
+            --card-bg: #1e293b;
+            --card-border: #334155;
+            --accent-blue: #2563eb;
+            --accent-blue-hover: #1d4ed8;
+            --accent-green: #10b981;
+            --accent-green-hover: #059669;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            background-image: linear-gradient(rgba(11, 17, 32, 0.92), rgba(11, 17, 32, 0.96)), url('/static/logo.png');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            user-select: none;
+        }
+
+        /* HEADER */
+        header {
+            background: rgba(30, 41, 59, 0.85);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--card-border);
+            padding: 0.8rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-logo-img {
+            height: 38px;
+            width: auto;
+            object-fit: contain;
+        }
+
+        .header-title h1 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 5px 12px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 0.8rem;
+        }
+
+        /* MONTH TABS NAV + SEARCH BAR */
+        .months-nav {
+            background-color: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(8px);
+            padding: 0.5rem 1.5rem;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            overflow-x: auto;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        .month-btn {
+            background: #1e293b;
+            color: var(--text-secondary);
+            border: 1px solid var(--card-border);
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .month-btn:hover {
+            background: #334155;
+            color: #fff;
+        }
+
+        .month-btn.active {
+            background: var(--accent-blue);
+            color: #fff;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 10px rgba(37, 99, 235, 0.4);
+        }
+
+        /* CAMPO DE PESQUISA AO LADO DE DEZEMBRO */
+        .search-container {
+            margin-left: auto;
+            position: relative;
+            min-width: 280px;
+        }
+
+        .search-input {
+            background: #1e293b;
+            border: 1px solid #3b82f6;
+            color: #fff;
+            padding: 6px 12px 6px 34px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            outline: none;
+            width: 100%;
+            transition: all 0.2s ease;
+            box-shadow: 0 0 10px rgba(37, 99, 235, 0.2);
+        }
+
+        .search-input:focus {
+            border-color: #60a5fa;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+            background: #0f172a;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #38bdf8;
+            font-size: 0.8rem;
+        }
+
+        /* DAYS SELECTOR STRIP DINÂMICA */
+        .days-strip {
+            background: rgba(19, 28, 49, 0.85);
+            backdrop-filter: blur(8px);
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        .day-pill {
+            background: #1e293b;
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 8px 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 85px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .day-pill:hover {
+            background: #334155;
+            border-color: var(--accent-blue);
+        }
+
+        .day-pill.active {
+            background: #2563eb;
+            border-color: #3b82f6;
+            color: #fff;
+            box-shadow: 0 3px 10px rgba(37, 99, 235, 0.4);
+        }
+
+        .day-pill .num {
+            font-size: 0.85rem;
+            font-weight: 700;
+        }
+
+        .day-pill .count {
+            font-size: 0.65rem;
+            opacity: 0.85;
+            margin-top: 2px;
+        }
+
+        /* MAIN DASHBOARD CONTENT */
+        main {
+            flex: 1;
+            padding: 1rem 1.5rem;
+            width: 100%;
+        }
+
+        .report-card {
+            background: rgba(19, 28, 49, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+        }
+
+        .report-header {
+            padding: 0.8rem 1.25rem;
+            background: var(--card-bg);
+            border-bottom: 1px solid var(--card-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .report-header h2 {
+            font-size: 1.05rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .report-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 7px 14px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-excel {
+            background: var(--accent-green);
+            color: #fff;
+        }
+
+        .btn-excel:hover {
+            background: var(--accent-green-hover);
+        }
+
+        .btn-add {
+            background: var(--accent-blue);
+            color: #fff;
+        }
+
+        .btn-add:hover {
+            background: var(--accent-blue-hover);
+        }
+
+        .btn-save {
+            background: #8b5cf6;
+            color: #fff;
+        }
+
+        .btn-save:hover {
+            background: #7c3aed;
+        }
+
+        .report-body {
+            padding: 0.8rem;
+        }
+
+        /* DATA TABLE COM REDIMENSIONAMENTO E SALVAMENTO DE LARGURA */
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+            border-radius: 6px;
+            border: 1px solid var(--card-border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            text-align: left;
+            background: #0f172a;
+            table-layout: fixed;
+        }
+
+        th {
+            background: #1e293b;
+            color: var(--text-secondary);
+            padding: 8px 10px;
+            font-weight: 600;
+            border-bottom: 1px solid var(--card-border);
+            border-right: 1px solid rgba(255, 255, 255, 0.08);
+            text-transform: uppercase;
+            font-size: 0.68rem;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            position: relative;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        th .resizer {
+            position: absolute;
+            right: 0;
+            top: 0;
+            height: 100%;
+            width: 7px;
+            background: transparent;
+            cursor: col-resize;
+            user-select: none;
+            z-index: 10;
+        }
+
+        th .resizer:hover, th .resizer.resizing {
+            background: var(--accent-blue);
+            box-shadow: 0 0 8px #3b82f6;
+        }
+
+        th.auto-filled-header {
+            background: #1e3a8a;
+            color: #93c5fd;
+        }
+
+        td {
+            padding: 6px 6px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            border-right: 1px solid rgba(255, 255, 255, 0.04);
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* COMPACT INPUTS & SELECTS */
+        td input {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--card-border);
+            color: #fff;
+            padding: 5px 6px;
+            border-radius: 4px;
+            font-size: 0.78rem;
+            width: 100%;
+            outline: none;
+            text-overflow: ellipsis;
+        }
+
+        td input:focus {
+            border-color: var(--accent-blue);
+            background: rgba(37, 99, 235, 0.1);
+        }
+
+        tr:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .driver-select {
+            background: #1e293b;
+            color: #38bdf8;
+            font-weight: 700;
+            border: 1px solid #3b82f6;
+            padding: 5px 6px;
+            border-radius: 4px;
+            font-size: 0.78rem;
+            cursor: pointer;
+            outline: none;
+            width: 100%;
+            text-overflow: ellipsis;
+        }
+
+        .driver-select option {
+            background: #0f172a;
+            color: #fff;
+        }
+
+        .auto-tag {
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.75rem;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            font-weight: 600;
+        }
+
+        .btn-delete-row {
+            background: transparent;
+            color: #ef4444;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+            padding: 2px 6px;
+        }
+
+        .btn-delete-row:hover {
+            color: #f87171;
+        }
+
+        .excel-hint {
+            font-size: 0.75rem;
+            color: #38bdf8;
+            background: rgba(56, 189, 248, 0.1);
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .empty-day-message {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .empty-day-message i {
+            font-size: 2.5rem;
+            margin-bottom: 0.8rem;
+            color: #475569;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-title">
+            <img src="/static/logo.png" alt="Logo" class="header-logo-img" onerror="this.style.display='none'">
+            <h1>Relatórios Diários - Controle Operacional</h1>
+        </div>
+        <div class="user-menu">
+            <i class="fa-solid fa-user-circle"></i>
+            <span>Gabriel Peixoto</span>
+        </div>
+    </header>
+
+    <!-- ABA DOS MESES + CAMPO DE PESQUISA -->
+    <nav class="months-nav">
+        <button class="month-btn" onclick="selectMonth(this, 0)">JANEIRO</button>
+        <button class="month-btn" onclick="selectMonth(this, 1)">FEVEREIRO</button>
+        <button class="month-btn" onclick="selectMonth(this, 2)">MARÇO</button>
+        <button class="month-btn" onclick="selectMonth(this, 3)">ABRIL</button>
+        <button class="month-btn" onclick="selectMonth(this, 4)">MAIO</button>
+        <button class="month-btn" onclick="selectMonth(this, 5)">JUNHO</button>
+        <button class="month-btn" onclick="selectMonth(this, 6)">JULHO</button>
+        <button class="month-btn active" onclick="selectMonth(this, 7)">AGOSTO 2026</button>
+        <button class="month-btn" onclick="selectMonth(this, 8)">SETEMBRO</button>
+        <button class="month-btn" onclick="selectMonth(this, 9)">OUTUBRO</button>
+        <button class="month-btn" onclick="selectMonth(this, 10)">NOVEMBRO</button>
+        <button class="month-btn" onclick="selectMonth(this, 11)">DEZEMBRO</button>
+
+        <!-- CAMPO DE PESQUISA -->
+        <div class="search-container">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" id="searchInput" class="search-input" placeholder="Pesquisar por Nome, Delivery ou Cliente..." onkeyup="filterTable()">
+        </div>
+    </nav>
+
+    <!-- FAIXA DOS DIAS GERADA DINAMICAMENTE -->
+    <div class="days-strip" id="daysStrip">
+    </div>
+
+    <!-- CONTEÚDO PRINCIPAL -->
+    <main>
+        <div class="report-card">
+            <div class="report-header">
+                <h2 id="reportTitle"><i class="fa-regular fa-calendar-check" style="color: var(--accent-blue)"></i> Relatório de Coletas: <span id="currentDateText">03/08/2026</span></h2>
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <span class="excel-hint"><i class="fa-solid fa-cloud-arrow-up" style="color: #34d399"></i> Conectado ao Supabase (Salvamento automático)</span>
+                    <div class="report-actions">
+                        <button class="btn btn-add" onclick="addNewRow()"><i class="fa-solid fa-plus"></i> Adicionar Coleta</button>
+                        <button class="btn btn-save" onclick="saveCurrentDayColetas()"><i class="fa-solid fa-floppy-disk"></i> Salvar no Supabase</button>
+                        <button class="btn btn-excel" onclick="exportToExcel()"><i class="fa-solid fa-file-excel"></i> Baixar Excel (.xlsx)</button>
+                    </div>
+                </div>
+            </div>
+            <div class="report-body">
+                <div class="table-responsive">
+                    <table id="resizableTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 175px;" data-col="driver">MOTORISTA<div class="resizer"></div></th>
+                                <th style="width: 115px;" data-col="delivery">DELIVERY<div class="resizer"></div></th>
+                                <th style="width: 180px;" data-col="cliente">CLIENTES<div class="resizer"></div></th>
+                                <th style="width: 65px;" data-col="paletes">PALETES<div class="resizer"></div></th>
+                                <th style="width: 75px;" data-col="paletes_colet">P. COLETADO<div class="resizer"></div></th>
+                                <th style="width: 100px;" data-col="valor">VALOR<div class="resizer"></div></th>
+                                <th style="width: 68px;" data-col="h_local">H_LOCAL<div class="resizer"></div></th>
+                                <th style="width: 68px;" data-col="h_coletado">H_COLETADO<div class="resizer"></div></th>
+                                <th style="width: 68px;" data-col="h_finalizado">H_FINALIZADO<div class="resizer"></div></th>
+                                <th style="width: 95px;" data-col="sr">SR<div class="resizer"></div></th>
+                                <th style="width: 120px;" data-col="motivo">MOTIVO<div class="resizer"></div></th>
+                                <th style="width: 125px;" data-col="cpf" class="auto-filled-header">CPF (AUTO)<div class="resizer"></div></th>
+                                <th style="width: 90px;" data-col="cavalo" class="auto-filled-header">CAVALO (AUTO)<div class="resizer"></div></th>
+                                <th style="width: 90px;" data-col="carreta" class="auto-filled-header">CARRETA (AUTO)<div class="resizer"></div></th>
+                                <th style="width: 50px;">AÇÃO</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const driverDatabase = {
+            "wilson_reis": { cpf: "806.984.765-49", cavalo: "JJF1856", carreta: "NVQ8447" },
+            "gabriel_borges": { cpf: "809.066.155-87", cavalo: "KJY3204", carreta: "KGG1152" },
+            "argemiro_borges": { cpf: "041.604.865-09", cavalo: "PEG7666", carreta: "DTD8506" },
+            "valdemir_de_jesus": { cpf: "044.327.095-37", cavalo: "HWB9F22", carreta: "-" },
+            "jones_rosario": { cpf: "533.594.654.00", cavalo: "JHX3C33", carreta: "KKT9007" },
+            "luis_carlos": { cpf: "934.560.345-04", cavalo: "KLB5018", carreta: "NKZ6545" },
+            "fabio_souza": { cpf: "007.714.335-30", cavalo: "PEJ4695", carreta: "NLB7814" },
+            "jean_robson": { cpf: "032.795.865-00", cavalo: "HWB9F22", carreta: "-" },
+            "ariel_nascimento": { cpf: "050.153.565-95", cavalo: "JVL8A44", carreta: "-" },
+            "leandro_de_andrade": { cpf: "017.793.835.84", cavalo: "NZP7012", carreta: "-" }
+        };
+
+        const dayNamesShort = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+        let currentSelectedYear = 2026;
+        let currentSelectedMonthIndex = 7;
+        let activeDateStr = "03/08/2026";
+
+        /* FORMATADOR DE HORÁRIO INTELIGENTE */
+        function formatHoraInput(input) {
+            let val = input.value.trim().replace(/\D/g, '');
+            if (!val || input.value === '-') return;
+
+            if (val.length === 3) val = '0' + val;
+
+            if (val.length >= 4) {
+                let hh = val.substring(0, 2);
+                let mm = val.substring(2, 4);
+                if (parseInt(hh, 10) > 23) hh = '23';
+                if (parseInt(mm, 10) > 59) mm = '59';
+                input.value = `${hh}:${mm}`;
+            }
+        }
+
+        /* FORMATADOR DE VALOR MONETÁRIO */
+        function formatValorInput(input) {
+            let val = input.value.trim();
+            if (!val || val === '-') return;
+
+            let clean = val.replace(/[^\d,\.]/g, '');
+            if (!clean) return;
+
+            if (clean.includes(',')) {
+                let parts = clean.split(',');
+                let intPart = parts[0].replace(/\D/g, '');
+                let decPart = (parts[1] || '00').slice(0, 2);
+                if (decPart.length === 1) decPart += '0';
+                intPart = parseInt(intPart || '0', 10).toLocaleString('pt-BR');
+                input.value = `R$ ${intPart},${decPart}`;
+            } else if (clean.includes('.')) {
+                let num = parseFloat(clean);
+                if (!isNaN(num)) {
+                    input.value = num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                }
+            } else {
+                let digits = clean.replace(/\D/g, '');
+                if (digits.length > 0) {
+                    let num = parseFloat(digits);
+                    if (digits.length > 2 && !val.includes('R$')) {
+                        num = parseFloat(digits) / 100;
+                    }
+                    input.value = num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                }
+            }
+        }
+
+        /* REGRA AUTOMÁTICA WMS -> WMS MAX ATACADO */
+        function autoExpandCliente(input) {
+            let val = input.value.trim();
+            if (/^WMS\b/i.test(val) && !/MAX ATACADO/i.test(val)) {
+                val = val.replace(/^WMS\b/i, "WMS MAX ATACADO");
+                input.value = val;
+            }
+        }
+
+        function renderDaysStrip(year, monthIdx) {
+            const strip = document.getElementById('daysStrip');
+            strip.innerHTML = '';
+
+            const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateObj = new Date(year, monthIdx, day);
+                const dayOfWeek = dayNamesShort[dateObj.getDay()];
+                const dayFormatted = String(day).padStart(2, '0');
+                const monthFormatted = String(monthIdx + 1).padStart(2, '0');
+                const fullDateStr = `${dayFormatted}/${monthFormatted}/${year}`;
+
+                const pill = document.createElement('div');
+                pill.className = 'day-pill';
+                if (fullDateStr === activeDateStr) {
+                    pill.classList.add('active');
+                }
+
+                pill.innerHTML = `
+                    <span class="num">${day} ${dayOfWeek} ${day === 3 && monthIdx === 7 ? '(HOJE)' : ''}</span>
+                    <span class="count">carregando...</span>
+                `;
+
+                pill.onclick = () => {
+                    document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active'));
+                    pill.classList.add('active');
+                    activeDateStr = fullDateStr;
+                    document.getElementById('currentDateText').innerText = fullDateStr;
+                    fetchDayDataFromSupabase(fullDateStr);
+                };
+
+                strip.appendChild(pill);
+            }
+        }
+
+        async function fetchDayDataFromSupabase(dateStr) {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = `<tr><td colspan="15" style="text-align:center; padding: 2rem;">Carregando coletas do Supabase...</td></tr>`;
+
+            try {
+                const res = await fetch(`/api/coletas?data=${encodeURIComponent(dateStr)}`);
+                const json = await res.json();
+                const records = json.data || [];
+
+                tbody.innerHTML = '';
+                if (records.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="15" class="empty-day-message">
+                                <i class="fa-regular fa-folder-open"></i>
+                                Nenhuma coleta registrada para o dia ${dateStr}.<br>
+                                <span style="font-size: 0.8rem; color: #64748b">Clique no botão "<strong>+ Adicionar Coleta</strong>" acima para incluir um novo registro.</span>
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                records.forEach(rec => {
+                    appendRowFromData(rec);
+                });
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function appendRowFromData(rec) {
+            const tbody = document.getElementById('tableBody');
+            const driverKey = (rec.motorista || '').toLowerCase().replace(/\s+/g, '_');
+            const driverInfo = driverDatabase[driverKey] || { cpf: rec.cpf || "-", cavalo: rec.cavalo || "-", carreta: rec.carreta || "-" };
+            
+            const tr = document.createElement('tr');
+            if (rec.id) tr.setAttribute('data-id', rec.id);
+
+            tr.innerHTML = `
+                <td>
+                    <select class="driver-select" onchange="updateDriverData(this)">
+                        <option value="wilson_reis" ${driverKey.includes('wilson')?'selected':''}>WILSON REIS ▼</option>
+                        <option value="gabriel_borges" ${driverKey.includes('gabriel')?'selected':''}>GABRIEL BORGES ▼</option>
+                        <option value="argemiro_borges" ${driverKey.includes('argemiro')?'selected':''}>ARGEMIRO BORGES ▼</option>
+                        <option value="valdemir_de_jesus" ${driverKey.includes('valdemir')?'selected':''}>VALDEMIR DE JESUS ▼</option>
+                        <option value="jones_rosario" ${driverKey.includes('jones')?'selected':''}>JONES ROSARIO ▼</option>
+                        <option value="luis_carlos" ${driverKey.includes('luis')?'selected':''}>LUIS CARLOS ▼</option>
+                        <option value="fabio_souza" ${driverKey.includes('fabio')?'selected':''}>FABIO SOUZA ▼</option>
+                        <option value="jean_robson" ${driverKey.includes('jean')?'selected':''}>JEAN ROBSON ▼</option>
+                        <option value="ariel_nascimento" ${driverKey.includes('ariel')?'selected':''}>ARIEL NASCIMENTO ▼</option>
+                        <option value="leandro_de_andrade" ${driverKey.includes('leandro')?'selected':''}>LEANDRO DE ANDRADE ▼</option>
+                    </select>
+                </td>
+                <td><input type="text" class="input-delivery" value="${rec.delivery || ''}" style="font-weight: 700; color: #60a5fa;"></td>
+                <td><input type="text" class="input-cliente" value="${rec.cliente || ''}" title="${rec.cliente || ''}" onblur="autoExpandCliente(this)" onchange="autoExpandCliente(this)"></td>
+                <td><input type="number" class="input-paletes" value="${rec.paletes || ''}"></td>
+                <td><input type="number" class="input-pc" value="${rec.pc || ''}" style="color: #34d399; font-weight: 700;"></td>
+                <td><input type="text" class="input-valor" value="${rec.valor || ''}" onblur="formatValorInput(this)" onchange="formatValorInput(this)"></td>
+                <td><input type="text" class="input-lhorario" value="${rec.l_horario || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
+                <td><input type="text" class="input-chorario" value="${rec.c_horario || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
+                <td><input type="text" class="input-fhorario" value="${rec.f_horario || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
+                <td><input type="text" class="input-sr" value="${rec.sr || ''}"></td>
+                <td><input type="text" class="input-observacao" value="${rec.observacao || ''}"></td>
+                <td><span class="auto-tag cpf-val">${driverInfo.cpf}</span></td>
+                <td><span class="auto-tag cavalo-val">${driverInfo.cavalo}</span></td>
+                <td><span class="auto-tag carreta-val">${driverInfo.carreta}</span></td>
+                <td><button class="btn-delete-row" onclick="deleteRow(this)" title="Excluir"><i class="fa-solid fa-trash"></i></button></td>
+            `;
+            tbody.appendChild(tr);
+        }
+
+        function updateDriverData(selectElement) {
+            const tr = selectElement.closest('tr');
+            const driverId = selectElement.value;
+            const data = driverDatabase[driverId];
+            if (data) {
+                tr.querySelector('.cpf-val').innerText = data.cpf;
+                tr.querySelector('.cavalo-val').innerText = data.cavalo;
+                tr.querySelector('.carreta-val').innerText = data.carreta;
+            }
+        }
+
+        async function saveCurrentDayColetas() {
+            const rows = document.querySelectorAll('#tableBody tr');
+            const coletas = [];
+
+            rows.forEach(tr => {
+                const driverSelect = tr.querySelector('.driver-select');
+                if (!driverSelect) return;
+
+                const driverName = driverSelect.selectedOptions[0].text.replace(' ▼', '');
+                const id = tr.getAttribute('data-id');
+                const delivery = tr.querySelector('.input-delivery')?.value || '';
+                const cliente = tr.querySelector('.input-cliente')?.value || '';
+                const paletes = tr.querySelector('.input-paletes')?.value || 0;
+                const pc = tr.querySelector('.input-pc')?.value || 0;
+                const valor = tr.querySelector('.input-valor')?.value || '';
+                const l_horario = tr.querySelector('.input-lhorario')?.value || '';
+                const c_horario = tr.querySelector('.input-chorario')?.value || '';
+                const f_horario = tr.querySelector('.input-fhorario')?.value || '';
+                const sr = tr.querySelector('.input-sr')?.value || '';
+                const observacao = tr.querySelector('.input-observacao')?.value || '';
+                const cpf = tr.querySelector('.cpf-val')?.innerText || '';
+                const cavalo = tr.querySelector('.cavalo-val')?.innerText || '';
+                const carreta = tr.querySelector('.carreta-val')?.innerText || '';
+
+                if (delivery || cliente || driverName) {
+                    coletas.push({
+                        id, data: activeDateStr, motorista: driverName, delivery, cliente,
+                        paletes, pc, valor, l_horario, c_horario, f_horario, sr, observacao,
+                        cpf, cavalo, carreta
+                    });
+                }
+            });
+
+            try {
+                const res = await fetch('/api/coletas', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ data: activeDateStr, coletas })
+                });
+                const json = await res.json();
+                alert(json.message || "Salvo com sucesso!");
+                fetchDayDataFromSupabase(activeDateStr);
+            } catch (err) {
+                alert("Erro ao salvar: " + err);
+            }
+        }
+
+        function selectMonth(btn, monthIdx) {
+            document.querySelectorAll('.month-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentSelectedMonthIndex = monthIdx;
+            renderDaysStrip(currentSelectedYear, monthIdx);
+            
+            const firstDateStr = `01/${String(monthIdx+1).padStart(2,'0')}/${currentSelectedYear}`;
+            activeDateStr = firstDateStr;
+            document.getElementById('currentDateText').innerText = firstDateStr;
+            fetchDayDataFromSupabase(firstDateStr);
+        }
+
+        function filterTable() {
+            const query = document.getElementById('searchInput').value.toLowerCase().trim();
+            const rows = document.querySelectorAll('#tableBody tr');
+
+            rows.forEach(tr => {
+                const driverSelect = tr.querySelector('.driver-select');
+                if (!driverSelect) return;
+                const driverText = driverSelect.selectedOptions[0].text.toLowerCase();
+                const inputs = tr.querySelectorAll('input');
+                let match = false;
+
+                if (driverText.includes(query)) match = true;
+
+                inputs.forEach(input => {
+                    if (input.value.toLowerCase().includes(query)) {
+                        match = true;
+                    }
+                });
+
+                tr.style.display = match ? '' : 'none';
+            });
+        }
+
+        function saveColumnWidths() {
+            const widths = {};
+            document.querySelectorAll('#resizableTable th[data-col]').forEach(th => {
+                widths[th.getAttribute('data-col')] = th.style.width;
+            });
+            localStorage.setItem('controle_col_widths', JSON.stringify(widths));
+        }
+
+        function loadColumnWidths() {
+            const saved = localStorage.getItem('controle_col_widths');
+            if (saved) {
+                try {
+                    const widths = JSON.parse(saved);
+                    document.querySelectorAll('#resizableTable th[data-col]').forEach(th => {
+                        const colKey = th.getAttribute('data-col');
+                        if (widths[colKey]) {
+                            th.style.width = widths[colKey];
+                        }
+                    });
+                } catch(e) {}
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadColumnWidths();
+            renderDaysStrip(2026, 7);
+            fetchDayDataFromSupabase('03/08/2026');
+
+            const table = document.getElementById('resizableTable');
+            const cols = table.querySelectorAll('th');
+
+            cols.forEach((col) => {
+                const resizer = col.querySelector('.resizer');
+                if (!resizer) return;
+
+                let startX, startWidth;
+
+                resizer.addEventListener('mousedown', (e) => {
+                    startX = e.pageX;
+                    startWidth = col.offsetWidth;
+                    resizer.classList.add('resizing');
+
+                    const onMouseMove = (e) => {
+                        const newWidth = startWidth + (e.pageX - startX);
+                        if (newWidth > 35) {
+                            col.style.width = newWidth + 'px';
+                        }
+                    };
+
+                    const onMouseUp = () => {
+                        resizer.classList.remove('resizing');
+                        document.removeEventListener('mousemove', onMouseMove);
+                        document.removeEventListener('mouseup', onMouseUp);
+                        saveColumnWidths();
+                    };
+
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp);
+                });
+            });
+        });
+
+        function addNewRow() {
+            const tbody = document.getElementById('tableBody');
+            if (tbody.querySelector('.empty-day-message')) {
+                tbody.innerHTML = '';
+            }
+
+            appendRowFromData({
+                motorista: "WILSON REIS",
+                delivery: "", cliente: "", paletes: "", pc: "", valor: "",
+                l_horario: "", c_horario: "", f_horario: "", sr: "", observacao: ""
+            });
+        }
+
+        async function deleteRow(btn) {
+            const tr = btn.closest('tr');
+            const id = tr.getAttribute('data-id');
+            if (id) {
+                if (confirm("Deseja realmente excluir esta coleta do Supabase?")) {
+                    await fetch(`/api/coletas/${id}`, { method: 'DELETE' });
+                    tr.remove();
+                }
+            } else {
+                tr.remove();
+            }
+        }
+
+        function exportToExcel() {
+            window.location.href = `/api/export-excel?data=${encodeURIComponent(activeDateStr)}`;
+        }
+    </script>
+</body>
+</html>
