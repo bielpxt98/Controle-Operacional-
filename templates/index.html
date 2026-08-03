@@ -120,7 +120,6 @@
             box-shadow: 0 0 10px rgba(37, 99, 235, 0.4);
         }
 
-        /* CAMPO DE PESQUISA AO LADO DE DEZEMBRO */
         .search-container {
             margin-left: auto;
             position: relative;
@@ -155,7 +154,6 @@
             font-size: 0.8rem;
         }
 
-        /* DAYS SELECTOR STRIP DINÂMICA */
         .days-strip {
             background: rgba(19, 28, 49, 0.85);
             backdrop-filter: blur(8px);
@@ -202,7 +200,6 @@
             margin-top: 2px;
         }
 
-        /* MAIN DASHBOARD CONTENT */
         main {
             flex: 1;
             padding: 1rem 1.5rem;
@@ -287,7 +284,6 @@
             padding: 0.8rem;
         }
 
-        /* DATA TABLE COM REDIMENSIONAMENTO E SALVAMENTO DE LARGURA */
         .table-responsive {
             width: 100%;
             overflow-x: auto;
@@ -342,6 +338,11 @@
             color: #93c5fd;
         }
 
+        th.wpp-header {
+            background: #064e3b;
+            color: #6ee7b7;
+        }
+
         td {
             padding: 6px 6px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
@@ -352,7 +353,6 @@
             text-overflow: ellipsis;
         }
 
-        /* COMPACT INPUTS & SELECTS */
         td input {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid var(--card-border);
@@ -402,6 +402,35 @@
             font-size: 0.75rem;
             border: 1px solid rgba(59, 130, 246, 0.3);
             font-weight: 600;
+        }
+
+        .wpp-tag {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.76rem;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+        }
+
+        .btn-copy-wpp {
+            background: #059669;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 2px 6px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .btn-copy-wpp:hover {
+            background: #10b981;
         }
 
         .btn-delete-row {
@@ -489,7 +518,7 @@
             <div class="report-header">
                 <h2 id="reportTitle"><i class="fa-regular fa-calendar-check" style="color: var(--accent-blue)"></i> Relatório de Coletas: <span id="currentDateText">03/08/2026</span></h2>
                 <div style="display: flex; gap: 15px; align-items: center;">
-                    <span class="excel-hint"><i class="fa-solid fa-cloud-arrow-up" style="color: #34d399"></i> Conectado ao Supabase (Salvamento automático)</span>
+                    <span class="excel-hint"><i class="fa-brands fa-whatsapp" style="color: #34d399"></i> Gerador WhatsApp Ativo: delivery - cliente -@motorista</span>
                     <div class="report-actions">
                         <button class="btn btn-add" onclick="addNewRow()"><i class="fa-solid fa-plus"></i> Adicionar Coleta</button>
                         <button class="btn btn-save" onclick="saveCurrentDayColetas()"><i class="fa-solid fa-floppy-disk"></i> Salvar no Supabase</button>
@@ -516,6 +545,7 @@
                                 <th style="width: 125px;" data-col="cpf" class="auto-filled-header">CPF (AUTO)<div class="resizer"></div></th>
                                 <th style="width: 90px;" data-col="cavalo" class="auto-filled-header">CAVALO (AUTO)<div class="resizer"></div></th>
                                 <th style="width: 90px;" data-col="carreta" class="auto-filled-header">CARRETA (AUTO)<div class="resizer"></div></th>
+                                <th style="width: 250px;" data-col="wpp" class="wpp-header"><i class="fa-brands fa-whatsapp"></i> MENSAGEM WPP<div class="resizer"></div></th>
                                 <th style="width: 50px;">AÇÃO</th>
                             </tr>
                         </thead>
@@ -546,7 +576,6 @@
         let currentSelectedMonthIndex = 7;
         let activeDateStr = "03/08/2026";
 
-        /* FORMATADOR DE HORÁRIO INTELIGENTE */
         function formatHoraInput(input) {
             let val = input.value.trim().replace(/\D/g, '');
             if (!val || input.value === '-') return;
@@ -562,7 +591,6 @@
             }
         }
 
-        /* FORMATADOR DE VALOR MONETÁRIO */
         function formatValorInput(input) {
             let val = input.value.trim();
             if (!val || val === '-') return;
@@ -594,13 +622,41 @@
             }
         }
 
-        /* REGRA AUTOMÁTICA WMS -> WMS MAX ATACADO */
         function autoExpandCliente(input) {
             let val = input.value.trim();
             if (/^WMS\b/i.test(val) && !/MAX ATACADO/i.test(val)) {
                 val = val.replace(/^WMS\b/i, "WMS MAX ATACADO");
                 input.value = val;
             }
+            updateWppMessage(input.closest('tr'));
+        }
+
+        /* GERAÇÃO AUTOMÁTICA DA MENSAGEM DO WHATSAPP: delivery - cliente -@motorista */
+        function updateWppMessage(tr) {
+            const delivery = tr.querySelector('.input-delivery')?.value || '';
+            const cliente = tr.querySelector('.input-cliente')?.value || '';
+            const driverSelect = tr.querySelector('.driver-select');
+            const driverName = driverSelect ? driverSelect.selectedOptions[0].text.replace(' ▼', '') : '';
+
+            const wppText = `${delivery} - ${cliente} -@${driverName}`;
+            const wppSpan = tr.querySelector('.wpp-text');
+            if (wppSpan) {
+                wppSpan.innerText = wppText;
+            }
+        }
+
+        function copyWppText(btn) {
+            const tr = btn.closest('tr');
+            const wppText = tr.querySelector('.wpp-text')?.innerText || '';
+            navigator.clipboard.writeText(wppText);
+            
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = `<i class="fa-solid fa-check"></i> Copiado!`;
+            btn.style.background = "#10b981";
+            setTimeout(() => {
+                btn.innerHTML = originalHTML;
+                btn.style.background = "#059669";
+            }, 1800);
         }
 
         function renderDaysStrip(year, monthIdx) {
@@ -624,7 +680,7 @@
 
                 pill.innerHTML = `
                     <span class="num">${day} ${dayOfWeek} ${day === 3 && monthIdx === 7 ? '(HOJE)' : ''}</span>
-                    <span class="count">carregando...</span>
+                    <span class="count">coletas</span>
                 `;
 
                 pill.onclick = () => {
@@ -641,7 +697,7 @@
 
         async function fetchDayDataFromSupabase(dateStr) {
             const tbody = document.getElementById('tableBody');
-            tbody.innerHTML = `<tr><td colspan="15" style="text-align:center; padding: 2rem;">Carregando coletas do Supabase...</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="16" style="text-align:center; padding: 2rem;">Carregando coletas do Supabase...</td></tr>`;
 
             try {
                 const res = await fetch(`/api/coletas?data=${encodeURIComponent(dateStr)}`);
@@ -652,7 +708,7 @@
                 if (records.length === 0) {
                     tbody.innerHTML = `
                         <tr>
-                            <td colspan="15" class="empty-day-message">
+                            <td colspan="16" class="empty-day-message">
                                 <i class="fa-regular fa-folder-open"></i>
                                 Nenhuma coleta registrada para o dia ${dateStr}.<br>
                                 <span style="font-size: 0.8rem; color: #64748b">Clique no botão "<strong>+ Adicionar Coleta</strong>" acima para incluir um novo registro.</span>
@@ -678,9 +734,14 @@
             const tr = document.createElement('tr');
             if (rec.id) tr.setAttribute('data-id', rec.id);
 
+            const deliveryVal = rec.delivery || '';
+            const clienteVal = rec.cliente || '';
+            const driverName = rec.motorista || 'WILSON REIS';
+            const wppText = `${deliveryVal} - ${clienteVal} -@${driverName}`;
+
             tr.innerHTML = `
                 <td>
-                    <select class="driver-select" onchange="updateDriverData(this)">
+                    <select class="driver-select" onchange="updateDriverData(this); updateWppMessage(this.closest('tr'))">
                         <option value="wilson_reis" ${driverKey.includes('wilson')?'selected':''}>WILSON REIS ▼</option>
                         <option value="gabriel_borges" ${driverKey.includes('gabriel')?'selected':''}>GABRIEL BORGES ▼</option>
                         <option value="argemiro_borges" ${driverKey.includes('argemiro')?'selected':''}>ARGEMIRO BORGES ▼</option>
@@ -693,8 +754,8 @@
                         <option value="leandro_de_andrade" ${driverKey.includes('leandro')?'selected':''}>LEANDRO DE ANDRADE ▼</option>
                     </select>
                 </td>
-                <td><input type="text" class="input-delivery" value="${rec.delivery || ''}" style="font-weight: 700; color: #60a5fa;"></td>
-                <td><input type="text" class="input-cliente" value="${rec.cliente || ''}" title="${rec.cliente || ''}" onblur="autoExpandCliente(this)" onchange="autoExpandCliente(this)"></td>
+                <td><input type="text" class="input-delivery" value="${deliveryVal}" style="font-weight: 700; color: #60a5fa;" oninput="updateWppMessage(this.closest('tr'))"></td>
+                <td><input type="text" class="input-cliente" value="${clienteVal}" title="${clienteVal}" onblur="autoExpandCliente(this)" onchange="autoExpandCliente(this)" oninput="updateWppMessage(this.closest('tr'))"></td>
                 <td><input type="number" class="input-paletes" value="${rec.paletes || ''}"></td>
                 <td><input type="number" class="input-pc" value="${rec.pc || ''}" style="color: #34d399; font-weight: 700;"></td>
                 <td><input type="text" class="input-valor" value="${rec.valor || ''}" onblur="formatValorInput(this)" onchange="formatValorInput(this)"></td>
@@ -706,6 +767,12 @@
                 <td><span class="auto-tag cpf-val">${driverInfo.cpf}</span></td>
                 <td><span class="auto-tag cavalo-val">${driverInfo.cavalo}</span></td>
                 <td><span class="auto-tag carreta-val">${driverInfo.carreta}</span></td>
+                <td>
+                    <div class="wpp-tag">
+                        <span class="wpp-text">${wppText}</span>
+                        <button class="btn-copy-wpp" onclick="copyWppText(this)"><i class="fa-regular fa-copy"></i> Copiar</button>
+                    </div>
+                </td>
                 <td><button class="btn-delete-row" onclick="deleteRow(this)" title="Excluir"><i class="fa-solid fa-trash"></i></button></td>
             `;
             tbody.appendChild(tr);
