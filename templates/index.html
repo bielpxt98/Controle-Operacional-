@@ -41,7 +41,6 @@
             user-select: none;
         }
 
-        /* HEADER */
         header {
             background: rgba(30, 41, 59, 0.85);
             backdrop-filter: blur(12px);
@@ -83,7 +82,6 @@
             font-size: 0.8rem;
         }
 
-        /* MONTH TABS NAV + SEARCH BAR */
         .months-nav {
             background-color: rgba(15, 23, 42, 0.85);
             backdrop-filter: blur(8px);
@@ -501,7 +499,6 @@
         </div>
     </header>
 
-    <!-- ABA DOS MESES + CAMPO DE PESQUISA -->
     <nav class="months-nav">
         <button class="month-btn" onclick="selectMonth(this, 0)">JANEIRO</button>
         <button class="month-btn" onclick="selectMonth(this, 1)">FEVEREIRO</button>
@@ -516,24 +513,21 @@
         <button class="month-btn" onclick="selectMonth(this, 10)">NOVEMBRO</button>
         <button class="month-btn" onclick="selectMonth(this, 11)">DEZEMBRO</button>
 
-        <!-- CAMPO DE PESQUISA -->
         <div class="search-container">
             <i class="fa-solid fa-magnifying-glass search-icon"></i>
             <input type="text" id="searchInput" class="search-input" placeholder="Pesquisar por Nome, Delivery ou Cliente..." onkeyup="filterTable()">
         </div>
     </nav>
 
-    <!-- FAIXA DOS DIAS GERADA DINAMICAMENTE -->
     <div class="days-strip" id="daysStrip">
     </div>
 
-    <!-- CONTEÚDO PRINCIPAL -->
     <main>
         <div class="report-card">
             <div class="report-header">
                 <h2 id="reportTitle"><i class="fa-regular fa-calendar-check" style="color: var(--accent-blue)"></i> Relatório de Coletas: <span id="currentDateText">03/08/2026</span></h2>
                 <div style="display: flex; gap: 15px; align-items: center;">
-                    <span class="excel-hint"><i class="fa-brands fa-whatsapp" style="color: #25D366"></i> Botão WhatsApp Verde: Copia a mensagem exata para o motorista</span>
+                    <span class="excel-hint"><i class="fa-brands fa-whatsapp" style="color: #25D366"></i> Pesquisa em tempo real e digitação estabilizadas!</span>
                     <div class="report-actions">
                         <button class="btn btn-add" onclick="addNewRow()"><i class="fa-solid fa-plus"></i> Adicionar Coleta</button>
                         <button class="btn btn-save" onclick="saveCurrentDayColetas()"><i class="fa-solid fa-floppy-disk"></i> Salvar no Supabase</button>
@@ -659,7 +653,6 @@
             }
         }
 
-        /* BOTÃO DE COPIAR MENSAGEM DO WHATSAPP DE ALTA COMPATIBILIDADE */
         function copyWppText(btn) {
             const tr = btn.closest('tr');
             const wppText = tr.querySelector('.wpp-text')?.innerText || '';
@@ -879,20 +872,26 @@
         }
 
         function filterTable() {
-            const query = document.getElementById('searchInput').value.toLowerCase().trim();
+            const searchInput = document.getElementById('searchInput');
+            if (!searchInput) return;
+            const query = searchInput.value.toLowerCase().trim();
             const rows = document.querySelectorAll('#tableBody tr');
 
             rows.forEach(tr => {
-                const driverSelect = tr.querySelector('.driver-select');
-                if (!driverSelect) return;
-                const driverText = driverSelect.selectedOptions[0].text.toLowerCase();
-                const inputs = tr.querySelectorAll('input');
-                let match = false;
+                if (tr.querySelector('.empty-day-message')) return;
 
-                if (driverText.includes(query)) match = true;
+                if (!query) {
+                    tr.style.display = '';
+                    return;
+                }
+
+                const driverSelect = tr.querySelector('.driver-select');
+                const driverText = driverSelect ? driverSelect.selectedOptions[0].text.toLowerCase() : '';
+                const inputs = tr.querySelectorAll('input');
+                let match = driverText.includes(query);
 
                 inputs.forEach(input => {
-                    if (input.value.toLowerCase().includes(query)) {
+                    if (input.value && input.value.toLowerCase().includes(query)) {
                         match = true;
                     }
                 });
