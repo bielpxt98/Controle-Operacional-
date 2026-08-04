@@ -1031,6 +1031,50 @@
             }
         }
 
+        let searchDebounceTimeout = null;
+
+        function filterTable() {
+            const q = document.getElementById('searchInput').value.trim().toLowerCase();
+            
+            if (!q) {
+                fetchDayDataFromSupabase(activeDateStr);
+                return;
+            }
+
+            clearTimeout(searchDebounceTimeout);
+            searchDebounceTimeout = setTimeout(async () => {
+                const tbody = document.getElementById('tableBody');
+                const mobileCards = document.getElementById('mobileCards');
+
+                try {
+                    const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+                    const json = await res.json();
+                    if (json.status === 'success') {
+                        tbody.innerHTML = '';
+                        if (mobileCards) mobileCards.innerHTML = '';
+
+                        if (json.data.length === 0) {
+                            tbody.innerHTML = `
+                                <tr>
+                                    <td colspan="17" class="empty-day-message">
+                                        <i class="fa-solid fa-magnifying-glass"></i>
+                                        Nenhum registro encontrado para "<strong>${q}</strong>" em todo o banco de dados.
+                                    </td>
+                                </tr>
+                            `;
+                            if (mobileCards) {
+                                mobileCards.innerHTML = `<div style="text-align:center;padding:2rem;color:#64748b">Nenhum registro encontrado para "${q}".</div>`;
+                            }
+                        } else {
+                            json.data.forEach(rec => appendRowFromData(rec));
+                        }
+                    }
+                } catch (e) {
+                    console.error("Erro na busca global:", e);
+                }
+            }, 300);
+        }
+
         async function fetchDayDataFromSupabase(dateStr) {
             const tbody = document.getElementById('tableBody');
             
