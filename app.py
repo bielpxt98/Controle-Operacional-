@@ -73,7 +73,6 @@ def index():
 
 @app.route("/ping", methods=["GET"])
 def ping():
-    """Rota de Keep-Alive para o UptimeRobot manter o Render e o Supabase acordados 24/7."""
     try:
         url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=id&limit=1"
         res = requests.get(url, headers=get_headers(), timeout=5)
@@ -104,6 +103,7 @@ def save_coletas():
     try:
         saved_items = []
         for item in coletas:
+            # Usa o nome exato da coluna do Supabase: 'observacoes' (no plural)
             registro = {
                 "data": data_operacao or item.get("data"),
                 "motorista": item.get("motorista") or "",
@@ -116,7 +116,7 @@ def save_coletas():
                 "c_horario": str(item.get("c_horario") or ""),
                 "f_horario": str(item.get("f_horario") or ""),
                 "sr": str(item.get("sr") or ""),
-                "observacao": str(item.get("observacao") or item.get("motivo") or ""),
+                "observacoes": str(item.get("observacao") or item.get("motivo") or item.get("observacoes") or ""),
                 "cpf": str(item.get("cpf") or ""),
                 "cavalo": str(item.get("cavalo") or ""),
                 "carreta": str(item.get("carreta") or "")
@@ -130,7 +130,7 @@ def save_coletas():
         return jsonify({"status": "success", "message": "Coletas salvas com sucesso no Supabase!", "saved": saved_items})
     except Exception as e:
         print(f"Erro em POST /api/coletas: {e}")
-        return jsonify({"status": "error", "message": f"Conexão Supabase: {str(e)}"}), 500
+        return jsonify({"status": "error", "message": f"Erro no Supabase: {str(e)}"}), 500
 
 @app.route("/api/coletas/<id_coleta>", methods=["DELETE"])
 def delete_coleta(id_coleta):
@@ -170,7 +170,7 @@ def export_excel():
                     "H_COLETADO": d.get("c_horario", ""),
                     "H_FINALIZADO": d.get("f_horario", ""),
                     "SR": d.get("sr", ""),
-                    "MOTIVO": d.get("observacao") or d.get("observacoes") or "",
+                    "MOTIVO": d.get("observacoes") or d.get("observacao") or "",
                     "CPF": d.get("cpf", ""),
                     "CAVALO": d.get("cavalo", ""),
                     "CARRETA": d.get("carreta", "")
