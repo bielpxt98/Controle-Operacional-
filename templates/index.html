@@ -16,6 +16,8 @@
             --accent-blue-hover: #1d4ed8;
             --accent-green: #10b981;
             --accent-green-hover: #059669;
+            --accent-purple: #8b5cf6;
+            --accent-purple-hover: #7c3aed;
             --text-primary: #f8fafc;
             --text-secondary: #94a3b8;
             --text-muted: #64748b;
@@ -270,12 +272,13 @@
         }
 
         .btn-save {
-            background: #8b5cf6;
+            background: var(--accent-purple);
             color: #fff;
+            box-shadow: 0 0 10px rgba(139, 92, 246, 0.4);
         }
 
         .btn-save:hover {
-            background: #7c3aed;
+            background: var(--accent-purple-hover);
         }
 
         .report-body {
@@ -527,7 +530,7 @@
             <div class="report-header">
                 <h2 id="reportTitle"><i class="fa-regular fa-calendar-check" style="color: var(--accent-blue)"></i> Relatório de Coletas: <span id="currentDateText">03/08/2026</span></h2>
                 <div style="display: flex; gap: 15px; align-items: center;">
-                    <span class="excel-hint"><i class="fa-brands fa-whatsapp" style="color: #25D366"></i> Pesquisa em tempo real e digitação estabilizadas!</span>
+                    <span class="excel-hint"><i class="fa-solid fa-cloud-arrow-up" style="color: #34d399"></i> Conectado ao Supabase com Backup Local de Segurança</span>
                     <div class="report-actions">
                         <button class="btn btn-add" onclick="addNewRow()"><i class="fa-solid fa-plus"></i> Adicionar Coleta</button>
                         <button class="btn btn-save" onclick="saveCurrentDayColetas()"><i class="fa-solid fa-floppy-disk"></i> Salvar no Supabase</button>
@@ -585,6 +588,30 @@
         let currentSelectedMonthIndex = 7;
         let activeDateStr = "03/08/2026";
 
+        // MEMÓRIA LOCAL DE SEGURANÇA
+        function getLocalStore() {
+            try {
+                return JSON.parse(localStorage.getItem('controle_coletas_backup')) || {};
+            } catch (e) { return {}; }
+        }
+
+        function setLocalStore(data) {
+            try {
+                localStorage.setItem('controle_coletas_backup', JSON.stringify(data));
+            } catch (e) {}
+        }
+
+        function saveLocalBackupForDay(dateStr, coletas) {
+            const store = getLocalStore();
+            store[dateStr] = coletas;
+            setLocalStore(store);
+        }
+
+        function getLocalBackupForDay(dateStr) {
+            const store = getLocalStore();
+            return store[dateStr] || [];
+        }
+
         function formatHoraInput(input) {
             let val = input.value.trim().replace(/\D/g, '');
             if (!val || input.value === '-') return;
@@ -598,6 +625,7 @@
                 if (parseInt(mm, 10) > 59) mm = '59';
                 input.value = `${hh}:${mm}`;
             }
+            saveCurrentDayColetasSilent();
         }
 
         function formatValorInput(input) {
@@ -629,6 +657,7 @@
                     input.value = num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                 }
             }
+            saveCurrentDayColetasSilent();
         }
 
         function autoExpandCliente(input) {
@@ -638,6 +667,7 @@
                 input.value = val;
             }
             updateWppMessage(input.closest('tr'));
+            saveCurrentDayColetasSilent();
         }
 
         function updateWppMessage(tr) {
@@ -707,6 +737,7 @@
                 `;
 
                 pill.onclick = () => {
+                    saveCurrentDayColetasSilent();
                     document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active'));
                     pill.classList.add('active');
                     activeDateStr = fullDateStr;
@@ -725,7 +756,18 @@
             try {
                 const res = await fetch(`/api/coletas?data=${encodeURIComponent(dateStr)}`);
                 const json = await res.json();
-                const records = json.data || [];
+                let records = json.data || [];
+
+                // Se o Supabase não retornar registros mas existir backup local, carrega o backup
+                if (records.length === 0) {
+                    const backup = getLocalBackupForDay(dateStr);
+                    if (backup.length > 0) {
+                        records = backup;
+                    }
+                } else {
+                    // Atualiza o backup local com o que veio do Supabase
+                    saveLocalBackupForDay(dateStr, records);
+                }
 
                 tbody.innerHTML = '';
                 if (records.length === 0) {
@@ -745,13 +787,20 @@
                     appendRowFromData(rec);
                 });
             } catch (err) {
-                console.error(err);
+                console.error("Erro ao buscar no Supabase, usando backup local:", err);
+                const backup = getLocalBackupForDay(dateStr);
+                tbody.innerHTML = '';
+                if (backup.length > 0) {
+                    backup.forEach(rec => appendRowFromData(rec));
+                } else {
+                    tbody.innerHTML = `<tr><td colspan="16" class="empty-day-message">Nenhuma coleta encontrada.</td></tr>`;
+                }
             }
         }
 
         function appendRowFromData(rec) {
             const tbody = document.getElementById('tableBody');
-            const driverKey = (rec.motorista || '').toLowerCase().replace(/\s+/g, '_');
+            const driverKey = (rec.motorista || rec.driver || '').toLowerCase().replace(/\s+/g, '_');
             const driverInfo = driverDatabase[driverKey] || { cpf: rec.cpf || "-", cavalo: rec.cavalo || "-", carreta: rec.carreta || "-" };
             
             const tr = document.createElement('tr');
@@ -759,12 +808,12 @@
 
             const deliveryVal = rec.delivery || '';
             const clienteVal = rec.cliente || '';
-            const driverName = rec.motorista || 'WILSON REIS';
+            const driverName = rec.motorista || (driverDatabase[driverKey] ? driverDatabase[driverKey].name : 'WILSON REIS');
             const wppText = `${deliveryVal} - ${clienteVal} -@${driverName}`;
 
             tr.innerHTML = `
                 <td>
-                    <select class="driver-select" onchange="updateDriverData(this); updateWppMessage(this.closest('tr'))">
+                    <select class="driver-select" onchange="updateDriverData(this); updateWppMessage(this.closest('tr')); saveCurrentDayColetasSilent();">
                         <option value="wilson_reis" ${driverKey.includes('wilson')?'selected':''}>WILSON REIS ▼</option>
                         <option value="gabriel_borges" ${driverKey.includes('gabriel')?'selected':''}>GABRIEL BORGES ▼</option>
                         <option value="argemiro_borges" ${driverKey.includes('argemiro')?'selected':''}>ARGEMIRO BORGES ▼</option>
@@ -777,16 +826,16 @@
                         <option value="leandro_de_andrade" ${driverKey.includes('leandro')?'selected':''}>LEANDRO DE ANDRADE ▼</option>
                     </select>
                 </td>
-                <td><input type="text" class="input-delivery" value="${deliveryVal}" style="font-weight: 700; color: #60a5fa;" oninput="updateWppMessage(this.closest('tr'))"></td>
+                <td><input type="text" class="input-delivery" value="${deliveryVal}" style="font-weight: 700; color: #60a5fa;" oninput="updateWppMessage(this.closest('tr'))" onblur="saveCurrentDayColetasSilent()"></td>
                 <td><input type="text" class="input-cliente" value="${clienteVal}" title="${clienteVal}" onblur="autoExpandCliente(this)" onchange="autoExpandCliente(this)" oninput="updateWppMessage(this.closest('tr'))"></td>
-                <td><input type="number" class="input-paletes" value="${rec.paletes || ''}"></td>
-                <td><input type="number" class="input-pc" value="${rec.pc || ''}" style="color: #34d399; font-weight: 700;"></td>
+                <td><input type="number" class="input-paletes" value="${rec.paletes || ''}" onblur="saveCurrentDayColetasSilent()"></td>
+                <td><input type="number" class="input-pc" value="${rec.pc || rec.coletados || ''}" style="color: #34d399; font-weight: 700;" onblur="saveCurrentDayColetasSilent()"></td>
                 <td><input type="text" class="input-valor" value="${rec.valor || ''}" onblur="formatValorInput(this)" onchange="formatValorInput(this)"></td>
-                <td><input type="text" class="input-lhorario" value="${rec.l_horario || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
-                <td><input type="text" class="input-chorario" value="${rec.c_horario || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
-                <td><input type="text" class="input-fhorario" value="${rec.f_horario || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
-                <td><input type="text" class="input-sr" value="${rec.sr || ''}"></td>
-                <td><input type="text" class="input-observacao" value="${rec.observacao || ''}"></td>
+                <td><input type="text" class="input-lhorario" value="${rec.l_horario || rec.h_local || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
+                <td><input type="text" class="input-chorario" value="${rec.c_horario || rec.h_coletado || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
+                <td><input type="text" class="input-fhorario" value="${rec.f_horario || rec.h_finalizado || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
+                <td><input type="text" class="input-sr" value="${rec.sr || ''}" onblur="saveCurrentDayColetasSilent()"></td>
+                <td><input type="text" class="input-observacao" value="${rec.observacao || rec.motivo || ''}" onblur="saveCurrentDayColetasSilent()"></td>
                 <td><span class="auto-tag cpf-val">${driverInfo.cpf}</span></td>
                 <td><span class="auto-tag cavalo-val">${driverInfo.cavalo}</span></td>
                 <td><span class="auto-tag carreta-val">${driverInfo.carreta}</span></td>
@@ -812,7 +861,7 @@
             }
         }
 
-        async function saveCurrentDayColetas() {
+        function collectRowsFromUI() {
             const rows = document.querySelectorAll('#tableBody tr');
             const coletas = [];
 
@@ -824,8 +873,8 @@
                 const id = tr.getAttribute('data-id');
                 const delivery = tr.querySelector('.input-delivery')?.value || '';
                 const cliente = tr.querySelector('.input-cliente')?.value || '';
-                const paletes = tr.querySelector('.input-paletes')?.value || 0;
-                const pc = tr.querySelector('.input-pc')?.value || 0;
+                const paletes = tr.querySelector('.input-paletes')?.value || '';
+                const pc = tr.querySelector('.input-pc')?.value || '';
                 const valor = tr.querySelector('.input-valor')?.value || '';
                 const l_horario = tr.querySelector('.input-lhorario')?.value || '';
                 const c_horario = tr.querySelector('.input-chorario')?.value || '';
@@ -844,6 +893,19 @@
                     });
                 }
             });
+            return coletas;
+        }
+
+        function saveCurrentDayColetasSilent() {
+            const coletas = collectRowsFromUI();
+            if (coletas.length > 0) {
+                saveLocalBackupForDay(activeDateStr, coletas);
+            }
+        }
+
+        async function saveCurrentDayColetas() {
+            saveCurrentDayColetasSilent();
+            const coletas = collectRowsFromUI();
 
             try {
                 const res = await fetch('/api/coletas', {
@@ -852,22 +914,28 @@
                     body: JSON.stringify({ data: activeDateStr, coletas })
                 });
                 const json = await res.json();
-                alert(json.message || "Salvo com sucesso!");
-                fetchDayDataFromSupabase(activeDateStr);
+                
+                if (json.status === "success") {
+                    alert(json.message || "Coletas salvas com sucesso no Supabase!");
+                    fetchDayDataFromSupabase(activeDateStr);
+                } else {
+                    alert("Aviso ao salvar no Supabase: " + json.message + "\n\nSeus dados foram salvos no backup local por segurança!");
+                }
             } catch (err) {
-                alert("Erro ao salvar: " + err);
+                alert("Salvo no backup local! (Erro de rede no Supabase: " + err + ")");
             }
         }
 
         function selectMonth(btn, monthIdx) {
+            saveCurrentDayColetasSilent();
             document.querySelectorAll('.month-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentSelectedMonthIndex = monthIdx;
-            renderDaysStrip(currentSelectedYear, monthIdx);
             
             const firstDateStr = `01/${String(monthIdx+1).padStart(2,'0')}/${currentSelectedYear}`;
             activeDateStr = firstDateStr;
             document.getElementById('currentDateText').innerText = firstDateStr;
+            renderDaysStrip(currentSelectedYear, monthIdx);
             fetchDayDataFromSupabase(firstDateStr);
         }
 
@@ -973,6 +1041,7 @@
                 delivery: "", cliente: "", paletes: "", pc: "", valor: "",
                 l_horario: "", c_horario: "", f_horario: "", sr: "", observacao: ""
             });
+            saveCurrentDayColetasSilent();
         }
 
         async function deleteRow(btn) {
@@ -982,9 +1051,11 @@
                 if (confirm("Deseja realmente excluir esta coleta do Supabase?")) {
                     await fetch(`/api/coletas/${id}`, { method: 'DELETE' });
                     tr.remove();
+                    saveCurrentDayColetasSilent();
                 }
             } else {
                 tr.remove();
+                saveCurrentDayColetasSilent();
             }
         }
 

@@ -12,18 +12,36 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "sb_publishable_8pSOHjRSllI9wWVYPk
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-DRIVER_DATABASE = {
-    "wilson_reis": {"name": "WILSON REIS", "cpf": "806.984.765-49", "cavalo": "JJF1856", "carreta": "NVQ8447"},
-    "gabriel_borges": {"name": "GABRIEL BORGES", "cpf": "809.066.155-87", "cavalo": "KJY3204", "carreta": "KGG1152"},
-    "argemiro_borges": {"name": "ARGEMIRO BORGES", "cpf": "041.604.865-09", "cavalo": "PEG7666", "carreta": "DTD8506"},
-    "valdemir_de_jesus": {"name": "VALDEMIR DE JESUS", "cpf": "044.327.095-37", "cavalo": "HWB9F22", "carreta": "-"},
-    "jones_rosario": {"name": "JONES ROSARIO", "cpf": "533.594.654.00", "cavalo": "JHX3C33", "carreta": "KKT9007"},
-    "luis_carlos": {"name": "LUIS CARLOS", "cpf": "934.560.345-04", "cavalo": "KLB5018", "carreta": "NKZ6545"},
-    "fabio_souza": {"name": "FABIO SOUZA", "cpf": "007.714.335-30", "cavalo": "PEJ4695", "carreta": "NLB7814"},
-    "jean_robson": {"name": "JEAN ROBSON", "cpf": "032.795.865-00", "cavalo": "HWB9F22", "carreta": "-"},
-    "ariel_nascimento": {"name": "ARIEL NASCIMENTO", "cpf": "050.153.565-95", "cavalo": "JVL8A44", "carreta": "-"},
-    "leandro_de_andrade": {"name": "LEANDRO DE ANDRADE", "cpf": "017.793.835.84", "cavalo": "NZP7012", "carreta": "-"}
-}
+def format_date_variants(date_str):
+    """Retorna uma lista com variações de data (03/08/2026 e 2026-08-03) para buscar no Supabase sem erros."""
+    if not date_str:
+        return []
+    variants = [date_str]
+    try:
+        if "/" in date_str:
+            parts = date_str.split("/")
+            if len(parts) == 3:
+                # DD/MM/YYYY -> YYYY-MM-DD
+                iso_date = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+                variants.append(iso_date)
+        elif "-" in date_str:
+            parts = date_str.split("-")
+            if len(parts) == 3:
+                # YYYY-MM-DD -> DD/MM/YYYY
+                br_date = f"{parts[2].zfill(2)}/{parts[1].zfill(2)}/{parts[0]}"
+                variants.append(br_date)
+    except Exception:
+        pass
+    return list(set(variants))
+
+def sanitize_number(val):
+    """Converte valores numéricos como paletes e pc para inteiros/floats ou None se vazios."""
+    if val is None or val == "" or val == "-":
+        return None
+    try:
+        return int(float(str(val).replace(",", ".")))
+    except Exception:
+        return None
 
 @app.route("/")
 def index():
@@ -33,11 +51,20 @@ def index():
 def get_coletas():
     data_filtro = request.args.get("data")
     try:
-        query = supabase.table("deliveries").select("*")
+        # Busca todas as coletas ou filtra pelas variações de data
+        response = supabase.table("deliveries").select("*").execute()
+        all_data = response.data or []
+
         if data_filtro:
-            query = query.eq("data", data_filtro)
-        response = query.execute()
-        return jsonify({"status": "success", "data": response.data or []})
+            variants = set(format_date_variants(data_filtro))
+            filtered = []
+            for item in all_data:
+                item_date = str(item.get("data", "")).strip()
+                if item_date in variants:
+                    filtered.append(item)
+            return jsonify({"status": "success", "data": filtered})
+        
+        return jsonify({"status": "success", "data": all_data})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -48,32 +75,52 @@ def save_coletas():
     data_operacao = payload.get("data")
 
     try:
+        saved_items = []
         for item in coletas:
+            # Sanitiza os campos para evitar erros de tipo no Postgres/Supabase
             registro = {
                 "data": data_operacao or item.get("data"),
-                "motorista": item.get("motorista"),
-                "delivery": item.get("delivery"),
-                "cliente": item.get("cliente"),
-                "paletes": item.get("paletes"),
-                "pc": item.get("pc"),
-                "valor": item.get("valor"),
-                "l_horario": item.get("l_horario"),
-                "c_horario": item.get("c_horario"),
-                "f_horario": item.get("f_horario"),
-                "sr": item.get("sr"),
-                "observacao": item.get("observacao"),
-                "cpf": item.get("cpf"),
-                "cavalo": item.get("cavalo"),
-                "carreta": item.get("carreta")
+                "motorista": item.get("motorista") or "",
+                "delivery": item.get("delivery") or "",
+                "cliente": item.get("cliente") or "",
+                "paletes": sanitize_number(item.get("paletes")),
+                "pc": sanitize_number(item.get("pc")),
+                "valor": str(item.get("valor") or ""),
+                "l_horario": str(item.get("l_horario") or ""),
+                "c_horario": str(item.get("c_horario") or ""),
+                "f_horario": str(item.get("f_horario") or ""),
+                "sr": str(item.get("sr") or ""),
+                "observacao": str(item.get("observacao") or item.get("motivo") or ""),
+                "observacoes": str(item.get("observacao") or item.get("motivo") or ""), # Compatibilidade
+                "cpf": str(item.get("cpf") or ""),
+                "cavalo": str(item.get("cavalo") or ""),
+                "carreta": str(item.get("carreta") or "")
             }
-            if item.get("id"):
-                supabase.table("deliveries").update(registro).eq("id", item["id"]).execute()
-            else:
-                supabase.table("deliveries").insert(registro).execute()
 
-        return jsonify({"status": "success", "message": "Coletas salvas com sucesso no Supabase!"})
+            # Tenta atualizar por ID se existir, ou por delivery, ou insere novo
+            record_id = item.get("id")
+            delivery = item.get("delivery")
+
+            if record_id:
+                res = supabase.table("deliveries").update(registro).eq("id", record_id).execute()
+            elif delivery:
+                # Verifica se a delivery já existe no banco
+                existing = supabase.table("deliveries").select("id").eq("delivery", delivery).execute()
+                if existing.data and len(existing.data) > 0:
+                    ex_id = existing.data[0]["id"]
+                    res = supabase.table("deliveries").update(registro).eq("id", ex_id).execute()
+                else:
+                    res = supabase.table("deliveries").insert(registro).execute()
+            else:
+                res = supabase.table("deliveries").insert(registro).execute()
+            
+            if res.data:
+                saved_items.extend(res.data)
+
+        return jsonify({"status": "success", "message": "Coletas salvas com sucesso no Supabase!", "saved": saved_items})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        print(f"Erro ao salvar no Supabase: {e}")
+        return jsonify({"status": "error", "message": f"Erro no Supabase: {str(e)}"}), 500
 
 @app.route("/api/coletas/<id_coleta>", methods=["DELETE"])
 def delete_coleta(id_coleta):
@@ -87,11 +134,14 @@ def delete_coleta(id_coleta):
 def export_excel():
     data_filtro = request.args.get("data")
     try:
-        query = supabase.table("deliveries").select("*")
+        res = supabase.table("deliveries").select("*").execute()
+        all_data = res.data or []
+
         if data_filtro:
-            query = query.eq("data", data_filtro)
-        res = query.execute()
-        data = res.data or []
+            variants = set(format_date_variants(data_filtro))
+            data = [d for d in all_data if str(d.get("data", "")).strip() in variants]
+        else:
+            data = all_data
 
         if not data:
             df = pd.DataFrame(columns=[
@@ -112,7 +162,7 @@ def export_excel():
                     "H_COLETADO": d.get("c_horario", ""),
                     "H_FINALIZADO": d.get("f_horario", ""),
                     "SR": d.get("sr", ""),
-                    "MOTIVO": d.get("observacao", ""),
+                    "MOTIVO": d.get("observacao") or d.get("observacoes") or "",
                     "CPF": d.get("cpf", ""),
                     "CAVALO": d.get("cavalo", ""),
                     "CARRETA": d.get("carreta", "")
