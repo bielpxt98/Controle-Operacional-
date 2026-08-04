@@ -1395,13 +1395,29 @@
         async function deleteCard(btn) {
             const card = btn.closest('.coleta-card');
             const id = card.getAttribute('data-id');
+            const index = Array.from(card.parentNode.children).indexOf(card);
+            
             if (id) {
                 if (!confirm('Excluir esta coleta do Supabase?')) return;
                 try { await fetch(`/api/coletas/${id}`, { method: 'DELETE' }); } catch(e) {}
             }
             card.remove();
+            
+            const trs = document.querySelectorAll('#tableBody tr');
+            if (trs[index]) trs[index].remove();
+
             saveCurrentDayColetasSilent();
             if (document.querySelectorAll('.coleta-card').length === 0) {
+                const tbody = document.getElementById('tableBody');
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="17" class="empty-day-message">
+                            <i class="fa-regular fa-folder-open"></i>
+                            Nenhuma coleta registrada para o dia ${activeDateStr}.<br>
+                            <span style="font-size: 0.8rem; color: #64748b">Clique no botão "<strong>+ Adicionar Coleta</strong>" acima para incluir um novo registro.</span>
+                        </td>
+                    </tr>
+                `;
                 document.getElementById('mobileCards').innerHTML = `<div style="text-align:center;padding:2rem;color:#64748b"><i class="fa-regular fa-folder-open" style="font-size:2rem;margin-bottom:8px;display:block"></i>Nenhuma coleta neste dia.</div>`;
                 saveLocalBackupForDay(activeDateStr, []);
             }
@@ -1558,34 +1574,7 @@
             fetchDayDataFromSupabase(firstDateStr);
         }
 
-        function filterTable() {
-            const searchInput = document.getElementById('searchInput');
-            if (!searchInput) return;
-            const query = searchInput.value.toLowerCase().trim();
-            const rows = document.querySelectorAll('#tableBody tr');
 
-            rows.forEach(tr => {
-                if (tr.querySelector('.empty-day-message')) return;
-
-                if (!query) {
-                    tr.style.display = '';
-                    return;
-                }
-
-                const driverSelect = tr.querySelector('.driver-select');
-                const driverText = driverSelect ? driverSelect.selectedOptions[0].text.toLowerCase() : '';
-                const inputs = tr.querySelectorAll('input');
-                let match = driverText.includes(query);
-
-                inputs.forEach(input => {
-                    if (input.value && input.value.toLowerCase().includes(query)) {
-                        match = true;
-                    }
-                });
-
-                tr.style.display = match ? '' : 'none';
-            });
-        }
 
         function saveColumnWidths() {
             const widths = {};
@@ -1671,8 +1660,10 @@
         async function deleteRow(btn) {
             const tr = btn.closest('tr');
             const id = tr.getAttribute('data-id');
+            const index = Array.from(tr.parentNode.children).indexOf(tr);
 
             if (id) {
+                if (!confirm('Excluir esta coleta do Supabase?')) return;
                 try {
                     await fetch(`/api/coletas/${id}`, { method: 'DELETE' });
                 } catch (e) {
@@ -1681,6 +1672,10 @@
             }
 
             tr.remove();
+            
+            const cards = document.querySelectorAll('.coleta-card');
+            if (cards[index]) cards[index].remove();
+
             saveCurrentDayColetasDirectAsync(activeDateStr);
 
             const tbody = document.getElementById('tableBody');
@@ -1694,6 +1689,7 @@
                         </td>
                     </tr>
                 `;
+                document.getElementById('mobileCards').innerHTML = `<div style="text-align:center;padding:2rem;color:#64748b"><i class="fa-regular fa-folder-open" style="font-size:2rem;margin-bottom:8px;display:block"></i>Nenhuma coleta neste dia.</div>`;
                 saveLocalBackupForDay(activeDateStr, []);
             }
         }
