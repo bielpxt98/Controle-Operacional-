@@ -1513,12 +1513,19 @@
             return coletas;
         }
 
+        function isSearchActive() {
+            const searchInput = document.getElementById('searchInput');
+            return searchInput && searchInput.value.trim() !== '';
+        }
+
         function saveCurrentDayColetasSilent() {
+            if (isSearchActive()) return;
             const coletas = collectRowsFromUI();
             saveLocalBackupForDay(activeDateStr, coletas);
         }
 
         function saveCurrentDayColetasDirectAsync(dateForSave) {
+            if (isSearchActive()) return;
             saveCurrentDayColetasSilent();
             const coletas = collectRowsFromUI();
             if (coletas.length === 0) return;
@@ -1532,6 +1539,10 @@
         }
 
         async function saveCurrentDayColetasWithAuth() {
+            if (isSearchActive()) {
+                alert("Não é possível salvar enquanto a pesquisa global estiver ativa. Limpe o campo de busca (X) para voltar ao dia normal e salvar.");
+                return;
+            }
             const pwd = prompt("Digite a senha para salvar no Supabase:");
             if (pwd !== "2008") {
                 alert("Senha incorreta! As alterações não foram salvas no Supabase.");
