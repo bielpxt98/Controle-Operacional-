@@ -590,9 +590,12 @@
         };
 
         const dayNamesShort = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
-        let currentSelectedYear = 2026;
-        let currentSelectedMonthIndex = 7;
-        let activeDateStr = "03/08/2026";
+        const _today = new Date();
+        let currentSelectedYear = _today.getFullYear();
+        let currentSelectedMonthIndex = _today.getMonth();
+        const _todayDay = String(_today.getDate()).padStart(2, '0');
+        const _todayMonth = String(_today.getMonth() + 1).padStart(2, '0');
+        let activeDateStr = `${_todayDay}/${_todayMonth}/${_today.getFullYear()}`;
 
         function getLocalStore() {
             try {
@@ -778,8 +781,9 @@
                     pill.classList.add('active');
                 }
 
+                const isToday = (day === _today.getDate() && monthIdx === _today.getMonth() && year === _today.getFullYear());
                 pill.innerHTML = `
-                    <span class="num">${day} ${dayOfWeek} ${day === 3 && monthIdx === 7 ? '(HOJE)' : ''}</span>
+                    <span class="num">${day} ${dayOfWeek} ${isToday ? '(HOJE)' : ''}</span>
                     <span class="count">coletas</span>
                 `;
 
@@ -1075,8 +1079,13 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             loadColumnWidths();
-            renderDaysStrip(2026, 7);
-            fetchDayDataFromSupabase('03/08/2026');
+            // Marca o botão do mês atual como ativo
+            document.querySelectorAll('.month-btn').forEach((btn, idx) => {
+                btn.classList.toggle('active', idx === currentSelectedMonthIndex);
+            });
+            document.getElementById('currentDateText').innerText = activeDateStr;
+            renderDaysStrip(currentSelectedYear, currentSelectedMonthIndex);
+            fetchDayDataFromSupabase(activeDateStr);
 
             const table = document.getElementById('resizableTable');
             const cols = table.querySelectorAll('th');
