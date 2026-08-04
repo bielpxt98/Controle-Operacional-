@@ -170,6 +170,23 @@ def save_coletas():
     real_cols = get_real_table_columns()
 
     try:
+        # Sincroniza exclusões: deleta do Supabase coletas daquele dia que foram removidas da tela
+        if data_operacao:
+            try:
+                variants = set(format_date_variants(data_operacao))
+                existing_for_day = [item for item in db_select_all() if str(item.get("data", "")).strip() in variants]
+                incoming_ids = set(str(c.get("id")) for c in coletas if c.get("id"))
+                for ex in existing_for_day:
+                    ex_id = str(ex.get("id"))
+                    if ex_id and ex_id not in incoming_ids:
+                        print(f"Deletando coleta excluida do Supabase: ID {ex_id}")
+                        try:
+                            db_delete(ex_id)
+                        except Exception as del_err:
+                            print(f"Erro ao deletar ID {ex_id}: {del_err}")
+            except Exception as sync_err:
+                print(f"Erro ao sincronizar exclusoes: {sync_err}")
+
         saved_items = []
         for item in coletas:
             obs_value = str(item.get("observacao") or item.get("motivo") or item.get("observacoes") or "").strip()

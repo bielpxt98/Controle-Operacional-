@@ -1673,7 +1673,6 @@
             const id = tr.getAttribute('data-id');
 
             if (id) {
-                if (!confirm("Deseja realmente excluir esta coleta do Supabase?")) return;
                 try {
                     await fetch(`/api/coletas/${id}`, { method: 'DELETE' });
                 } catch (e) {
@@ -1682,7 +1681,7 @@
             }
 
             tr.remove();
-            saveCurrentDayColetasSilent();
+            saveCurrentDayColetasDirectAsync(activeDateStr);
 
             const tbody = document.getElementById('tableBody');
             if (tbody.querySelectorAll('tr').length === 0) {
