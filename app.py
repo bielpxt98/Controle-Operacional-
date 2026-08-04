@@ -71,6 +71,16 @@ def db_delete(id_coleta):
 def index():
     return render_template("index.html")
 
+@app.route("/ping", methods=["GET"])
+def ping():
+    """Rota de Keep-Alive para o UptimeRobot manter o Render e o Supabase acordados 24/7."""
+    try:
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=id&limit=1"
+        res = requests.get(url, headers=get_headers(), timeout=5)
+        return jsonify({"status": "online", "render": "OK", "supabase": "OK" if res.status_code in [200, 201] else "PAUSED"}), 200
+    except Exception as e:
+        return jsonify({"status": "online", "render": "OK", "supabase": str(e)}), 200
+
 @app.route("/api/coletas", methods=["GET"])
 def get_coletas():
     data_filtro = request.args.get("data")
