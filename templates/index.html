@@ -873,7 +873,9 @@
             const driverName = rec.motorista || (driverDatabase[driverKey] ? driverDatabase[driverKey].name : 'WILSON REIS');
             const valorRaw = rec.valor || rec.valor_frete || rec.valor_total || rec.val_frete || '';
             const valorVal = formatValorForDisplay(valorRaw);
-            const dfVal = rec.df || rec.data_finalizacao || (rec.f_horario ? activeDateStr : '');
+            // DF só exibe se H_FINALIZADO estiver preenchido
+            const fHorarioVal = rec.f_horario || rec.h_finalizado || '';
+            const dfVal = fHorarioVal ? (rec.df || rec.data_finalizacao || '') : '';
             const wppText = `${deliveryVal} - ${clienteVal} -@${driverName}`;
 
             tr.innerHTML = `
@@ -1130,7 +1132,7 @@
             appendRowFromData({
                 motorista: "WILSON REIS",
                 delivery: "", cliente: "", paletes: "", pc: "", valor: "",
-                l_horario: "", c_horario: "", f_horario: "", df: activeDateStr, sr: "", observacao: ""
+                l_horario: "", c_horario: "", f_horario: "", df: "", sr: "", observacao: ""
             });
             saveCurrentDayColetasSilent();
         }
