@@ -627,6 +627,16 @@
             saveCurrentDayColetasSilent();
         }
 
+        function formatValorForDisplay(val) {
+            if (val === null || val === undefined || val === '') return '';
+            if (typeof val === 'string' && val.includes('R$')) return val;
+            let num = parseFloat(val);
+            if (!isNaN(num)) {
+                return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            }
+            return val;
+        }
+
         function formatValorInput(input) {
             let val = input.value.trim();
             if (!val || val === '-') return;
@@ -758,7 +768,6 @@
                 let records = json.data || [];
                 const backup = getLocalBackupForDay(dateStr);
 
-                // Mescla com backup local se o Supabase não tiver o campo valor preenchido em algum item
                 if (records.length === 0 && backup.length > 0) {
                     records = backup;
                 } else if (records.length > 0 && backup.length > 0) {
@@ -810,7 +819,8 @@
             const deliveryVal = rec.delivery || '';
             const clienteVal = rec.cliente || '';
             const driverName = rec.motorista || (driverDatabase[driverKey] ? driverDatabase[driverKey].name : 'WILSON REIS');
-            const valorVal = rec.valor || rec.valor_frete || rec.valor_total || rec.val_frete || '';
+            const valorRaw = rec.valor || rec.valor_frete || rec.valor_total || rec.val_frete || '';
+            const valorVal = formatValorForDisplay(valorRaw);
             const wppText = `${deliveryVal} - ${clienteVal} -@${driverName}`;
 
             tr.innerHTML = `

@@ -44,6 +44,19 @@ def sanitize_number(val):
     except Exception:
         return None
 
+def parse_valor_numeric(val):
+    """Converte 'R$ 2.189,60' para float 2189.60 para o Postgres aceitar em colunas do tipo NUMERIC."""
+    if val is None or val == "" or val == "-" or str(val).strip() == "":
+        return None
+    try:
+        clean = str(val).replace("R$", "").replace(" ", "").replace("\xa0", "").strip()
+        if "," in clean:
+            clean = clean.replace(".", "").replace(",", ".")
+        num = float(clean)
+        return num
+    except Exception:
+        return None
+
 def get_real_table_columns():
     try:
         url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=*&limit=1"
@@ -123,10 +136,10 @@ def save_coletas():
         saved_items = []
         for item in coletas:
             obs_value = str(item.get("observacao") or item.get("motivo") or item.get("observacoes") or "").strip()
-            valor_value = str(item.get("valor") or item.get("valor_frete") or item.get("valor_total") or item.get("val_frete") or "").strip()
+            valor_raw = item.get("valor") or item.get("valor_frete") or item.get("valor_total") or item.get("val_frete")
+            valor_num = parse_valor_numeric(valor_raw)
             f_horario_val = str(item.get("f_horario") or "").strip()
             
-            # Se a coleta foi finalizada (f_horario preenchido), define DF (Data Feita / Data Finalizacao)
             data_finalizacao_val = data_operacao if f_horario_val and f_horario_val != "-" else None
 
             raw_registro = {
@@ -136,10 +149,10 @@ def save_coletas():
                 "cliente": item.get("cliente") or "",
                 "paletes": sanitize_number(item.get("paletes")),
                 "pc": sanitize_number(item.get("pc")),
-                "valor": valor_value if valor_value else None,
-                "valor_frete": valor_value if valor_value else None,
-                "valor_total": valor_value if valor_value else None,
-                "val_frete": valor_value if valor_value else None,
+                "valor": valor_num,
+                "valor_frete": valor_num,
+                "valor_total": valor_num,
+                "val_frete": valor_num,
                 "l_horario": str(item.get("l_horario") or "").strip() or None,
                 "c_horario": str(item.get("c_horario") or "").strip() or None,
                 "f_horario": f_horario_val or None,
@@ -158,7 +171,6 @@ def save_coletas():
             else:
                 registro = raw_registro
 
-            # Limpa qualquer string vazia "" para None para evitar erro 22P02 no Postgres
             registro_final = {k: (None if v == "" or v == "-" else v) for k, v in registro.items()}
 
             rec_id = item.get("id")
@@ -203,7 +215,12 @@ def export_excel():
         else:
             rows = []
             for d in data:
-                val_display = d.get("valor") or d.get("valor_frete") or d.get("valor_total") or d.get("val_frete") or ""
+                val_raw = d.get("valor") or d.get("valor_frete") or d.get("valor_total") or d.get("val_frete")
+                if isinstance(val_raw, (int, float)):
+                    val_display = f"R$ {val_raw:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
+                else:
+                    val_display = str(val_raw or "")
+                
                 df_display = d.get("data_finalizacao") or d.get("df") or ""
                 rows.append({
                     "MOTORISTA": d.get("motorista", ""),
