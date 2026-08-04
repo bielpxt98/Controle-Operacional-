@@ -535,7 +535,7 @@
             <div class="report-header">
                 <h2 id="reportTitle"><i class="fa-regular fa-calendar-check" style="color: var(--accent-blue)"></i> Relatório de Coletas: <span id="currentDateText">03/08/2026</span></h2>
                 <div style="display: flex; gap: 15px; align-items: center;">
-                    <span class="excel-hint"><i class="fa-solid fa-lock" style="color: #a78bfa"></i> Protegido por Senha (2008) com Resposta Ultra-Rápida</span>
+                    <span class="excel-hint"><i class="fa-solid fa-lock" style="color: #a78bfa"></i> Protegido por Senha com Resposta Ultra-Rápida</span>
                     <div class="report-actions">
                         <button class="btn btn-add" onclick="addNewRow()"><i class="fa-solid fa-plus"></i> Adicionar Coleta</button>
                         <button class="btn btn-save" onclick="saveCurrentDayColetasWithAuth()"><i class="fa-solid fa-floppy-disk"></i> Salvar no Supabase</button>
@@ -655,21 +655,37 @@
         }
 
         function formatHoraInput(input) {
-            let val = input.value.trim().replace(/\D/g, '');
-            if (!val || input.value === '-') return;
+            let raw = input.value.trim();
+            if (!raw || raw === '-') return;
 
-            if (val.length === 3) val = '0' + val;
+            // Remove tudo que nao for digito ou ponto
+            let val = raw.replace(/\D/g, '');
+            if (!val) return;
 
-            if (val.length >= 4) {
-                let hh = val.substring(0, 2);
-                let mm = val.substring(2, 4);
-                if (parseInt(hh, 10) > 23) hh = '23';
-                if (parseInt(mm, 10) > 59) mm = '59';
-                input.value = `${hh}:${mm}`;
+            let hh, mm;
 
-                // Se preencheu H_FINALIZADO e DF está vazio, sugere a data atual
-                const tr = input.closest('tr');
-                const dfInput = tr ? tr.querySelector('.input-df') : null;
+            if (val.length <= 2) {
+                // Ex: '9' -> 09:00, '17' -> 17:00
+                hh = val.padStart(2, '0');
+                mm = '00';
+            } else if (val.length === 3) {
+                // Ex: '930' -> 09:30
+                hh = '0' + val[0];
+                mm = val.substring(1, 3);
+            } else {
+                // Ex: '1730' -> 17:30
+                hh = val.substring(0, 2);
+                mm = val.substring(2, 4);
+            }
+
+            if (parseInt(hh, 10) > 23) hh = '23';
+            if (parseInt(mm, 10) > 59) mm = '59';
+            input.value = `${hh}:${mm}`;
+
+            // Se foi preenchido H_FINALIZADO e DF esta vazio, sugere a data do dia ativo
+            const tr = input.closest('tr');
+            if (tr && input.classList.contains('input-fhorario')) {
+                const dfInput = tr.querySelector('.input-df');
                 if (dfInput && !dfInput.value.trim()) {
                     dfInput.value = activeDateStr;
                 }
