@@ -1,19 +1,23 @@
 import os
 from flask import Flask, render_template, request, jsonify, send_file
-from supabase import create_client
+import requests
 import pandas as pd
 from io import BytesIO
-from datetime import datetime
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://zkqzejnflpzknuuirlav.supabase.co")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "sb_publishable_8pSOHjRSllI9wWVYPkmYFA_AfzxV-QS")
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+def get_headers():
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
 
 def format_date_variants(date_str):
-    """Retorna uma lista com variações de data (03/08/2026 e 2026-08-03) para buscar no Supabase sem erros."""
     if not date_str:
         return []
     variants = [date_str]
@@ -21,13 +25,11 @@ def format_date_variants(date_str):
         if "/" in date_str:
             parts = date_str.split("/")
             if len(parts) == 3:
-                # DD/MM/YYYY -> YYYY-MM-DD
                 iso_date = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
                 variants.append(iso_date)
         elif "-" in date_str:
             parts = date_str.split("-")
             if len(parts) == 3:
-                # YYYY-MM-DD -> DD/MM/YYYY
                 br_date = f"{parts[2].zfill(2)}/{parts[1].zfill(2)}/{parts[0]}"
                 variants.append(br_date)
     except Exception:
@@ -35,13 +37,35 @@ def format_date_variants(date_str):
     return list(set(variants))
 
 def sanitize_number(val):
-    """Converte valores numéricos como paletes e pc para inteiros/floats ou None se vazios."""
     if val is None or val == "" or val == "-":
         return None
     try:
         return int(float(str(val).replace(",", ".")))
     except Exception:
         return None
+
+def db_select_all():
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=*"
+    res = requests.get(url, headers=get_headers(), timeout=12)
+    if res.status_code in [200, 201]:
+        return res.json()
+    raise Exception(f"HTTP {res.status_code}: {res.text}")
+
+def db_upsert(registro):
+    headers = get_headers()
+    headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries"
+    res = requests.post(url, headers=headers, json=registro, timeout=12)
+    if res.status_code in [200, 201]:
+        return res.json()
+    raise Exception(f"HTTP {res.status_code}: {res.text}")
+
+def db_delete(id_coleta):
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?id=eq.{id_coleta}"
+    res = requests.delete(url, headers=get_headers(), timeout=12)
+    if res.status_code in [200, 204]:
+        return True
+    raise Exception(f"HTTP {res.status_code}: {res.text}")
 
 @app.route("/")
 def index():
@@ -51,21 +75,14 @@ def index():
 def get_coletas():
     data_filtro = request.args.get("data")
     try:
-        # Busca todas as coletas ou filtra pelas variações de data
-        response = supabase.table("deliveries").select("*").execute()
-        all_data = response.data or []
-
+        all_data = db_select_all()
         if data_filtro:
             variants = set(format_date_variants(data_filtro))
-            filtered = []
-            for item in all_data:
-                item_date = str(item.get("data", "")).strip()
-                if item_date in variants:
-                    filtered.append(item)
+            filtered = [item for item in all_data if str(item.get("data", "")).strip() in variants]
             return jsonify({"status": "success", "data": filtered})
-        
         return jsonify({"status": "success", "data": all_data})
     except Exception as e:
+        print(f"Erro em GET /api/coletas: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/coletas", methods=["POST"])
@@ -77,7 +94,6 @@ def save_coletas():
     try:
         saved_items = []
         for item in coletas:
-            # Sanitiza os campos para evitar erros de tipo no Postgres/Supabase
             registro = {
                 "data": data_operacao or item.get("data"),
                 "motorista": item.get("motorista") or "",
@@ -91,41 +107,25 @@ def save_coletas():
                 "f_horario": str(item.get("f_horario") or ""),
                 "sr": str(item.get("sr") or ""),
                 "observacao": str(item.get("observacao") or item.get("motivo") or ""),
-                "observacoes": str(item.get("observacao") or item.get("motivo") or ""), # Compatibilidade
                 "cpf": str(item.get("cpf") or ""),
                 "cavalo": str(item.get("cavalo") or ""),
                 "carreta": str(item.get("carreta") or "")
             }
+            if item.get("id"):
+                registro["id"] = item["id"]
 
-            # Tenta atualizar por ID se existir, ou por delivery, ou insere novo
-            record_id = item.get("id")
-            delivery = item.get("delivery")
-
-            if record_id:
-                res = supabase.table("deliveries").update(registro).eq("id", record_id).execute()
-            elif delivery:
-                # Verifica se a delivery já existe no banco
-                existing = supabase.table("deliveries").select("id").eq("delivery", delivery).execute()
-                if existing.data and len(existing.data) > 0:
-                    ex_id = existing.data[0]["id"]
-                    res = supabase.table("deliveries").update(registro).eq("id", ex_id).execute()
-                else:
-                    res = supabase.table("deliveries").insert(registro).execute()
-            else:
-                res = supabase.table("deliveries").insert(registro).execute()
-            
-            if res.data:
-                saved_items.extend(res.data)
+            res = db_upsert(registro)
+            saved_items.extend(res if isinstance(res, list) else [res])
 
         return jsonify({"status": "success", "message": "Coletas salvas com sucesso no Supabase!", "saved": saved_items})
     except Exception as e:
-        print(f"Erro ao salvar no Supabase: {e}")
-        return jsonify({"status": "error", "message": f"Erro no Supabase: {str(e)}"}), 500
+        print(f"Erro em POST /api/coletas: {e}")
+        return jsonify({"status": "error", "message": f"Conexão Supabase: {str(e)}"}), 500
 
 @app.route("/api/coletas/<id_coleta>", methods=["DELETE"])
 def delete_coleta(id_coleta):
     try:
-        supabase.table("deliveries").delete().eq("id", id_coleta).execute()
+        db_delete(id_coleta)
         return jsonify({"status": "success", "message": "Coleta excluída com sucesso."})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -134,9 +134,7 @@ def delete_coleta(id_coleta):
 def export_excel():
     data_filtro = request.args.get("data")
     try:
-        res = supabase.table("deliveries").select("*").execute()
-        all_data = res.data or []
-
+        all_data = db_select_all()
         if data_filtro:
             variants = set(format_date_variants(data_filtro))
             data = [d for d in all_data if str(d.get("data", "")).strip() in variants]
