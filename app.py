@@ -3,6 +3,7 @@ from flask import Flask, render_template, request, jsonify, send_file
 import requests
 import pandas as pd
 from io import BytesIO
+from datetime import datetime
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
@@ -50,6 +51,29 @@ def format_date_variants(date_str):
     except Exception:
         pass
     return list(set(variants))
+
+def parse_date_for_sort(date_str):
+    if not date_str:
+        return datetime.min
+    d_str = str(date_str).strip()
+    try:
+        if "/" in d_str:
+            parts = d_str.split("/")
+            if len(parts) == 3:
+                # DD/MM/YYYY
+                return datetime(int(parts[2]), int(parts[1]), int(parts[0]))
+        elif "-" in d_str:
+            parts = d_str.split("-")
+            if len(parts) == 3:
+                if len(parts[0]) == 4:
+                    # YYYY-MM-DD
+                    return datetime(int(parts[0]), int(parts[1]), int(parts[2]))
+                else:
+                    # DD-MM-YYYY
+                    return datetime(int(parts[2]), int(parts[1]), int(parts[0]))
+    except Exception:
+        pass
+    return datetime.min
 
 def sanitize_number(val):
     if val is None or val == "" or val == "-":
@@ -142,6 +166,10 @@ def search_coletas():
             row_str = " ".join([str(v) for v in item.values() if v is not None]).lower()
             if q in row_str:
                 results.append(item)
+                
+        # Sort results by recent dates first
+        results.sort(key=lambda x: parse_date_for_sort(x.get("data", "")), reverse=True)
+        
         return jsonify({"status": "success", "data": results, "total": len(results)})
     except Exception as e:
         print(f"Erro em search_coletas: {e}")
