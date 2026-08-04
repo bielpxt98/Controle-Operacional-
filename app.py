@@ -123,6 +123,7 @@ def save_coletas():
         saved_items = []
         for item in coletas:
             obs_value = str(item.get("observacao") or item.get("motivo") or item.get("observacoes") or "")
+            valor_value = str(item.get("valor") or item.get("valor_frete") or item.get("valor_total") or item.get("val_frete") or "")
             
             raw_registro = {
                 "data": data_operacao or item.get("data"),
@@ -131,20 +132,26 @@ def save_coletas():
                 "cliente": item.get("cliente") or "",
                 "paletes": sanitize_number(item.get("paletes")),
                 "pc": sanitize_number(item.get("pc")),
-                "valor": str(item.get("valor") or ""),
+                "valor": valor_value,
+                "valor_frete": valor_value,
+                "valor_total": valor_value,
+                "val_frete": valor_value,
                 "l_horario": str(item.get("l_horario") or ""),
                 "c_horario": str(item.get("c_horario") or ""),
                 "f_horario": str(item.get("f_horario") or ""),
                 "sr": str(item.get("sr") or ""),
                 "observacoes": obs_value,
+                "observacao": obs_value,
                 "cpf": str(item.get("cpf") or ""),
                 "cavalo": str(item.get("cavalo") or ""),
                 "carreta": str(item.get("carreta") or "")
             }
 
-            # Filtra para remover a chave 'id' do payload e chaves inexistentes no banco
             if real_cols:
                 registro = {k: v for k, v in raw_registro.items() if k in real_cols and k != "id"}
+                # Se 'valor' não estiver em real_cols, garante que pelo menos uma das chaves de valor vá
+                if not any(k in registro for k in ["valor", "valor_frete", "valor_total", "val_frete"]):
+                    registro["valor"] = valor_value
             else:
                 registro = raw_registro
 
@@ -152,10 +159,8 @@ def save_coletas():
             is_valid_id = rec_id is not None and str(rec_id).isdigit() and int(rec_id) > 0
 
             if is_valid_id:
-                # Atualização de registro existente por ID (PATCH)
                 res = db_update_by_id(int(rec_id), registro)
             else:
-                # Criação de novo registro sem o ID (POST) -> Postgres gera o ID automaticamente!
                 res = db_insert_new(registro)
 
             saved_items.extend(res if isinstance(res, list) else [res])
@@ -192,13 +197,14 @@ def export_excel():
         else:
             rows = []
             for d in data:
+                val_display = d.get("valor") or d.get("valor_frete") or d.get("valor_total") or d.get("val_frete") or ""
                 rows.append({
                     "MOTORISTA": d.get("motorista", ""),
                     "DELIVERY": d.get("delivery", ""),
                     "CLIENTES": d.get("cliente", ""),
                     "PALETES": d.get("paletes", ""),
                     "PALETES COLETADO": d.get("pc", ""),
-                    "VALOR": d.get("valor", ""),
+                    "VALOR": val_display,
                     "H_LOCAL": d.get("l_horario", ""),
                     "H_COLETADO": d.get("c_horario", ""),
                     "H_FINALIZADO": d.get("f_horario", ""),

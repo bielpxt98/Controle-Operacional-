@@ -756,14 +756,18 @@
                 const res = await fetch(`/api/coletas?data=${encodeURIComponent(dateStr)}`);
                 const json = await res.json();
                 let records = json.data || [];
+                const backup = getLocalBackupForDay(dateStr);
 
-                if (records.length === 0) {
-                    const backup = getLocalBackupForDay(dateStr);
-                    if (backup.length > 0) {
-                        records = backup;
-                    }
-                } else {
-                    saveLocalBackupForDay(dateStr, records);
+                // Mescla com backup local se o Supabase não tiver o campo valor preenchido em algum item
+                if (records.length === 0 && backup.length > 0) {
+                    records = backup;
+                } else if (records.length > 0 && backup.length > 0) {
+                    records.forEach(rec => {
+                        const match = backup.find(b => (b.id && b.id == rec.id) || (b.delivery && b.delivery == rec.delivery));
+                        if (match) {
+                            if (!rec.valor && match.valor) rec.valor = match.valor;
+                        }
+                    });
                 }
 
                 tbody.innerHTML = '';
@@ -806,6 +810,7 @@
             const deliveryVal = rec.delivery || '';
             const clienteVal = rec.cliente || '';
             const driverName = rec.motorista || (driverDatabase[driverKey] ? driverDatabase[driverKey].name : 'WILSON REIS');
+            const valorVal = rec.valor || rec.valor_frete || rec.valor_total || rec.val_frete || '';
             const wppText = `${deliveryVal} - ${clienteVal} -@${driverName}`;
 
             tr.innerHTML = `
@@ -827,7 +832,7 @@
                 <td><input type="text" class="input-cliente" value="${clienteVal}" title="${clienteVal}" onblur="autoExpandCliente(this)" onchange="autoExpandCliente(this)" oninput="updateWppMessage(this.closest('tr'))"></td>
                 <td><input type="number" class="input-paletes" value="${rec.paletes || ''}" onblur="saveCurrentDayColetasSilent()"></td>
                 <td><input type="number" class="input-pc" value="${rec.pc || rec.coletados || ''}" style="color: #34d399; font-weight: 700;" onblur="saveCurrentDayColetasSilent()"></td>
-                <td><input type="text" class="input-valor" value="${rec.valor || ''}" onblur="formatValorInput(this)" onchange="formatValorInput(this)"></td>
+                <td><input type="text" class="input-valor" value="${valorVal}" onblur="formatValorInput(this)" onchange="formatValorInput(this)"></td>
                 <td><input type="text" class="input-lhorario" value="${rec.l_horario || rec.h_local || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
                 <td><input type="text" class="input-chorario" value="${rec.c_horario || rec.h_coletado || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
                 <td><input type="text" class="input-fhorario" value="${rec.f_horario || rec.h_finalizado || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
