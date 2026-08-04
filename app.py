@@ -44,6 +44,17 @@ def sanitize_number(val):
     except Exception:
         return None
 
+def get_real_table_columns():
+    """Consulta as colunas reais da tabela no Supabase para nunca enviar colunas inexistentes."""
+    try:
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=*&limit=1"
+        res = requests.get(url, headers=get_headers(), timeout=5)
+        if res.status_code == 200 and res.json():
+            return set(res.json()[0].keys())
+    except Exception as e:
+        print(f"Erro ao consultar colunas reais: {e}")
+    return None
+
 def db_select_all():
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=*"
     res = requests.get(url, headers=get_headers(), timeout=12)
@@ -100,11 +111,15 @@ def save_coletas():
     coletas = payload.get("coletas", [])
     data_operacao = payload.get("data")
 
+    # Consulta as colunas reais da tabela deliveries no Supabase
+    real_cols = get_real_table_columns()
+
     try:
         saved_items = []
         for item in coletas:
-            # Usa o nome exato da coluna do Supabase: 'observacoes' (no plural)
-            registro = {
+            obs_value = str(item.get("observacao") or item.get("motivo") or item.get("observacoes") or "")
+            
+            raw_registro = {
                 "data": data_operacao or item.get("data"),
                 "motorista": item.get("motorista") or "",
                 "delivery": item.get("delivery") or "",
@@ -116,13 +131,21 @@ def save_coletas():
                 "c_horario": str(item.get("c_horario") or ""),
                 "f_horario": str(item.get("f_horario") or ""),
                 "sr": str(item.get("sr") or ""),
-                "observacoes": str(item.get("observacao") or item.get("motivo") or item.get("observacoes") or ""),
+                "observacoes": obs_value,
+                "observacao": obs_value,
                 "cpf": str(item.get("cpf") or ""),
                 "cavalo": str(item.get("cavalo") or ""),
                 "carreta": str(item.get("carreta") or "")
             }
             if item.get("id"):
-                registro["id"] = item["id"]
+                raw_registro["id"] = item["id"]
+
+            # Se consultou as colunas reais, filtra para enviar SOMENTE o que existe fisicamente no banco
+            if real_cols:
+                registro = {k: v for k, v in raw_registro.items() if k in real_cols}
+            else:
+                registro = raw_registro
+                registro.pop("observacao", None) # Remove 'observacao' no singular por segurança se não soubermos
 
             res = db_upsert(registro)
             saved_items.extend(res if isinstance(res, list) else [res])
