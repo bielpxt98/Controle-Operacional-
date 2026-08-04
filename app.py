@@ -122,9 +122,13 @@ def save_coletas():
     try:
         saved_items = []
         for item in coletas:
-            obs_value = str(item.get("observacao") or item.get("motivo") or item.get("observacoes") or "")
-            valor_value = str(item.get("valor") or item.get("valor_frete") or item.get("valor_total") or item.get("val_frete") or "")
+            obs_value = str(item.get("observacao") or item.get("motivo") or item.get("observacoes") or "").strip()
+            valor_value = str(item.get("valor") or item.get("valor_frete") or item.get("valor_total") or item.get("val_frete") or "").strip()
+            f_horario_val = str(item.get("f_horario") or "").strip()
             
+            # Se a coleta foi finalizada (f_horario preenchido), define DF (Data Feita / Data Finalizacao)
+            data_finalizacao_val = data_operacao if f_horario_val and f_horario_val != "-" else None
+
             raw_registro = {
                 "data": data_operacao or item.get("data"),
                 "motorista": item.get("motorista") or "",
@@ -132,36 +136,38 @@ def save_coletas():
                 "cliente": item.get("cliente") or "",
                 "paletes": sanitize_number(item.get("paletes")),
                 "pc": sanitize_number(item.get("pc")),
-                "valor": valor_value,
-                "valor_frete": valor_value,
-                "valor_total": valor_value,
-                "val_frete": valor_value,
-                "l_horario": str(item.get("l_horario") or ""),
-                "c_horario": str(item.get("c_horario") or ""),
-                "f_horario": str(item.get("f_horario") or ""),
-                "sr": str(item.get("sr") or ""),
-                "observacoes": obs_value,
-                "observacao": obs_value,
-                "cpf": str(item.get("cpf") or ""),
-                "cavalo": str(item.get("cavalo") or ""),
-                "carreta": str(item.get("carreta") or "")
+                "valor": valor_value if valor_value else None,
+                "valor_frete": valor_value if valor_value else None,
+                "valor_total": valor_value if valor_value else None,
+                "val_frete": valor_value if valor_value else None,
+                "l_horario": str(item.get("l_horario") or "").strip() or None,
+                "c_horario": str(item.get("c_horario") or "").strip() or None,
+                "f_horario": f_horario_val or None,
+                "data_finalizacao": data_finalizacao_val,
+                "df": data_finalizacao_val,
+                "sr": str(item.get("sr") or "").strip() or None,
+                "observacoes": obs_value if obs_value else None,
+                "observacao": obs_value if obs_value else None,
+                "cpf": str(item.get("cpf") or "").strip() or None,
+                "cavalo": str(item.get("cavalo") or "").strip() or None,
+                "carreta": str(item.get("carreta") or "").strip() or None
             }
 
             if real_cols:
                 registro = {k: v for k, v in raw_registro.items() if k in real_cols and k != "id"}
-                # Se 'valor' não estiver em real_cols, garante que pelo menos uma das chaves de valor vá
-                if not any(k in registro for k in ["valor", "valor_frete", "valor_total", "val_frete"]):
-                    registro["valor"] = valor_value
             else:
                 registro = raw_registro
+
+            # Limpa qualquer string vazia "" para None para evitar erro 22P02 no Postgres
+            registro_final = {k: (None if v == "" or v == "-" else v) for k, v in registro.items()}
 
             rec_id = item.get("id")
             is_valid_id = rec_id is not None and str(rec_id).isdigit() and int(rec_id) > 0
 
             if is_valid_id:
-                res = db_update_by_id(int(rec_id), registro)
+                res = db_update_by_id(int(rec_id), registro_final)
             else:
-                res = db_insert_new(registro)
+                res = db_insert_new(registro_final)
 
             saved_items.extend(res if isinstance(res, list) else [res])
 
@@ -192,12 +198,13 @@ def export_excel():
         if not data:
             df = pd.DataFrame(columns=[
                 "MOTORISTA", "DELIVERY", "CLIENTES", "PALETES", "PALETES COLETADO",
-                "VALOR", "H_LOCAL", "H_COLETADO", "H_FINALIZADO", "SR", "MOTIVO", "CPF", "CAVALO", "CARRETA"
+                "VALOR", "H_LOCAL", "H_COLETADO", "H_FINALIZADO", "DATA FINALIZACAO (DF)", "SR", "MOTIVO", "CPF", "CAVALO", "CARRETA"
             ])
         else:
             rows = []
             for d in data:
                 val_display = d.get("valor") or d.get("valor_frete") or d.get("valor_total") or d.get("val_frete") or ""
+                df_display = d.get("data_finalizacao") or d.get("df") or ""
                 rows.append({
                     "MOTORISTA": d.get("motorista", ""),
                     "DELIVERY": d.get("delivery", ""),
@@ -208,6 +215,7 @@ def export_excel():
                     "H_LOCAL": d.get("l_horario", ""),
                     "H_COLETADO": d.get("c_horario", ""),
                     "H_FINALIZADO": d.get("f_horario", ""),
+                    "DATA FINALIZACAO (DF)": df_display,
                     "SR": d.get("sr", ""),
                     "MOTIVO": d.get("observacoes") or d.get("observacao") or "",
                     "CPF": d.get("cpf", ""),
