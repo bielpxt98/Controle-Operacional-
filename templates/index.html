@@ -723,7 +723,7 @@
 
         <div class="search-container">
             <i class="fa-solid fa-magnifying-glass search-icon"></i>
-            <input type="text" id="searchInput" class="search-input" placeholder="Pesquisar por Nome, Delivery ou Cliente..." onkeyup="filterTable()">
+            <input type="text" id="searchInput" class="search-input" placeholder="Pesquisar por Nome, Delivery ou Cliente..." autocomplete="off" oninput="filterTable()" onkeyup="filterTable()">
         </div>
     </nav>
 
@@ -1182,6 +1182,7 @@
             tr.innerHTML = `
                 <td>
                     <select class="driver-select" onchange="updateDriverData(this); updateWppMessage(this.closest('tr')); saveCurrentDayColetasSilent();">
+                        <option value="" ${(!driverKey || driverKey === '')?'selected':''}>-- SELECIONE --</option>
                         <option value="wilson_reis" ${driverKey.includes('wilson')?'selected':''}>WILSON REIS ▼</option>
                         <option value="gabriel_borges" ${driverKey.includes('gabriel')?'selected':''}>GABRIEL BORGES ▼</option>
                         <option value="argemiro_borges" ${driverKey.includes('argemiro')?'selected':''}>ARGEMIRO BORGES ▼</option>
@@ -1244,6 +1245,7 @@
             card.innerHTML = `
                 <div class="coleta-card-header">
                     <select class="card-driver-select driver-select" onchange="updateCardDriverData(this); updateCardWpp(this.closest('.coleta-card')); saveCurrentDayColetasSilent();">
+                        <option value="" ${(!driverKey || driverKey === '')?'selected':''}>-- SELECIONE MOTORISTA --</option>
                         <option value="wilson_reis" ${driverKey.includes('wilson')?'selected':''}>WILSON REIS</option>
                         <option value="gabriel_borges" ${driverKey.includes('gabriel')?'selected':''}>GABRIEL BORGES</option>
                         <option value="argemiro_borges" ${driverKey.includes('argemiro')?'selected':''}>ARGEMIRO BORGES</option>
@@ -1637,7 +1639,7 @@
             }
 
             appendRowFromData({
-                motorista: "WILSON REIS",
+                motorista: "",
                 delivery: "", cliente: "", paletes: "", pc: "", valor: "",
                 l_horario: "", c_horario: "", f_horario: "", df: "", sr: "", observacao: ""
             });
