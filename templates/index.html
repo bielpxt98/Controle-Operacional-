@@ -7,6 +7,206 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        /* ===== MOBILE RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            header {
+                padding: 0.6rem 1rem;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .header-title h1 {
+                font-size: 0.85rem;
+            }
+            .header-logo-img { height: 28px; }
+            .user-menu { font-size: 0.72rem; padding: 4px 10px; }
+
+            .months-nav {
+                padding: 0.4rem 0.75rem;
+                gap: 4px;
+            }
+            .month-btn { padding: 5px 10px; font-size: 0.7rem; }
+            .search-container { min-width: 100%; margin-left: 0; margin-top: 4px; }
+
+            .days-strip { padding: 0.5rem 0.75rem; gap: 6px; }
+            .day-pill { min-width: 70px; padding: 6px 8px; }
+            .day-pill .num { font-size: 0.75rem; }
+
+            main { padding: 0.6rem 0.75rem; }
+
+            .report-header {
+                flex-direction: column;
+                align-items: flex-start;
+                padding: 0.7rem 1rem;
+                gap: 8px;
+            }
+            .report-header h2 { font-size: 0.9rem; }
+            .excel-hint { display: none; }
+            .report-actions {
+                display: flex;
+                gap: 6px;
+                width: 100%;
+                flex-wrap: wrap;
+            }
+            .btn {
+                font-size: 0.72rem;
+                padding: 8px 10px;
+                flex: 1;
+                justify-content: center;
+                min-width: 0;
+            }
+
+            /* Esconde a tabela no celular */
+            .table-responsive { display: none; }
+
+            /* Mostra os cards no celular */
+            .mobile-cards { display: flex !important; flex-direction: column; gap: 12px; }
+        }
+
+        @media (min-width: 769px) {
+            .mobile-cards { display: none !important; }
+        }
+
+        /* Card de coleta para mobile */
+        .mobile-cards {
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .coleta-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 12px;
+            position: relative;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .coleta-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .card-driver-select {
+            background: #0f172a;
+            color: #38bdf8;
+            font-weight: 700;
+            border: 1px solid #3b82f6;
+            padding: 6px 8px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            flex: 1;
+            margin-right: 8px;
+        }
+
+        .card-delete-btn {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 6px;
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .card-field {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .card-field.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .card-label {
+            font-size: 0.6rem;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .card-input {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid #334155;
+            color: #fff;
+            padding: 7px 8px;
+            border-radius: 6px;
+            font-size: 0.82rem;
+            width: 100%;
+            outline: none;
+        }
+
+        .card-input:focus {
+            border-color: #2563eb;
+            background: rgba(37, 99, 235, 0.12);
+        }
+
+        .card-auto-field {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            padding: 5px 8px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .card-df-input {
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            color: #c4b5fd;
+            font-weight: 600;
+        }
+
+        .card-wpp-row {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px solid #334155;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-wpp-text {
+            flex: 1;
+            font-family: monospace;
+            font-size: 0.72rem;
+            color: #6ee7b7;
+            word-break: break-all;
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 6px;
+            padding: 6px 8px;
+        }
+
+        .card-copy-btn {
+            background: #25D366;
+            color: #052e16;
+            border: none;
+            border-radius: 6px;
+            padding: 7px 12px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
         :root {
             --bg-primary: #0b1120;
             --bg-secondary: #131c31;
@@ -571,6 +771,8 @@
                         </tbody>
                     </table>
                 </div>
+                <!-- MODO CELULAR: cards em vez de tabela -->
+                <div class="mobile-cards" id="mobileCards"></div>
             </div>
         </div>
     </main>
@@ -836,9 +1038,11 @@
             const backup = getLocalBackupForDay(dateStr);
             if (backup.length > 0) {
                 tbody.innerHTML = '';
+                document.getElementById('mobileCards').innerHTML = '';
                 backup.forEach(rec => appendRowFromData(rec));
             } else {
                 tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2rem;">Carregando coletas do Supabase...</td></tr>`;
+                document.getElementById('mobileCards').innerHTML = `<div style="text-align:center;padding:2rem;color:#64748b">Carregando...</div>`;
             }
 
             // 2. BUSCA NO SUPABASE EM SEGUNDO PLANO PARA ATUALIZAR
@@ -867,6 +1071,7 @@
 
                 if (activeDateStr === dateStr) {
                     tbody.innerHTML = '';
+                    document.getElementById('mobileCards').innerHTML = '';
                     if (records.length === 0) {
                         tbody.innerHTML = `
                             <tr>
@@ -942,6 +1147,170 @@
                 <td><button class="btn-delete-row" onclick="deleteRow(this)" title="Excluir"><i class="fa-solid fa-trash"></i></button></td>
             `;
             tbody.appendChild(tr);
+
+            // Renderiza card mobile tambem
+            appendCardFromData(rec);
+        }
+
+        function appendCardFromData(rec) {
+            const mobileCards = document.getElementById('mobileCards');
+            if (!mobileCards) return;
+
+            const driverKey = (rec.motorista || '').toLowerCase().replace(/\s+/g, '_');
+            const driverInfo = driverDatabase[driverKey] || { cpf: rec.cpf || '-', cavalo: rec.cavalo || '-', carreta: rec.carreta || '-' };
+            const deliveryVal = rec.delivery || '';
+            const clienteVal = rec.cliente || '';
+            const driverName = rec.motorista || 'WILSON REIS';
+            const valorRaw = rec.valor || rec.valor_frete || rec.valor_total || '';
+            const valorVal = formatValorForDisplay(valorRaw);
+            const fHorarioVal = rec.f_horario || rec.h_finalizado || '';
+            const dfVal = fHorarioVal ? (rec.df || rec.data_finalizacao || '') : '';
+            const wppText = `${deliveryVal} - ${clienteVal} -@${driverName}`;
+
+            const card = document.createElement('div');
+            card.className = 'coleta-card';
+            if (rec.id) card.setAttribute('data-id', rec.id);
+
+            card.innerHTML = `
+                <div class="coleta-card-header">
+                    <select class="card-driver-select driver-select" onchange="updateCardDriverData(this); updateCardWpp(this.closest('.coleta-card')); saveCurrentDayColetasSilent();">
+                        <option value="wilson_reis" ${driverKey.includes('wilson')?'selected':''}>WILSON REIS</option>
+                        <option value="gabriel_borges" ${driverKey.includes('gabriel')?'selected':''}>GABRIEL BORGES</option>
+                        <option value="argemiro_borges" ${driverKey.includes('argemiro')?'selected':''}>ARGEMIRO BORGES</option>
+                        <option value="valdemir_de_jesus" ${driverKey.includes('valdemir')?'selected':''}>VALDEMIR DE JESUS</option>
+                        <option value="jones_rosario" ${driverKey.includes('jones')?'selected':''}>JONES ROSARIO</option>
+                        <option value="luis_carlos" ${driverKey.includes('luis')?'selected':''}>LUIS CARLOS</option>
+                        <option value="fabio_souza" ${driverKey.includes('fabio')?'selected':''}>FABIO SOUZA</option>
+                        <option value="jean_robson" ${driverKey.includes('jean')?'selected':''}>JEAN ROBSON</option>
+                        <option value="ariel_nascimento" ${driverKey.includes('ariel')?'selected':''}>ARIEL NASCIMENTO</option>
+                        <option value="leandro_de_andrade" ${driverKey.includes('leandro')?'selected':''}>LEANDRO DE ANDRADE</option>
+                    </select>
+                    <button class="card-delete-btn" onclick="deleteCard(this)"><i class="fa-solid fa-trash"></i></button>
+                </div>
+                <div class="card-grid">
+                    <div class="card-field">
+                        <span class="card-label">Delivery</span>
+                        <input type="text" class="card-input input-delivery" value="${deliveryVal}" style="color:#60a5fa;font-weight:700" oninput="updateCardWpp(this.closest('.coleta-card'))" onblur="saveCurrentDayColetasSilent()">
+                    </div>
+                    <div class="card-field">
+                        <span class="card-label">Paletes</span>
+                        <input type="number" class="card-input input-paletes" value="${rec.paletes || ''}" onblur="saveCurrentDayColetasSilent()">
+                    </div>
+                    <div class="card-field full-width">
+                        <span class="card-label">Cliente</span>
+                        <input type="text" class="card-input input-cliente" value="${clienteVal}" onblur="autoExpandCardCliente(this)" oninput="updateCardWpp(this.closest('.coleta-card'))">
+                    </div>
+                    <div class="card-field">
+                        <span class="card-label">P. Coletado</span>
+                        <input type="number" class="card-input input-pc" value="${rec.pc || ''}" style="color:#34d399;font-weight:700" onblur="saveCurrentDayColetasSilent()">
+                    </div>
+                    <div class="card-field">
+                        <span class="card-label">Valor</span>
+                        <input type="text" class="card-input input-valor" value="${valorVal}" onblur="formatValorInput(this)">
+                    </div>
+                    <div class="card-field">
+                        <span class="card-label">H_Local</span>
+                        <input type="text" class="card-input input-lhorario" value="${rec.l_horario || ''}" onblur="formatHoraInput(this)">
+                    </div>
+                    <div class="card-field">
+                        <span class="card-label">H_Coletado</span>
+                        <input type="text" class="card-input input-chorario" value="${rec.c_horario || ''}" onblur="formatHoraInput(this)">
+                    </div>
+                    <div class="card-field">
+                        <span class="card-label">H_Finalizado</span>
+                        <input type="text" class="card-input input-fhorario" value="${fHorarioVal}" onblur="formatHoraInput(this)">
+                    </div>
+                    <div class="card-field">
+                        <span class="card-label" style="color:#a78bfa">DF (Data Feita)</span>
+                        <input type="text" class="card-input card-df-input input-df" value="${dfVal}" placeholder="DD/MM/AAAA" onblur="formatDateInput(this); saveCurrentDayColetasSilent();">
+                    </div>
+                    <div class="card-field">
+                        <span class="card-label">SR</span>
+                        <input type="text" class="card-input input-sr" value="${rec.sr || ''}" onblur="saveCurrentDayColetasSilent()">
+                    </div>
+                    <div class="card-field full-width">
+                        <span class="card-label">Motivo/Obs</span>
+                        <input type="text" class="card-input input-observacao" value="${rec.observacao || rec.observacoes || ''}" onblur="saveCurrentDayColetasSilent()">
+                    </div>
+                    <div class="card-field">
+                        <span class="card-label" style="color:#93c5fd">CPF (AUTO)</span>
+                        <div class="card-auto-field cpf-val">${driverInfo.cpf}</div>
+                    </div>
+                    <div class="card-field">
+                        <span class="card-label" style="color:#93c5fd">Cavalo / Carreta</span>
+                        <div class="card-auto-field"><span class="cavalo-val">${driverInfo.cavalo}</span> / <span class="carreta-val">${driverInfo.carreta}</span></div>
+                    </div>
+                </div>
+                <div class="card-wpp-row">
+                    <div class="card-wpp-text wpp-text">${wppText}</div>
+                    <button class="card-copy-btn" onclick="copyCardWpp(this)"><i class="fa-brands fa-whatsapp"></i> Copiar</button>
+                </div>
+            `;
+            mobileCards.appendChild(card);
+        }
+
+        function updateCardDriverData(sel) {
+            const card = sel.closest('.coleta-card');
+            const data = driverDatabase[sel.value];
+            if (data && card) {
+                card.querySelector('.cpf-val').innerText = data.cpf;
+                card.querySelector('.cavalo-val').innerText = data.cavalo;
+                card.querySelector('.carreta-val').innerText = data.carreta;
+            }
+        }
+
+        function updateCardWpp(card) {
+            const delivery = card.querySelector('.input-delivery')?.value || '';
+            const cliente = card.querySelector('.input-cliente')?.value || '';
+            const sel = card.querySelector('.driver-select');
+            const driverName = sel ? sel.selectedOptions[0].text : '';
+            const wppSpan = card.querySelector('.wpp-text');
+            if (wppSpan) wppSpan.innerText = `${delivery} - ${cliente} -@${driverName}`;
+        }
+
+        function autoExpandCardCliente(input) {
+            let val = input.value.trim();
+            if (/^WMS\b/i.test(val) && !/MAX ATACADO/i.test(val)) {
+                input.value = val.replace(/^WMS\b/i, 'WMS MAX ATACADO');
+            }
+            updateCardWpp(input.closest('.coleta-card'));
+            saveCurrentDayColetasSilent();
+        }
+
+        function copyCardWpp(btn) {
+            const card = btn.closest('.coleta-card');
+            const text = card.querySelector('.wpp-text')?.innerText || '';
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text);
+            } else {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.focus(); ta.select();
+                document.execCommand('copy');
+                ta.remove();
+            }
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> Copiado!';
+            btn.style.background = '#059669'; btn.style.color = '#fff';
+            setTimeout(() => { btn.innerHTML = orig; btn.style.background = '#25D366'; btn.style.color = '#052e16'; }, 1800);
+        }
+
+        async function deleteCard(btn) {
+            const card = btn.closest('.coleta-card');
+            const id = card.getAttribute('data-id');
+            if (id) {
+                if (!confirm('Excluir esta coleta do Supabase?')) return;
+                try { await fetch(`/api/coletas/${id}`, { method: 'DELETE' }); } catch(e) {}
+            }
+            card.remove();
+            saveCurrentDayColetasSilent();
+            if (document.querySelectorAll('.coleta-card').length === 0) {
+                document.getElementById('mobileCards').innerHTML = `<div style="text-align:center;padding:2rem;color:#64748b"><i class="fa-regular fa-folder-open" style="font-size:2rem;margin-bottom:8px;display:block"></i>Nenhuma coleta neste dia.</div>`;
+                saveLocalBackupForDay(activeDateStr, []);
+            }
         }
 
         function updateDriverData(selectElement) {
@@ -956,40 +1325,81 @@
         }
 
         function collectRowsFromUI() {
-            const rows = document.querySelectorAll('#tableBody tr');
             const coletas = [];
+            const seenIds = new Set();
 
-            rows.forEach(tr => {
+            // Lê da tabela desktop
+            document.querySelectorAll('#tableBody tr').forEach(tr => {
                 const driverSelect = tr.querySelector('.driver-select');
                 if (!driverSelect) return;
+                const id = tr.getAttribute('data-id');
+                if (id && seenIds.has(id)) return;
+                if (id) seenIds.add(id);
 
                 const driverName = driverSelect.selectedOptions[0].text.replace(' ▼', '');
-                const id = tr.getAttribute('data-id');
                 const delivery = tr.querySelector('.input-delivery')?.value || '';
                 const cliente = tr.querySelector('.input-cliente')?.value || '';
-                const paletes = tr.querySelector('.input-paletes')?.value || '';
-                const pc = tr.querySelector('.input-pc')?.value || '';
-                const valor = tr.querySelector('.input-valor')?.value || '';
-                const l_horario = tr.querySelector('.input-lhorario')?.value || '';
-                const c_horario = tr.querySelector('.input-chorario')?.value || '';
-                const f_horario = tr.querySelector('.input-fhorario')?.value || '';
-                const df = tr.querySelector('.input-df')?.value || '';
-                const sr = tr.querySelector('.input-sr')?.value || '';
-                const observacao = tr.querySelector('.input-observacao')?.value || '';
-                const cpf = tr.querySelector('.cpf-val')?.innerText || '';
-                const cavalo = tr.querySelector('.cavalo-val')?.innerText || '';
-                const carreta = tr.querySelector('.carreta-val')?.innerText || '';
+                if (!delivery && !cliente && !driverName) return;
 
-                if (delivery || cliente || driverName) {
-                    const itemData = {
-                        data: activeDateStr, motorista: driverName, delivery, cliente,
-                        paletes, pc, valor, l_horario, c_horario, f_horario, df, data_finalizacao: df, sr, observacao,
-                        cpf, cavalo, carreta
-                    };
-                    if (id) itemData.id = id;
-                    coletas.push(itemData);
-                }
+                const item = {
+                    data: activeDateStr,
+                    motorista: driverName,
+                    delivery,
+                    cliente,
+                    paletes: tr.querySelector('.input-paletes')?.value || '',
+                    pc: tr.querySelector('.input-pc')?.value || '',
+                    valor: tr.querySelector('.input-valor')?.value || '',
+                    l_horario: tr.querySelector('.input-lhorario')?.value || '',
+                    c_horario: tr.querySelector('.input-chorario')?.value || '',
+                    f_horario: tr.querySelector('.input-fhorario')?.value || '',
+                    df: tr.querySelector('.input-df')?.value || '',
+                    data_finalizacao: tr.querySelector('.input-df')?.value || '',
+                    sr: tr.querySelector('.input-sr')?.value || '',
+                    observacao: tr.querySelector('.input-observacao')?.value || '',
+                    cpf: tr.querySelector('.cpf-val')?.innerText || '',
+                    cavalo: tr.querySelector('.cavalo-val')?.innerText || '',
+                    carreta: tr.querySelector('.carreta-val')?.innerText || ''
+                };
+                if (id) item.id = id;
+                coletas.push(item);
             });
+
+            // Lê dos cards mobile (apenas os que nao estao na tabela já)
+            document.querySelectorAll('.coleta-card').forEach(card => {
+                const driverSelect = card.querySelector('.driver-select');
+                if (!driverSelect) return;
+                const id = card.getAttribute('data-id');
+                if (id && seenIds.has(id)) return;
+                if (id) seenIds.add(id);
+
+                const driverName = driverSelect.selectedOptions[0].text;
+                const delivery = card.querySelector('.input-delivery')?.value || '';
+                const cliente = card.querySelector('.input-cliente')?.value || '';
+                if (!delivery && !cliente && !driverName) return;
+
+                const item = {
+                    data: activeDateStr,
+                    motorista: driverName,
+                    delivery,
+                    cliente,
+                    paletes: card.querySelector('.input-paletes')?.value || '',
+                    pc: card.querySelector('.input-pc')?.value || '',
+                    valor: card.querySelector('.input-valor')?.value || '',
+                    l_horario: card.querySelector('.input-lhorario')?.value || '',
+                    c_horario: card.querySelector('.input-chorario')?.value || '',
+                    f_horario: card.querySelector('.input-fhorario')?.value || '',
+                    df: card.querySelector('.input-df')?.value || '',
+                    data_finalizacao: card.querySelector('.input-df')?.value || '',
+                    sr: card.querySelector('.input-sr')?.value || '',
+                    observacao: card.querySelector('.input-observacao')?.value || '',
+                    cpf: card.querySelector('.cpf-val')?.innerText || '',
+                    cavalo: card.querySelector('.cavalo-val')?.innerText || '',
+                    carreta: card.querySelector('.carreta-val')?.innerText || ''
+                };
+                if (id) item.id = id;
+                coletas.push(item);
+            });
+
             return coletas;
         }
 
