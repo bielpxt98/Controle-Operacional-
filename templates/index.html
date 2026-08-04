@@ -591,11 +591,20 @@
 
         const dayNamesShort = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
         const _today = new Date();
-        let currentSelectedYear = _today.getFullYear();
-        let currentSelectedMonthIndex = _today.getMonth();
         const _todayDay = String(_today.getDate()).padStart(2, '0');
         const _todayMonth = String(_today.getMonth() + 1).padStart(2, '0');
-        let activeDateStr = `${_todayDay}/${_todayMonth}/${_today.getFullYear()}`;
+        const _todayDateStr = `${_todayDay}/${_todayMonth}/${_today.getFullYear()}`;
+
+        // Restaura o último dia visitado (persiste o F5)
+        const _savedDate = localStorage.getItem('controle_active_date') || _todayDateStr;
+        const _savedParts = _savedDate.split('/');
+        let currentSelectedYear = parseInt(_savedParts[2]) || _today.getFullYear();
+        let currentSelectedMonthIndex = (parseInt(_savedParts[1]) - 1) || _today.getMonth();
+        let activeDateStr = _savedDate;
+
+        function persistActiveDate(dateStr) {
+            localStorage.setItem('controle_active_date', dateStr);
+        }
 
         function getLocalStore() {
             try {
@@ -795,6 +804,7 @@
                     document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active'));
                     pill.classList.add('active');
                     activeDateStr = fullDateStr;
+                    persistActiveDate(fullDateStr);
                     document.getElementById('currentDateText').innerText = fullDateStr;
                     fetchDayDataFromSupabase(fullDateStr);
                 };
@@ -1022,6 +1032,7 @@
             
             const firstDateStr = `01/${String(monthIdx+1).padStart(2,'0')}/${currentSelectedYear}`;
             activeDateStr = firstDateStr;
+            persistActiveDate(firstDateStr);
             document.getElementById('currentDateText').innerText = firstDateStr;
             renderDaysStrip(currentSelectedYear, monthIdx);
             fetchDayDataFromSupabase(firstDateStr);
