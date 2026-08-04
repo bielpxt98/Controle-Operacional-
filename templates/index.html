@@ -768,13 +768,17 @@
                 let records = json.data || [];
                 const backup = getLocalBackupForDay(dateStr);
 
-                if (records.length === 0 && backup.length > 0) {
-                    records = backup;
-                } else if (records.length > 0 && backup.length > 0) {
-                    records.forEach(rec => {
-                        const match = backup.find(b => (b.id && b.id == rec.id) || (b.delivery && b.delivery == rec.delivery));
+                // Une registros do Supabase com os salvamentos recentes do backup local para que NADA suma
+                if (backup.length > 0) {
+                    backup.forEach(bItem => {
+                        const match = records.find(r => 
+                            (r.id && bItem.id && r.id == bItem.id) || 
+                            (r.delivery && bItem.delivery && r.delivery == bItem.delivery)
+                        );
                         if (match) {
-                            if (!rec.valor && match.valor) rec.valor = match.valor;
+                            if (!match.valor && bItem.valor) match.valor = bItem.valor;
+                        } else if (bItem.delivery || bItem.cliente) {
+                            records.push(bItem);
                         }
                     });
                 }

@@ -18,20 +18,36 @@ def get_headers():
     }
 
 def format_date_variants(date_str):
+    """Gera todas as variações possíveis de formato de data (03/08/2026, 3/8/2026, 2026-08-03, 2026-8-3) para nunca perder buscas."""
     if not date_str:
         return []
-    variants = [date_str]
+    variants = [date_str.strip()]
     try:
         if "/" in date_str:
-            parts = date_str.split("/")
+            parts = [p.strip() for p in date_str.split("/")]
             if len(parts) == 3:
-                iso_date = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
-                variants.append(iso_date)
+                day, month, year = parts[0], parts[1], parts[2]
+                day_pad, month_pad = day.zfill(2), month.zfill(2)
+                day_raw, month_raw = str(int(day)), str(int(month))
+                
+                variants.append(f"{day_pad}/{month_pad}/{year}")
+                variants.append(f"{day_raw}/{month_raw}/{year}")
+                variants.append(f"{day_raw}/{month_pad}/{year}")
+                variants.append(f"{day_pad}/{month_raw}/{year}")
+                
+                variants.append(f"{year}-{month_pad}-{day_pad}")
+                variants.append(f"{year}-{month_raw}-{day_raw}")
         elif "-" in date_str:
-            parts = date_str.split("-")
+            parts = [p.strip() for p in date_str.split("-")]
             if len(parts) == 3:
-                br_date = f"{parts[2].zfill(2)}/{parts[1].zfill(2)}/{parts[0]}"
-                variants.append(br_date)
+                year, month, day = parts[0], parts[1], parts[2]
+                day_pad, month_pad = day.zfill(2), month.zfill(2)
+                day_raw, month_raw = str(int(day)), str(int(month))
+                
+                variants.append(f"{day_pad}/{month_pad}/{year}")
+                variants.append(f"{day_raw}/{month_raw}/{year}")
+                variants.append(f"{year}-{month_pad}-{day_pad}")
+                variants.append(f"{year}-{month_raw}-{day_raw}")
     except Exception:
         pass
     return list(set(variants))
@@ -45,15 +61,13 @@ def sanitize_number(val):
         return None
 
 def parse_valor_numeric(val):
-    """Converte 'R$ 2.189,60' para float 2189.60 para o Postgres aceitar em colunas do tipo NUMERIC."""
     if val is None or val == "" or val == "-" or str(val).strip() == "":
         return None
     try:
         clean = str(val).replace("R$", "").replace(" ", "").replace("\xa0", "").strip()
         if "," in clean:
             clean = clean.replace(".", "").replace(",", ".")
-        num = float(clean)
-        return num
+        return float(clean)
     except Exception:
         return None
 
