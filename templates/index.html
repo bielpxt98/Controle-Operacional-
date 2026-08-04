@@ -588,7 +588,6 @@
         let currentSelectedMonthIndex = 7;
         let activeDateStr = "03/08/2026";
 
-        // MEMÓRIA LOCAL DE SEGURANÇA
         function getLocalStore() {
             try {
                 return JSON.parse(localStorage.getItem('controle_coletas_backup')) || {};
@@ -758,14 +757,12 @@
                 const json = await res.json();
                 let records = json.data || [];
 
-                // Se o Supabase não retornar registros mas existir backup local, carrega o backup
                 if (records.length === 0) {
                     const backup = getLocalBackupForDay(dateStr);
                     if (backup.length > 0) {
                         records = backup;
                     }
                 } else {
-                    // Atualiza o backup local com o que veio do Supabase
                     saveLocalBackupForDay(dateStr, records);
                 }
 
@@ -835,7 +832,7 @@
                 <td><input type="text" class="input-chorario" value="${rec.c_horario || rec.h_coletado || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
                 <td><input type="text" class="input-fhorario" value="${rec.f_horario || rec.h_finalizado || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
                 <td><input type="text" class="input-sr" value="${rec.sr || ''}" onblur="saveCurrentDayColetasSilent()"></td>
-                <td><input type="text" class="input-observacao" value="${rec.observacao || rec.motivo || ''}" onblur="saveCurrentDayColetasSilent()"></td>
+                <td><input type="text" class="input-observacao" value="${rec.observacao || rec.motivo || rec.observacoes || ''}" onblur="saveCurrentDayColetasSilent()"></td>
                 <td><span class="auto-tag cpf-val">${driverInfo.cpf}</span></td>
                 <td><span class="auto-tag cavalo-val">${driverInfo.cavalo}</span></td>
                 <td><span class="auto-tag carreta-val">${driverInfo.carreta}</span></td>
@@ -886,11 +883,13 @@
                 const carreta = tr.querySelector('.carreta-val')?.innerText || '';
 
                 if (delivery || cliente || driverName) {
-                    coletas.push({
-                        id, data: activeDateStr, motorista: driverName, delivery, cliente,
+                    const itemData = {
+                        data: activeDateStr, motorista: driverName, delivery, cliente,
                         paletes, pc, valor, l_horario, c_horario, f_horario, sr, observacao,
                         cpf, cavalo, carreta
-                    });
+                    };
+                    if (id) itemData.id = id;
+                    coletas.push(itemData);
                 }
             });
             return coletas;
@@ -898,9 +897,7 @@
 
         function saveCurrentDayColetasSilent() {
             const coletas = collectRowsFromUI();
-            if (coletas.length > 0) {
-                saveLocalBackupForDay(activeDateStr, coletas);
-            }
+            saveLocalBackupForDay(activeDateStr, coletas);
         }
 
         async function saveCurrentDayColetas() {
@@ -1047,15 +1044,31 @@
         async function deleteRow(btn) {
             const tr = btn.closest('tr');
             const id = tr.getAttribute('data-id');
+
             if (id) {
-                if (confirm("Deseja realmente excluir esta coleta do Supabase?")) {
+                if (!confirm("Deseja realmente excluir esta coleta do Supabase?")) return;
+                try {
                     await fetch(`/api/coletas/${id}`, { method: 'DELETE' });
-                    tr.remove();
-                    saveCurrentDayColetasSilent();
+                } catch (e) {
+                    console.error("Erro ao excluir do Supabase:", e);
                 }
-            } else {
-                tr.remove();
-                saveCurrentDayColetasSilent();
+            }
+
+            tr.remove();
+            saveCurrentDayColetasSilent();
+
+            const tbody = document.getElementById('tableBody');
+            if (tbody.querySelectorAll('tr').length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="16" class="empty-day-message">
+                            <i class="fa-regular fa-folder-open"></i>
+                            Nenhuma coleta registrada para o dia ${activeDateStr}.<br>
+                            <span style="font-size: 0.8rem; color: #64748b">Clique no botão "<strong>+ Adicionar Coleta</strong>" acima para incluir um novo registro.</span>
+                        </td>
+                    </tr>
+                `;
+                saveLocalBackupForDay(activeDateStr, []);
             }
         }
 
