@@ -45,7 +45,6 @@ def sanitize_number(val):
         return None
 
 def get_real_table_columns():
-    """Consulta as colunas reais da tabela no Supabase para nunca enviar colunas inexistentes."""
     try:
         url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=*&limit=1"
         res = requests.get(url, headers=get_headers(), timeout=5)
@@ -62,9 +61,16 @@ def db_select_all():
         return res.json()
     raise Exception(f"HTTP {res.status_code}: {res.text}")
 
-def db_upsert(registro):
+def db_update_by_id(rec_id, registro):
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?id=eq.{rec_id}"
+    res = requests.patch(url, headers=get_headers(), json=registro, timeout=12)
+    if res.status_code in [200, 204]:
+        return res.json() if res.content else [{"id": rec_id, **registro}]
+    raise Exception(f"HTTP {res.status_code}: {res.text}")
+
+def db_insert_new(registro):
     headers = get_headers()
-    headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+    headers["Prefer"] = "return=representation"
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries"
     res = requests.post(url, headers=headers, json=registro, timeout=12)
     if res.status_code in [200, 201]:
@@ -111,7 +117,6 @@ def save_coletas():
     coletas = payload.get("coletas", [])
     data_operacao = payload.get("data")
 
-    # Consulta as colunas reais da tabela deliveries no Supabase
     real_cols = get_real_table_columns()
 
     try:
@@ -132,22 +137,27 @@ def save_coletas():
                 "f_horario": str(item.get("f_horario") or ""),
                 "sr": str(item.get("sr") or ""),
                 "observacoes": obs_value,
-                "observacao": obs_value,
                 "cpf": str(item.get("cpf") or ""),
                 "cavalo": str(item.get("cavalo") or ""),
                 "carreta": str(item.get("carreta") or "")
             }
-            if item.get("id"):
-                raw_registro["id"] = item["id"]
 
-            # Se consultou as colunas reais, filtra para enviar SOMENTE o que existe fisicamente no banco
+            # Filtra para remover a chave 'id' do payload e chaves inexistentes no banco
             if real_cols:
-                registro = {k: v for k, v in raw_registro.items() if k in real_cols}
+                registro = {k: v for k, v in raw_registro.items() if k in real_cols and k != "id"}
             else:
                 registro = raw_registro
-                registro.pop("observacao", None) # Remove 'observacao' no singular por segurança se não soubermos
 
-            res = db_upsert(registro)
+            rec_id = item.get("id")
+            is_valid_id = rec_id is not None and str(rec_id).isdigit() and int(rec_id) > 0
+
+            if is_valid_id:
+                # Atualização de registro existente por ID (PATCH)
+                res = db_update_by_id(int(rec_id), registro)
+            else:
+                # Criação de novo registro sem o ID (POST) -> Postgres gera o ID automaticamente!
+                res = db_insert_new(registro)
+
             saved_items.extend(res if isinstance(res, list) else [res])
 
         return jsonify({"status": "success", "message": "Coletas salvas com sucesso no Supabase!", "saved": saved_items})
