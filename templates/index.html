@@ -530,10 +530,10 @@
             <div class="report-header">
                 <h2 id="reportTitle"><i class="fa-regular fa-calendar-check" style="color: var(--accent-blue)"></i> Relatório de Coletas: <span id="currentDateText">03/08/2026</span></h2>
                 <div style="display: flex; gap: 15px; align-items: center;">
-                    <span class="excel-hint"><i class="fa-solid fa-cloud-arrow-up" style="color: #34d399"></i> Conectado ao Supabase com Backup Local de Segurança</span>
+                    <span class="excel-hint"><i class="fa-solid fa-lock" style="color: #a78bfa"></i> Protegido por Senha (2008) com Auto-Salvamento</span>
                     <div class="report-actions">
                         <button class="btn btn-add" onclick="addNewRow()"><i class="fa-solid fa-plus"></i> Adicionar Coleta</button>
-                        <button class="btn btn-save" onclick="saveCurrentDayColetas()"><i class="fa-solid fa-floppy-disk"></i> Salvar no Supabase</button>
+                        <button class="btn btn-save" onclick="saveCurrentDayColetasWithAuth()"><i class="fa-solid fa-floppy-disk"></i> Salvar no Supabase</button>
                         <button class="btn btn-excel" onclick="exportToExcel()"><i class="fa-solid fa-file-excel"></i> Baixar Excel (.xlsx)</button>
                     </div>
                 </div>
@@ -745,8 +745,10 @@
                     <span class="count">coletas</span>
                 `;
 
-                pill.onclick = () => {
-                    saveCurrentDayColetasSilent();
+                pill.onclick = async () => {
+                    // AUTO-SALVA O DIA ATUAL NO SUPABASE E LOCALSTORE ANTES DE TROCAR DE DIA
+                    await saveCurrentDayColetasDirect(activeDateStr);
+
                     document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active'));
                     pill.classList.add('active');
                     activeDateStr = fullDateStr;
@@ -768,7 +770,6 @@
                 let records = json.data || [];
                 const backup = getLocalBackupForDay(dateStr);
 
-                // Une registros do Supabase com os salvamentos recentes do backup local para que NADA suma
                 if (backup.length > 0) {
                     backup.forEach(bItem => {
                         const match = records.find(r => 
@@ -777,6 +778,9 @@
                         );
                         if (match) {
                             if (!match.valor && bItem.valor) match.valor = bItem.valor;
+                            if (!match.l_horario && bItem.l_horario) match.l_horario = bItem.l_horario;
+                            if (!match.c_horario && bItem.c_horario) match.c_horario = bItem.c_horario;
+                            if (!match.f_horario && bItem.f_horario) match.f_horario = bItem.f_horario;
                         } else if (bItem.delivery || bItem.cliente) {
                             records.push(bItem);
                         }
@@ -919,7 +923,29 @@
             saveLocalBackupForDay(activeDateStr, coletas);
         }
 
-        async function saveCurrentDayColetas() {
+        async function saveCurrentDayColetasDirect(dateForSave) {
+            saveCurrentDayColetasSilent();
+            const coletas = collectRowsFromUI();
+            if (coletas.length === 0) return;
+
+            try {
+                await fetch('/api/coletas', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ data: dateForSave || activeDateStr, coletas })
+                });
+            } catch (err) {
+                console.error("Auto-salvamento silencioso em background:", err);
+            }
+        }
+
+        async function saveCurrentDayColetasWithAuth() {
+            const pwd = prompt("Digite a senha para salvar no Supabase:");
+            if (pwd !== "2008") {
+                alert("Senha incorreta! As alterações não foram salvas no Supabase.");
+                return;
+            }
+
             saveCurrentDayColetasSilent();
             const coletas = collectRowsFromUI();
 
@@ -942,8 +968,8 @@
             }
         }
 
-        function selectMonth(btn, monthIdx) {
-            saveCurrentDayColetasSilent();
+        async function selectMonth(btn, monthIdx) {
+            await saveCurrentDayColetasDirect(activeDateStr);
             document.querySelectorAll('.month-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentSelectedMonthIndex = monthIdx;
