@@ -1035,17 +1035,42 @@
 
         function filterTable() {
             const q = document.getElementById('searchInput').value.trim().toLowerCase();
+            const tbody = document.getElementById('tableBody');
+            const mobileCards = document.getElementById('mobileCards');
             
             if (!q) {
                 fetchDayDataFromSupabase(activeDateStr);
                 return;
             }
 
+            // 1. Busca local instantanea (0ms) em todos os dias salvos no navegador
+            const localStore = getLocalStore();
+            const localResults = [];
+            const seenKeys = new Set();
+
+            Object.keys(localStore).forEach(dayKey => {
+                const dayItems = localStore[dayKey] || [];
+                dayItems.forEach(item => {
+                    const strVal = Object.values(item).join(' ').toLowerCase();
+                    if (strVal.includes(q)) {
+                        const itemKey = item.id || (item.delivery + '_' + item.cliente + '_' + item.motorista);
+                        if (!seenKeys.has(itemKey)) {
+                            seenKeys.add(itemKey);
+                            localResults.push(item);
+                        }
+                    }
+                });
+            });
+
+            if (localResults.length > 0) {
+                tbody.innerHTML = '';
+                if (mobileCards) mobileCards.innerHTML = '';
+                localResults.forEach(rec => appendRowFromData(rec));
+            }
+
+            // 2. Busca no Supabase em segundo plano (em todo o banco)
             clearTimeout(searchDebounceTimeout);
             searchDebounceTimeout = setTimeout(async () => {
-                const tbody = document.getElementById('tableBody');
-                const mobileCards = document.getElementById('mobileCards');
-
                 try {
                     const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
                     const json = await res.json();
@@ -1053,7 +1078,7 @@
                         tbody.innerHTML = '';
                         if (mobileCards) mobileCards.innerHTML = '';
 
-                        if (json.data.length === 0) {
+                        if (json.data.length === 0 && localResults.length === 0) {
                             tbody.innerHTML = `
                                 <tr>
                                     <td colspan="17" class="empty-day-message">
@@ -1066,13 +1091,14 @@
                                 mobileCards.innerHTML = `<div style="text-align:center;padding:2rem;color:#64748b">Nenhum registro encontrado para "${q}".</div>`;
                             }
                         } else {
-                            json.data.forEach(rec => appendRowFromData(rec));
+                            const finalRecords = json.data.length > 0 ? json.data : localResults;
+                            finalRecords.forEach(rec => appendRowFromData(rec));
                         }
                     }
                 } catch (e) {
                     console.error("Erro na busca global:", e);
                 }
-            }, 300);
+            }, 250);
         }
 
         async function fetchDayDataFromSupabase(dateStr) {

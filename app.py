@@ -82,22 +82,12 @@ def get_real_table_columns():
 def db_select_all():
     """Busca todos os registros do Supabase sem filtro de data (para pesquisa global)."""
     try:
-        all_records = []
-        offset = 0
-        limit = 1000
-        while True:
-            url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=*&order=id.desc&limit={limit}&offset={offset}"
-            res = requests.get(url, headers=get_headers(), timeout=10)
-            if res.status_code != 200:
-                break
-            batch = res.json()
-            if not batch:
-                break
-            all_records.extend(batch)
-            if len(batch) < limit:
-                break
-            offset += limit
-        return all_records
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=*"
+        res = requests.get(url, headers=get_headers(), timeout=12)
+        if res.status_code in [200, 201, 206]:
+            return res.json()
+        print(f"Erro em db_select_all: HTTP {res.status_code} - {res.text}")
+        return []
     except Exception as e:
         print(f"Erro em db_select_all: {e}")
         return []
@@ -146,17 +136,15 @@ def search_coletas():
         return jsonify({"status": "success", "data": []})
     try:
         all_data = db_select_all()
-        results = [
-            item for item in all_data
-            if q in str(item.get("motorista") or "").lower()
-            or q in str(item.get("delivery") or "").lower()
-            or q in str(item.get("cliente") or "").lower()
-            or q in str(item.get("sr") or "").lower()
-            or q in str(item.get("observacoes") or "").lower()
-            or q in str(item.get("data") or "").lower()
-        ]
+        results = []
+        for item in all_data:
+            # Busca a palavra-chave em qualquer campo do registro
+            row_str = " ".join([str(v) for v in item.values() if v is not None]).lower()
+            if q in row_str:
+                results.append(item)
         return jsonify({"status": "success", "data": results, "total": len(results)})
     except Exception as e:
+        print(f"Erro em search_coletas: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/coletas", methods=["GET"])
