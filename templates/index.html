@@ -1078,7 +1078,9 @@
                         tbody.innerHTML = '';
                         if (mobileCards) mobileCards.innerHTML = '';
 
-                        if (json.data.length === 0 && localResults.length === 0) {
+                        const records = json.data && json.data.length > 0 ? json.data : localResults;
+
+                        if (records.length === 0) {
                             tbody.innerHTML = `
                                 <tr>
                                     <td colspan="17" class="empty-day-message">
@@ -1091,14 +1093,15 @@
                                 mobileCards.innerHTML = `<div style="text-align:center;padding:2rem;color:#64748b">Nenhum registro encontrado para "${q}".</div>`;
                             }
                         } else {
-                            const finalRecords = json.data.length > 0 ? json.data : localResults;
-                            finalRecords.forEach(rec => appendRowFromData(rec));
+                            records.forEach(rec => {
+                                try { appendRowFromData(rec, true); } catch(err) { console.error("Erro ao renderizar item de busca:", err, rec); }
+                            });
                         }
                     }
                 } catch (e) {
                     console.error("Erro na busca global:", e);
                 }
-            }, 250);
+            }, 200);
         }
 
         async function fetchDayDataFromSupabase(dateStr) {
@@ -1161,23 +1164,35 @@
             }
         }
 
-        function appendRowFromData(rec) {
+        function escapeAttr(str) {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/"/g, '&quot;');
+        }
+
+        function appendRowFromData(rec, isSearchMode = false) {
             const tbody = document.getElementById('tableBody');
-            const driverKey = (rec.motorista || rec.driver || '').toLowerCase().replace(/\s+/g, '_');
+            const rawDriver = (rec.motorista || rec.driver || '').trim();
+            const driverKey = rawDriver.toLowerCase().replace(/\s+/g, '_');
             const driverInfo = driverDatabase[driverKey] || { cpf: rec.cpf || "-", cavalo: rec.cavalo || "-", carreta: rec.carreta || "-" };
             
             const tr = document.createElement('tr');
             if (rec.id) tr.setAttribute('data-id', rec.id);
 
-            const deliveryVal = rec.delivery || '';
-            const clienteVal = rec.cliente || '';
-            const driverName = rec.motorista || (driverDatabase[driverKey] ? driverDatabase[driverKey].name : 'WILSON REIS');
+            const deliveryVal = escapeAttr(rec.delivery || '');
+            const clienteVal = escapeAttr(rec.cliente || '');
+            const driverName = rawDriver || (driverDatabase[driverKey] ? driverDatabase[driverKey].name : '');
             const valorRaw = rec.valor || rec.valor_frete || rec.valor_total || rec.val_frete || '';
-            const valorVal = formatValorForDisplay(valorRaw);
-            // DF só exibe se H_FINALIZADO estiver preenchido
-            const fHorarioVal = rec.f_horario || rec.h_finalizado || '';
-            const dfVal = fHorarioVal ? (rec.df || rec.data_finalizacao || '') : '';
-            const wppText = `${deliveryVal} - ${clienteVal} -@${driverName}`;
+            const valorVal = escapeAttr(formatValorForDisplay(valorRaw));
+            
+            // DF exibe data da coleta se estiver em modo pesquisa ou se H_FINALIZADO preenchido
+            const fHorarioVal = escapeAttr(rec.f_horario || rec.h_finalizado || '');
+            let dfVal = rec.df || rec.data_finalizacao || '';
+            if (!dfVal && (fHorarioVal || isSearchMode)) {
+                dfVal = rec.data || activeDateStr;
+            }
+            dfVal = escapeAttr(dfVal);
+
+            const wppText = escapeAttr(`${deliveryVal} - ${clienteVal} -@${driverName}`);
 
             tr.innerHTML = `
                 <td>
@@ -1197,18 +1212,18 @@
                 </td>
                 <td><input type="text" class="input-delivery" value="${deliveryVal}" style="font-weight: 700; color: #60a5fa;" oninput="updateWppMessage(this.closest('tr'))" onblur="saveCurrentDayColetasSilent()"></td>
                 <td><input type="text" class="input-cliente" value="${clienteVal}" title="${clienteVal}" onblur="autoExpandCliente(this)" onchange="autoExpandCliente(this)" oninput="updateWppMessage(this.closest('tr'))"></td>
-                <td><input type="number" class="input-paletes" value="${rec.paletes || ''}" onblur="saveCurrentDayColetasSilent()"></td>
-                <td><input type="number" class="input-pc" value="${rec.pc || rec.coletados || ''}" style="color: #34d399; font-weight: 700;" onblur="saveCurrentDayColetasSilent()"></td>
+                <td><input type="number" class="input-paletes" value="${escapeAttr(rec.paletes || '')}" onblur="saveCurrentDayColetasSilent()"></td>
+                <td><input type="number" class="input-pc" value="${escapeAttr(rec.pc || rec.coletados || '')}" style="color: #34d399; font-weight: 700;" onblur="saveCurrentDayColetasSilent()"></td>
                 <td><input type="text" class="input-valor" value="${valorVal}" onblur="formatValorInput(this)" onchange="formatValorInput(this)"></td>
-                <td><input type="text" class="input-lhorario" value="${rec.l_horario || rec.h_local || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
-                <td><input type="text" class="input-chorario" value="${rec.c_horario || rec.h_coletado || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
-                <td><input type="text" class="input-fhorario" value="${rec.f_horario || rec.h_finalizado || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
+                <td><input type="text" class="input-lhorario" value="${escapeAttr(rec.l_horario || rec.h_local || '')}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
+                <td><input type="text" class="input-chorario" value="${escapeAttr(rec.c_horario || rec.h_coletado || '')}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
+                <td><input type="text" class="input-fhorario" value="${fHorarioVal}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
                 <td><input type="text" class="input-df" value="${dfVal}" placeholder="DD/MM/AAAA" style="color: #c4b5fd; font-weight: 600;" onblur="formatDateInput(this); saveCurrentDayColetasSilent();" onchange="saveCurrentDayColetasSilent()"></td>
-                <td><input type="text" class="input-sr" value="${rec.sr || ''}" onblur="saveCurrentDayColetasSilent()"></td>
-                <td><input type="text" class="input-observacao" value="${rec.observacao || rec.motivo || rec.observacoes || ''}" onblur="saveCurrentDayColetasSilent()"></td>
-                <td><span class="auto-tag cpf-val">${driverInfo.cpf}</span></td>
-                <td><span class="auto-tag cavalo-val">${driverInfo.cavalo}</span></td>
-                <td><span class="auto-tag carreta-val">${driverInfo.carreta}</span></td>
+                <td><input type="text" class="input-sr" value="${escapeAttr(rec.sr || '')}" onblur="saveCurrentDayColetasSilent()"></td>
+                <td><input type="text" class="input-observacao" value="${escapeAttr(rec.observacao || rec.motivo || rec.observacoes || '')}" onblur="saveCurrentDayColetasSilent()"></td>
+                <td><span class="auto-tag cpf-val">${escapeAttr(driverInfo.cpf)}</span></td>
+                <td><span class="auto-tag cavalo-val">${escapeAttr(driverInfo.cavalo)}</span></td>
+                <td><span class="auto-tag carreta-val">${escapeAttr(driverInfo.carreta)}</span></td>
                 <td>
                     <div class="wpp-tag">
                         <span class="wpp-text">${wppText}</span>
@@ -1220,23 +1235,30 @@
             tbody.appendChild(tr);
 
             // Renderiza card mobile tambem
-            appendCardFromData(rec);
+            appendCardFromData(rec, isSearchMode);
         }
 
-        function appendCardFromData(rec) {
+        function appendCardFromData(rec, isSearchMode = false) {
             const mobileCards = document.getElementById('mobileCards');
             if (!mobileCards) return;
 
-            const driverKey = (rec.motorista || '').toLowerCase().replace(/\s+/g, '_');
+            const rawDriver = (rec.motorista || rec.driver || '').trim();
+            const driverKey = rawDriver.toLowerCase().replace(/\s+/g, '_');
             const driverInfo = driverDatabase[driverKey] || { cpf: rec.cpf || '-', cavalo: rec.cavalo || '-', carreta: rec.carreta || '-' };
-            const deliveryVal = rec.delivery || '';
-            const clienteVal = rec.cliente || '';
-            const driverName = rec.motorista || 'WILSON REIS';
+            const deliveryVal = escapeAttr(rec.delivery || '');
+            const clienteVal = escapeAttr(rec.cliente || '');
+            const driverName = rawDriver || (driverDatabase[driverKey] ? driverDatabase[driverKey].name : '');
             const valorRaw = rec.valor || rec.valor_frete || rec.valor_total || '';
-            const valorVal = formatValorForDisplay(valorRaw);
-            const fHorarioVal = rec.f_horario || rec.h_finalizado || '';
-            const dfVal = fHorarioVal ? (rec.df || rec.data_finalizacao || '') : '';
-            const wppText = `${deliveryVal} - ${clienteVal} -@${driverName}`;
+            const valorVal = escapeAttr(formatValorForDisplay(valorRaw));
+            const fHorarioVal = escapeAttr(rec.f_horario || rec.h_finalizado || '');
+            
+            let dfVal = rec.df || rec.data_finalizacao || '';
+            if (!dfVal && (fHorarioVal || isSearchMode)) {
+                dfVal = rec.data || activeDateStr;
+            }
+            dfVal = escapeAttr(dfVal);
+
+            const wppText = escapeAttr(`${deliveryVal} - ${clienteVal} -@${driverName}`);
 
             const card = document.createElement('div');
             card.className = 'coleta-card';
