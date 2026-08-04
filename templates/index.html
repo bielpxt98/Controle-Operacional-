@@ -530,7 +530,7 @@
             <div class="report-header">
                 <h2 id="reportTitle"><i class="fa-regular fa-calendar-check" style="color: var(--accent-blue)"></i> Relatório de Coletas: <span id="currentDateText">03/08/2026</span></h2>
                 <div style="display: flex; gap: 15px; align-items: center;">
-                    <span class="excel-hint"><i class="fa-solid fa-lock" style="color: #a78bfa"></i> Protegido por Senha (2008) com Auto-Salvamento</span>
+                    <span class="excel-hint"><i class="fa-solid fa-lock" style="color: #a78bfa"></i> Protegido por Senha com Auto-Salvamento</span>
                     <div class="report-actions">
                         <button class="btn btn-add" onclick="addNewRow()"><i class="fa-solid fa-plus"></i> Adicionar Coleta</button>
                         <button class="btn btn-save" onclick="saveCurrentDayColetasWithAuth()"><i class="fa-solid fa-floppy-disk"></i> Salvar no Supabase</button>
@@ -552,6 +552,7 @@
                                 <th style="width: 68px;" data-col="h_local">H_LOCAL<div class="resizer"></div></th>
                                 <th style="width: 68px;" data-col="h_coletado">H_COLETADO<div class="resizer"></div></th>
                                 <th style="width: 68px;" data-col="h_finalizado">H_FINALIZADO<div class="resizer"></div></th>
+                                <th style="width: 100px;" data-col="df">DF<div class="resizer"></div></th>
                                 <th style="width: 95px;" data-col="sr">SR<div class="resizer"></div></th>
                                 <th style="width: 120px;" data-col="motivo">MOTIVO<div class="resizer"></div></th>
                                 <th style="width: 125px;" data-col="cpf" class="auto-filled-header">CPF (AUTO)<div class="resizer"></div></th>
@@ -740,8 +741,11 @@
                     pill.classList.add('active');
                 }
 
+                const hojeBR = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
+                const diaHoje = hojeBR.getDate();
+                const mesHoje = hojeBR.getMonth();
                 pill.innerHTML = `
-                    <span class="num">${day} ${dayOfWeek} ${day === 3 && monthIdx === 7 ? '(HOJE)' : ''}</span>
+                    <span class="num">${day} ${dayOfWeek} ${day === diaHoje && monthIdx === mesHoje ? '(HOJE)' : ''}</span>
                     <span class="count">coletas</span>
                 `;
 
@@ -791,7 +795,7 @@
                 if (records.length === 0) {
                     tbody.innerHTML = `
                         <tr>
-                            <td colspan="16" class="empty-day-message">
+                            <td colspan="17" class="empty-day-message">
                                 <i class="fa-regular fa-folder-open"></i>
                                 Nenhuma coleta registrada para o dia ${dateStr}.<br>
                                 <span style="font-size: 0.8rem; color: #64748b">Clique no botão "<strong>+ Adicionar Coleta</strong>" acima para incluir um novo registro.</span>
@@ -804,6 +808,7 @@
                 records.forEach(rec => {
                     appendRowFromData(rec);
                 });
+                updateAllDfDisplay();
             } catch (err) {
                 console.error("Erro ao buscar no Supabase, usando backup local:", err);
                 const backup = getLocalBackupForDay(dateStr);
@@ -811,7 +816,7 @@
                 if (backup.length > 0) {
                     backup.forEach(rec => appendRowFromData(rec));
                 } else {
-                    tbody.innerHTML = `<tr><td colspan="16" class="empty-day-message">Nenhuma coleta encontrada.</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="17" class="empty-day-message">Nenhuma coleta encontrada.</td></tr>`;
                 }
             }
         }
@@ -854,6 +859,7 @@
                 <td><input type="text" class="input-lhorario" value="${rec.l_horario || rec.h_local || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
                 <td><input type="text" class="input-chorario" value="${rec.c_horario || rec.h_coletado || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
                 <td><input type="text" class="input-fhorario" value="${rec.f_horario || rec.h_finalizado || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
+                <td><span class="auto-tag df-val" style="color: #fbbf24; font-size: 0.75rem;">${rec.data_finalizacao || rec.df || ''}</span></td>
                 <td><input type="text" class="input-sr" value="${rec.sr || ''}" onblur="saveCurrentDayColetasSilent()"></td>
                 <td><input type="text" class="input-observacao" value="${rec.observacao || rec.motivo || rec.observacoes || ''}" onblur="saveCurrentDayColetasSilent()"></td>
                 <td><span class="auto-tag cpf-val">${driverInfo.cpf}</span></td>
@@ -1033,10 +1039,25 @@
             }
         }
 
+        function updateAllDfDisplay() {
+            // Atualiza as células DF com dados do supabase após carregamento
+            // As células já são populadas em appendRowFromData via rec.data_finalizacao/rec.df
+            // Esta função pode ser usada para lógica extra se necessário
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
+            // Inicializar com data de hoje no fuso de Brasília
+            const hojeBRT = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
+            const diaI = String(hojeBRT.getDate()).padStart(2, '0');
+            const mesI = String(hojeBRT.getMonth() + 1).padStart(2, '0');
+            const anoI = hojeBRT.getFullYear();
+            const hojeStr = `${diaI}/${mesI}/${anoI}`;
+            activeDateStr = hojeStr;
+            document.getElementById('currentDateText').innerText = hojeStr;
+
             loadColumnWidths();
-            renderDaysStrip(2026, 7);
-            fetchDayDataFromSupabase('03/08/2026');
+            renderDaysStrip(anoI, hojeBRT.getMonth());
+            fetchDayDataFromSupabase(hojeStr);
 
             const table = document.getElementById('resizableTable');
             const cols = table.querySelectorAll('th');
