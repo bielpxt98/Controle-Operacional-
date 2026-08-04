@@ -18,7 +18,6 @@ def get_headers():
     }
 
 def format_date_variants(date_str):
-    """Gera todas as variações possíveis de formato de data (03/08/2026, 3/8/2026, 2026-08-03, 2026-8-3) para nunca perder buscas."""
     if not date_str:
         return []
     variants = [date_str.strip()]
@@ -154,7 +153,10 @@ def save_coletas():
             valor_num = parse_valor_numeric(valor_raw)
             f_horario_val = str(item.get("f_horario") or "").strip()
             
-            data_finalizacao_val = data_operacao if f_horario_val and f_horario_val != "-" else None
+            # DF editável enviado do formulário ou auto-sugerido
+            df_user_val = str(item.get("df") or item.get("data_finalizacao") or "").strip()
+            if not df_user_val and f_horario_val and f_horario_val != "-":
+                df_user_val = data_operacao
 
             raw_registro = {
                 "data": data_operacao or item.get("data"),
@@ -170,8 +172,8 @@ def save_coletas():
                 "l_horario": str(item.get("l_horario") or "").strip() or None,
                 "c_horario": str(item.get("c_horario") or "").strip() or None,
                 "f_horario": f_horario_val or None,
-                "data_finalizacao": data_finalizacao_val,
-                "df": data_finalizacao_val,
+                "data_finalizacao": df_user_val if df_user_val else None,
+                "df": df_user_val if df_user_val else None,
                 "sr": str(item.get("sr") or "").strip() or None,
                 "observacoes": obs_value if obs_value else None,
                 "observacao": obs_value if obs_value else None,
@@ -235,7 +237,7 @@ def export_excel():
                 else:
                     val_display = str(val_raw or "")
                 
-                df_display = d.get("data_finalizacao") or d.get("df") or ""
+                df_display = d.get("df") or d.get("data_finalizacao") or ""
                 rows.append({
                     "MOTORISTA": d.get("motorista", ""),
                     "DELIVERY": d.get("delivery", ""),

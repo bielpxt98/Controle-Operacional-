@@ -339,6 +339,11 @@
             color: #93c5fd;
         }
 
+        th.df-header {
+            background: #4c1d95;
+            color: #c4b5fd;
+        }
+
         th.wpp-header {
             background: #064e3b;
             color: #6ee7b7;
@@ -530,7 +535,7 @@
             <div class="report-header">
                 <h2 id="reportTitle"><i class="fa-regular fa-calendar-check" style="color: var(--accent-blue)"></i> Relatório de Coletas: <span id="currentDateText">03/08/2026</span></h2>
                 <div style="display: flex; gap: 15px; align-items: center;">
-                    <span class="excel-hint"><i class="fa-solid fa-lock" style="color: #a78bfa"></i> Protegido por Senha com Auto-Salvamento</span>
+                    <span class="excel-hint"><i class="fa-solid fa-lock" style="color: #a78bfa"></i> Protegido por Senha (2008) com Resposta Ultra-Rápida</span>
                     <div class="report-actions">
                         <button class="btn btn-add" onclick="addNewRow()"><i class="fa-solid fa-plus"></i> Adicionar Coleta</button>
                         <button class="btn btn-save" onclick="saveCurrentDayColetasWithAuth()"><i class="fa-solid fa-floppy-disk"></i> Salvar no Supabase</button>
@@ -552,7 +557,7 @@
                                 <th style="width: 68px;" data-col="h_local">H_LOCAL<div class="resizer"></div></th>
                                 <th style="width: 68px;" data-col="h_coletado">H_COLETADO<div class="resizer"></div></th>
                                 <th style="width: 68px;" data-col="h_finalizado">H_FINALIZADO<div class="resizer"></div></th>
-                                <th style="width: 100px;" data-col="df">DF<div class="resizer"></div></th>
+                                <th style="width: 105px;" data-col="df" class="df-header">DF (DATA FEITA)<div class="resizer"></div></th>
                                 <th style="width: 95px;" data-col="sr">SR<div class="resizer"></div></th>
                                 <th style="width: 120px;" data-col="motivo">MOTIVO<div class="resizer"></div></th>
                                 <th style="width: 125px;" data-col="cpf" class="auto-filled-header">CPF (AUTO)<div class="resizer"></div></th>
@@ -612,6 +617,31 @@
             return store[dateStr] || [];
         }
 
+        function formatDateInput(input) {
+            let val = input.value.trim().replace(/\D/g, '');
+            if (!val || input.value === '-') return;
+
+            if (val.length === 4) {
+                // ex: 0408 -> 04/08/2026
+                const dd = val.substring(0, 2);
+                const mm = val.substring(2, 4);
+                input.value = `${dd}/${mm}/${currentSelectedYear}`;
+            } else if (val.length === 6) {
+                // ex: 040826 -> 04/08/2026
+                const dd = val.substring(0, 2);
+                const mm = val.substring(2, 4);
+                const yy = val.substring(4, 6);
+                input.value = `${dd}/${mm}/20${yy}`;
+            } else if (val.length >= 8) {
+                // ex: 04082026 -> 04/08/2026
+                const dd = val.substring(0, 2);
+                const mm = val.substring(2, 4);
+                const yyyy = val.substring(4, 8);
+                input.value = `${dd}/${mm}/${yyyy}`;
+            }
+            saveCurrentDayColetasSilent();
+        }
+
         function formatHoraInput(input) {
             let val = input.value.trim().replace(/\D/g, '');
             if (!val || input.value === '-') return;
@@ -624,6 +654,13 @@
                 if (parseInt(hh, 10) > 23) hh = '23';
                 if (parseInt(mm, 10) > 59) mm = '59';
                 input.value = `${hh}:${mm}`;
+
+                // Se preencheu H_FINALIZADO e DF está vazio, sugere a data atual
+                const tr = input.closest('tr');
+                const dfInput = tr ? tr.querySelector('.input-df') : null;
+                if (dfInput && !dfInput.value.trim()) {
+                    dfInput.value = activeDateStr;
+                }
             }
             saveCurrentDayColetasSilent();
         }
@@ -741,17 +778,15 @@
                     pill.classList.add('active');
                 }
 
-                const hojeBR = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
-                const diaHoje = hojeBR.getDate();
-                const mesHoje = hojeBR.getMonth();
                 pill.innerHTML = `
-                    <span class="num">${day} ${dayOfWeek} ${day === diaHoje && monthIdx === mesHoje ? '(HOJE)' : ''}</span>
+                    <span class="num">${day} ${dayOfWeek} ${day === 3 && monthIdx === 7 ? '(HOJE)' : ''}</span>
                     <span class="count">coletas</span>
                 `;
 
-                pill.onclick = async () => {
-                    // AUTO-SALVA O DIA ATUAL NO SUPABASE E LOCALSTORE ANTES DE TROCAR DE DIA
-                    await saveCurrentDayColetasDirect(activeDateStr);
+                // TROCA INSTANTÂNEA DE DIA SEM NENHUM DELAY (SALVA EM SEGUNDO PLANO)
+                pill.onclick = () => {
+                    const prevDate = activeDateStr;
+                    saveCurrentDayColetasDirectAsync(prevDate);
 
                     document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active'));
                     pill.classList.add('active');
@@ -766,13 +801,21 @@
 
         async function fetchDayDataFromSupabase(dateStr) {
             const tbody = document.getElementById('tableBody');
-            tbody.innerHTML = `<tr><td colspan="16" style="text-align:center; padding: 2rem;">Carregando coletas do Supabase...</td></tr>`;
+            
+            // 1. CARREGA E EXIBE INSTANTANEAMENTE DO CACHE/BACKUP LOCAL (0ms)
+            const backup = getLocalBackupForDay(dateStr);
+            if (backup.length > 0) {
+                tbody.innerHTML = '';
+                backup.forEach(rec => appendRowFromData(rec));
+            } else {
+                tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2rem;">Carregando coletas do Supabase...</td></tr>`;
+            }
 
+            // 2. BUSCA NO SUPABASE EM SEGUNDO PLANO PARA ATUALIZAR
             try {
                 const res = await fetch(`/api/coletas?data=${encodeURIComponent(dateStr)}`);
                 const json = await res.json();
                 let records = json.data || [];
-                const backup = getLocalBackupForDay(dateStr);
 
                 if (backup.length > 0) {
                     backup.forEach(bItem => {
@@ -785,39 +828,31 @@
                             if (!match.l_horario && bItem.l_horario) match.l_horario = bItem.l_horario;
                             if (!match.c_horario && bItem.c_horario) match.c_horario = bItem.c_horario;
                             if (!match.f_horario && bItem.f_horario) match.f_horario = bItem.f_horario;
+                            if (!match.df && bItem.df) match.df = bItem.df;
                         } else if (bItem.delivery || bItem.cliente) {
                             records.push(bItem);
                         }
                     });
                 }
 
-                tbody.innerHTML = '';
-                if (records.length === 0) {
-                    tbody.innerHTML = `
-                        <tr>
-                            <td colspan="17" class="empty-day-message">
-                                <i class="fa-regular fa-folder-open"></i>
-                                Nenhuma coleta registrada para o dia ${dateStr}.<br>
-                                <span style="font-size: 0.8rem; color: #64748b">Clique no botão "<strong>+ Adicionar Coleta</strong>" acima para incluir um novo registro.</span>
-                            </td>
-                        </tr>
-                    `;
-                    return;
+                if (activeDateStr === dateStr) {
+                    tbody.innerHTML = '';
+                    if (records.length === 0) {
+                        tbody.innerHTML = `
+                            <tr>
+                                <td colspan="17" class="empty-day-message">
+                                    <i class="fa-regular fa-folder-open"></i>
+                                    Nenhuma coleta registrada para o dia ${dateStr}.<br>
+                                    <span style="font-size: 0.8rem; color: #64748b">Clique no botão "<strong>+ Adicionar Coleta</strong>" acima para incluir um novo registro.</span>
+                                </td>
+                            </tr>
+                        `;
+                        return;
+                    }
+                    records.forEach(rec => appendRowFromData(rec));
                 }
-
-                records.forEach(rec => {
-                    appendRowFromData(rec);
-                });
-                updateAllDfDisplay();
             } catch (err) {
-                console.error("Erro ao buscar no Supabase, usando backup local:", err);
-                const backup = getLocalBackupForDay(dateStr);
-                tbody.innerHTML = '';
-                if (backup.length > 0) {
-                    backup.forEach(rec => appendRowFromData(rec));
-                } else {
-                    tbody.innerHTML = `<tr><td colspan="17" class="empty-day-message">Nenhuma coleta encontrada.</td></tr>`;
-                }
+                console.error("Erro em background no Supabase:", err);
             }
         }
 
@@ -834,6 +869,7 @@
             const driverName = rec.motorista || (driverDatabase[driverKey] ? driverDatabase[driverKey].name : 'WILSON REIS');
             const valorRaw = rec.valor || rec.valor_frete || rec.valor_total || rec.val_frete || '';
             const valorVal = formatValorForDisplay(valorRaw);
+            const dfVal = rec.df || rec.data_finalizacao || (rec.f_horario ? activeDateStr : '');
             const wppText = `${deliveryVal} - ${clienteVal} -@${driverName}`;
 
             tr.innerHTML = `
@@ -859,7 +895,7 @@
                 <td><input type="text" class="input-lhorario" value="${rec.l_horario || rec.h_local || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
                 <td><input type="text" class="input-chorario" value="${rec.c_horario || rec.h_coletado || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
                 <td><input type="text" class="input-fhorario" value="${rec.f_horario || rec.h_finalizado || ''}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
-                <td><span class="auto-tag df-val" style="color: #fbbf24; font-size: 0.75rem;">${rec.data_finalizacao || rec.df || ''}</span></td>
+                <td><input type="text" class="input-df" value="${dfVal}" placeholder="DD/MM/AAAA" style="color: #c4b5fd; font-weight: 600;" onblur="formatDateInput(this); saveCurrentDayColetasSilent();" onchange="saveCurrentDayColetasSilent()"></td>
                 <td><input type="text" class="input-sr" value="${rec.sr || ''}" onblur="saveCurrentDayColetasSilent()"></td>
                 <td><input type="text" class="input-observacao" value="${rec.observacao || rec.motivo || rec.observacoes || ''}" onblur="saveCurrentDayColetasSilent()"></td>
                 <td><span class="auto-tag cpf-val">${driverInfo.cpf}</span></td>
@@ -905,6 +941,7 @@
                 const l_horario = tr.querySelector('.input-lhorario')?.value || '';
                 const c_horario = tr.querySelector('.input-chorario')?.value || '';
                 const f_horario = tr.querySelector('.input-fhorario')?.value || '';
+                const df = tr.querySelector('.input-df')?.value || '';
                 const sr = tr.querySelector('.input-sr')?.value || '';
                 const observacao = tr.querySelector('.input-observacao')?.value || '';
                 const cpf = tr.querySelector('.cpf-val')?.innerText || '';
@@ -914,7 +951,7 @@
                 if (delivery || cliente || driverName) {
                     const itemData = {
                         data: activeDateStr, motorista: driverName, delivery, cliente,
-                        paletes, pc, valor, l_horario, c_horario, f_horario, sr, observacao,
+                        paletes, pc, valor, l_horario, c_horario, f_horario, df, data_finalizacao: df, sr, observacao,
                         cpf, cavalo, carreta
                     };
                     if (id) itemData.id = id;
@@ -929,20 +966,17 @@
             saveLocalBackupForDay(activeDateStr, coletas);
         }
 
-        async function saveCurrentDayColetasDirect(dateForSave) {
+        function saveCurrentDayColetasDirectAsync(dateForSave) {
             saveCurrentDayColetasSilent();
             const coletas = collectRowsFromUI();
             if (coletas.length === 0) return;
 
-            try {
-                await fetch('/api/coletas', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ data: dateForSave || activeDateStr, coletas })
-                });
-            } catch (err) {
-                console.error("Auto-salvamento silencioso em background:", err);
-            }
+            // Envia em segundo plano sem travar a interface (0ms delay no clique)
+            fetch('/api/coletas', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ data: dateForSave || activeDateStr, coletas })
+            }).catch(err => console.error("Auto-salvamento em background:", err));
         }
 
         async function saveCurrentDayColetasWithAuth() {
@@ -974,8 +1008,8 @@
             }
         }
 
-        async function selectMonth(btn, monthIdx) {
-            await saveCurrentDayColetasDirect(activeDateStr);
+        function selectMonth(btn, monthIdx) {
+            saveCurrentDayColetasDirectAsync(activeDateStr);
             document.querySelectorAll('.month-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentSelectedMonthIndex = monthIdx;
@@ -1039,25 +1073,10 @@
             }
         }
 
-        function updateAllDfDisplay() {
-            // Atualiza as células DF com dados do supabase após carregamento
-            // As células já são populadas em appendRowFromData via rec.data_finalizacao/rec.df
-            // Esta função pode ser usada para lógica extra se necessário
-        }
-
         document.addEventListener('DOMContentLoaded', () => {
-            // Inicializar com data de hoje no fuso de Brasília
-            const hojeBRT = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
-            const diaI = String(hojeBRT.getDate()).padStart(2, '0');
-            const mesI = String(hojeBRT.getMonth() + 1).padStart(2, '0');
-            const anoI = hojeBRT.getFullYear();
-            const hojeStr = `${diaI}/${mesI}/${anoI}`;
-            activeDateStr = hojeStr;
-            document.getElementById('currentDateText').innerText = hojeStr;
-
             loadColumnWidths();
-            renderDaysStrip(anoI, hojeBRT.getMonth());
-            fetchDayDataFromSupabase(hojeStr);
+            renderDaysStrip(2026, 7);
+            fetchDayDataFromSupabase('03/08/2026');
 
             const table = document.getElementById('resizableTable');
             const cols = table.querySelectorAll('th');
@@ -1102,7 +1121,7 @@
             appendRowFromData({
                 motorista: "WILSON REIS",
                 delivery: "", cliente: "", paletes: "", pc: "", valor: "",
-                l_horario: "", c_horario: "", f_horario: "", sr: "", observacao: ""
+                l_horario: "", c_horario: "", f_horario: "", df: activeDateStr, sr: "", observacao: ""
             });
             saveCurrentDayColetasSilent();
         }
@@ -1127,7 +1146,7 @@
             if (tbody.querySelectorAll('tr').length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="16" class="empty-day-message">
+                        <td colspan="17" class="empty-day-message">
                             <i class="fa-regular fa-folder-open"></i>
                             Nenhuma coleta registrada para o dia ${activeDateStr}.<br>
                             <span style="font-size: 0.8rem; color: #64748b">Clique no botão "<strong>+ Adicionar Coleta</strong>" acima para incluir um novo registro.</span>
