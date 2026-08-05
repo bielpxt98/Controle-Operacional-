@@ -953,7 +953,8 @@
             const driverSelect = tr.querySelector('.driver-select');
             const driverName = driverSelect ? driverSelect.selectedOptions[0].text.replace(' ▼', '') : '';
 
-            const wppText = `${delivery} - ${cliente} -@${driverName}`;
+            const driverPrefix = driverName.length >= 2 ? driverName.substring(0, 2).toLowerCase() : driverName.toLowerCase();
+            const wppText = `${delivery} - ${cliente} -@${driverPrefix}`;
             const wppSpan = tr.querySelector('.wpp-text');
             if (wppSpan) {
                 wppSpan.innerText = wppText;
@@ -1361,7 +1362,8 @@
             const sel = card.querySelector('.driver-select');
             const driverName = sel ? sel.selectedOptions[0].text : '';
             const wppSpan = card.querySelector('.wpp-text');
-            if (wppSpan) wppSpan.innerText = `${delivery} - ${cliente} -@${driverName}`;
+            const driverPrefix = driverName.length >= 2 ? driverName.substring(0, 2).toLowerCase() : driverName.toLowerCase();
+            if (wppSpan) wppSpan.innerText = `${delivery} - ${cliente} -@${driverPrefix}`;
         }
 
         function autoExpandCardCliente(input) {
