@@ -126,8 +126,8 @@ def db_update_by_id(rec_id, registro):
 
 def db_insert_new(registro):
     headers = get_headers()
-    headers["Prefer"] = "return=representation"
-    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries"
+    headers["Prefer"] = "return=representation, resolution=merge-duplicates"
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?on_conflict=delivery"
     res = requests.post(url, headers=headers, json=registro, timeout=12)
     if res.status_code in [200, 201]:
         return res.json()
