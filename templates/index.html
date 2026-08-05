@@ -1451,7 +1451,7 @@
                 if (id) seenIds.add(id);
 
                 let driverName = driverSelect.selectedOptions[0].text.replace(' ▼', '');
-                if (driverName === '-- SELECIONE --') driverName = '';
+                if (driverName === '-- SELECIONE --' || driverName === '-- SELECIONE MOTORISTA --') driverName = '';
                 const delivery = tr.querySelector('.input-delivery')?.value || '';
                 const cliente = tr.querySelector('.input-cliente')?.value || '';
                 if (!delivery && !cliente && !driverName) return;
@@ -1488,7 +1488,7 @@
                 if (id) seenIds.add(id);
 
                 let driverName = driverSelect.selectedOptions[0].text.replace(' ▼', '');
-                if (driverName === '-- SELECIONE --') driverName = '';
+                if (driverName === '-- SELECIONE --' || driverName === '-- SELECIONE MOTORISTA --') driverName = '';
                 const delivery = card.querySelector('.input-delivery')?.value || '';
                 const cliente = card.querySelector('.input-cliente')?.value || '';
                 if (!delivery && !cliente && !driverName) return;
