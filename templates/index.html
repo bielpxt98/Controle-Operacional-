@@ -1112,6 +1112,7 @@
             if (backup.length > 0) {
                 tbody.innerHTML = '';
                 document.getElementById('mobileCards').innerHTML = '';
+                backup.sort((a, b) => (a.motorista || "").localeCompare(b.motorista || ""));
                 backup.forEach(rec => appendRowFromData(rec));
             } else {
                 tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2rem;">Carregando coletas do Supabase...</td></tr>`;
@@ -1157,6 +1158,7 @@
                         `;
                         return;
                     }
+                    records.sort((a, b) => (a.motorista || "").localeCompare(b.motorista || ""));
                     records.forEach(rec => appendRowFromData(rec));
                 }
             } catch (err) {
