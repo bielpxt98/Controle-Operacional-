@@ -756,6 +756,7 @@
                                 <th style="width: 100px;" data-col="valor">VALOR<div class="resizer"></div></th>
                                 <th style="width: 68px;" data-col="h_local">H_LOCAL<div class="resizer"></div></th>
                                 <th style="width: 68px;" data-col="h_coletado">H_COLETADO<div class="resizer"></div></th>
+                                <th style="width: 68px;" data-col="h_finalizado">H_FINALIZADO<div class="resizer"></div></th>
                                 <th style="width: 105px;" data-col="df" class="df-header">DF (DATA FEITA)<div class="resizer"></div></th>
                                 <th style="width: 100px;" data-col="status">STATUS<div class="resizer"></div></th>
                                 <th style="width: 95px;" data-col="sr">SR<div class="resizer"></div></th>
@@ -1032,6 +1033,14 @@
 
                 strip.appendChild(pill);
             }
+            
+            // Faz a rolagem acompanhar o dia atual
+            setTimeout(() => {
+                const activePill = strip.querySelector('.day-pill.active');
+                if (activePill) {
+                    activePill.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                }
+            }, 50);
         }
 
         let searchDebounceTimeout = null;
