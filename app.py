@@ -374,6 +374,27 @@ def delete_coleta(id_coleta):
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route("/api/delete-old", methods=["POST"])
+def delete_old_records():
+    try:
+        all_data = db_select_all()
+        min_date = datetime.strptime("01/08/2026", "%d/%m/%Y")
+        deleted = 0
+        for item in all_data:
+            item_date = parse_date_for_sort(item.get("data", ""))
+            try:
+                idt = datetime.strptime(item_date, "%Y-%m-%d")
+                if idt < min_date:
+                    item_id = item.get("id")
+                    if item_id:
+                        db_delete(str(item_id))
+                        deleted += 1
+            except:
+                pass
+        return jsonify({"status": "success", "deleted": deleted})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route("/api/export-excel", methods=["GET"])
 def export_excel():
     data_filtro = request.args.get("data")
