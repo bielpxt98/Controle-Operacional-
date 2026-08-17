@@ -106,7 +106,7 @@ def get_real_table_columns():
 def db_select_all():
     """Busca todos os registros do Supabase sem filtro de data (para pesquisa global)."""
     try:
-        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=*"
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=*&order=id.asc"
         res = requests.get(url, headers=get_headers(), timeout=12)
         if res.status_code in [200, 201, 206]:
             return res.json()
@@ -249,9 +249,8 @@ def check_delivery():
     exclude_id = request.args.get("exclude_id", "").strip()
     if not delivery:
         return jsonify({"status": "error", "message": "Delivery não fornecido"}), 400
-    
     try:
-        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?delivery=eq.{delivery}&select=*"
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?delivery=eq.{delivery}&select=*&order=id.asc"
         res = requests.get(url, headers=get_headers(), timeout=5)
         if res.status_code in [200, 201, 206]:
             records = res.json()

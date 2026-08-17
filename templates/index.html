@@ -1135,7 +1135,7 @@
             if (backup.length > 0) {
                 tbody.innerHTML = '';
                 document.getElementById('mobileCards').innerHTML = '';
-                backup.sort((a, b) => (a.motorista || "").localeCompare(b.motorista || ""));
+                stableSortRecords(backup);
                 backup.forEach(rec => appendRowFromData(rec));
             } else {
                 tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2rem;">Carregando coletas do Supabase...</td></tr>`;
@@ -1190,12 +1190,30 @@
                         `;
                         return;
                     }
-                    records.sort((a, b) => (a.motorista || "").localeCompare(b.motorista || ""));
+                    stableSortRecords(records);
                     records.forEach(rec => appendRowFromData(rec));
                 }
             } catch (err) {
                 console.error("Erro em background no Supabase:", err);
             }
+        }
+
+        function stableSortRecords(arr) {
+            arr.sort((a, b) => {
+                const m1 = a.motorista || "";
+                const m2 = b.motorista || "";
+                
+                if (m1 !== "" && m2 !== "" && m1 !== m2) {
+                    return m1.localeCompare(m2);
+                }
+                
+                if (m1 !== "" && m2 === "") return -1;
+                if (m1 === "" && m2 !== "") return 1;
+
+                const idA = a.id ? parseInt(a.id, 10) : Number.MAX_SAFE_INTEGER;
+                const idB = b.id ? parseInt(b.id, 10) : Number.MAX_SAFE_INTEGER;
+                return idA - idB;
+            });
         }
 
         function escapeAttr(str) {
