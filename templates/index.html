@@ -1877,11 +1877,11 @@
                 status = "FINALIZADO";
                 bgColor = "rgba(16, 185, 129, 0.15)";
                 color = "#10b981"; // verde
-            } else if (pcVal === '0' && hl && hf && obs.includes("bloqueio")) {
+            } else if ((pcVal === '0' || pcVal === '') && hl && hf && obs.includes("bloqueio")) {
                 status = "BLOQUEIO";
                 bgColor = "rgba(239, 68, 68, 0.15)";
                 color = "#ef4444"; // vermelho
-            } else if (pcVal === '0' && hl && hf && obs.includes("deslocamento")) {
+            } else if ((pcVal === '0' || pcVal === '') && hl && hf && obs.includes("deslocamento")) {
                 status = "DESLOCAMENTO";
                 bgColor = "rgba(245, 158, 11, 0.15)";
                 color = "#f59e0b"; // amarelo

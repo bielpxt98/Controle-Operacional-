@@ -219,11 +219,11 @@ def search_coletas():
                     obs = str(item.get("observacao") or item.get("observacoes") or item.get("motivo") or "").lower()
                     
                     st = "pendente"
-                    if pc_val is not None and pc_val > 0 and hl and hc and hf:
+                    if (pc_val is not None and pc_val > 0 and hl and hc and hf):
                         st = "finalizado"
-                    elif pc_val == 0 and hl and hf and "bloqueio" in obs:
+                    elif (pc_val is None or pc_val == 0) and hl and hf and "bloqueio" in obs:
                         st = "bloqueio"
-                    elif pc_val == 0 and hl and hf and "deslocamento" in obs:
+                    elif (pc_val is None or pc_val == 0) and hl and hf and "deslocamento" in obs:
                         st = "deslocamento"
                         
                     if st == target_status:
