@@ -157,7 +157,7 @@ def ping():
 def search_coletas():
     q = request.args.get("q", "").strip().lower()
     if not q:
-        return jsonify({"status": "success", "data": []})
+        return jsonify({"status": "success", "data": [], "total": 0})
         
     import re
     from datetime import datetime
@@ -172,70 +172,66 @@ def search_coletas():
     elif "pendente" in q: target_status = "pendente"
 
     try:
-        raw_data = db_select_all()
-        all_data = []
-        min_date_global = datetime.strptime("01/08/2026", "%d/%m/%Y")
-        
-        for item in raw_data:
-            item_date = parse_date_for_sort(item.get("data", ""))
-            try:
-                idt = datetime.strptime(item_date, "%Y-%m-%d")
-                if idt >= min_date_global:
-                    all_data.append(item)
-            except:
-                pass
-        
+        all_data = db_select_all()
         results = []
         
-        if target_status and len(dates) >= 2:
-            def parse_custom_date(ds):
-                parts = ds.split('/')
-                if len(parts) == 2:
-                    ds = f"{ds}/{datetime.now().year}"
+        def parse_custom_date(ds):
+            parts = ds.split('/')
+            if len(parts) == 2:
+                ds = f"{ds}/{datetime.now().year}"
+            try:
+                return datetime.strptime(ds, "%d/%m/%Y")
+            except:
                 try:
-                    return datetime.strptime(ds, "%d/%m/%Y")
+                    return datetime.strptime(ds, "%d/%m/%y")
                 except:
-                    try:
-                        return datetime.strptime(ds, "%d/%m/%y")
-                    except:
-                        return datetime.min
-                        
+                    return datetime.min
+        
+        start_date = None
+        end_date = None
+        if len(dates) >= 2:
             start_date = parse_custom_date(dates[0])
             end_date = parse_custom_date(dates[-1])
             if start_date > end_date:
                 start_date, end_date = end_date, start_date
+
+        search_terms = q.split()
+
+        for item in all_data:
+            item_date = parse_date_for_sort(item.get("data", ""))
+            try:
+                idt = datetime.strptime(item_date, "%Y-%m-%d")
+            except:
+                continue
                 
-            for item in all_data:
-                item_date = parse_date_for_sort(item.get("data", ""))
-                try:
-                    idt = datetime.strptime(item_date, "%Y-%m-%d")
-                except:
-                    continue
-                if start_date <= idt <= end_date:
-                    pc_val = sanitize_number(item.get("pc"))
-                    hl = item.get("l_horario")
-                    hc = item.get("c_horario")
-                    hf = item.get("f_horario")
-                    obs = str(item.get("observacao") or item.get("observacoes") or item.get("motivo") or "").lower()
-                    
-                    st = "pendente"
-                    if (pc_val is not None and pc_val > 0 and hl and hc and hf):
-                        st = "finalizado"
-                    elif (pc_val is None or pc_val == 0) and hl and hf and "bloqueio" in obs:
-                        st = "bloqueio"
-                    elif (pc_val is None or pc_val == 0) and hl and hf and "deslocamento" in obs:
-                        st = "deslocamento"
-                        
-                    if st == target_status:
+            pc_val = sanitize_number(item.get("pc"))
+            hl = item.get("l_horario")
+            hc = item.get("c_horario")
+            hf = item.get("f_horario")
+            obs = str(item.get("observacao") or item.get("observacoes") or item.get("motivo") or "").lower()
+            
+            st = "pendente"
+            if (pc_val is not None and pc_val > 0 and hl and hc and hf):
+                st = "finalizado"
+            elif (pc_val is None or pc_val == 0) and hl and hf and "bloqueio" in obs:
+                st = "bloqueio"
+            elif (pc_val is None or pc_val == 0) and hl and hf and "deslocamento" in obs:
+                st = "deslocamento"
+
+            if target_status and len(dates) >= 2:
+                if start_date <= idt <= end_date and st == target_status:
+                    results.append(item)
+            elif target_status:
+                if st == target_status:
+                    row_str = " ".join([str(v) for v in item.values() if v is not None]).lower()
+                    other_terms = [t for t in search_terms if t != target_status]
+                    if all(t in row_str for t in other_terms):
                         results.append(item)
-        else:
-            for item in all_data:
-                # Busca a palavra-chave em qualquer campo do registro
-                row_str = " ".join([str(v) for v in item.values() if v is not None]).lower()
-                if q in row_str:
+            else:
+                row_str = " ".join([str(v) for v in item.values() if v is not None]).lower() + f" {st}"
+                if all(t in row_str for t in search_terms):
                     results.append(item)
                 
-        # Sort results by recent dates first
         results.sort(key=lambda x: parse_date_for_sort(x.get("data", "")), reverse=True)
         
         return jsonify({"status": "success", "data": results, "total": len(results)})
