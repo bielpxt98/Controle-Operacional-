@@ -1236,6 +1236,7 @@
             
             const tr = document.createElement('tr');
             if (rec.id) tr.setAttribute('data-id', rec.id);
+            if (rec.data) tr.setAttribute('data-original-date', rec.data);
 
             const deliveryVal = escapeAttr(rec.delivery || '');
             const clienteVal = escapeAttr(rec.cliente || '');
@@ -1521,8 +1522,9 @@
                 const cliente = tr.querySelector('.input-cliente')?.value || '';
                 if (!delivery && !cliente && !driverName) return;
 
+                const originalDate = tr.getAttribute('data-original-date');
                 const item = {
-                    data: activeDateStr,
+                    data: originalDate || activeDateStr,
                     motorista: driverName,
                     delivery,
                     cliente,
