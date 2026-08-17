@@ -756,8 +756,8 @@
                                 <th style="width: 100px;" data-col="valor">VALOR<div class="resizer"></div></th>
                                 <th style="width: 68px;" data-col="h_local">H_LOCAL<div class="resizer"></div></th>
                                 <th style="width: 68px;" data-col="h_coletado">H_COLETADO<div class="resizer"></div></th>
-                                <th style="width: 68px;" data-col="h_finalizado">H_FINALIZADO<div class="resizer"></div></th>
                                 <th style="width: 105px;" data-col="df" class="df-header">DF (DATA FEITA)<div class="resizer"></div></th>
+                                <th style="width: 100px;" data-col="status">STATUS<div class="resizer"></div></th>
                                 <th style="width: 95px;" data-col="sr">SR<div class="resizer"></div></th>
                                 <th style="width: 120px;" data-col="motivo">MOTIVO<div class="resizer"></div></th>
                                 <th style="width: 125px;" data-col="cpf" class="auto-filled-header">CPF (AUTO)<div class="resizer"></div></th>
@@ -884,14 +884,16 @@
             if (parseInt(mm, 10) > 59) mm = '59';
             input.value = `${hh}:${mm}`;
 
-            // Se foi preenchido H_FINALIZADO e DF esta vazio, sugere a data de hoje
-            const tr = input.closest('tr');
+            // Se foi preenchido H_FINALIZADO e DF esta vazio, sugere a data de hoje (se H_LOCAL estiver preenchido)
+            const tr = input.closest('tr') || input.closest('.coleta-card');
             if (tr && input.classList.contains('input-fhorario')) {
                 const dfInput = tr.querySelector('.input-df');
-                if (dfInput && !dfInput.value.trim()) {
+                const hlInput = tr.querySelector('.input-lhorario');
+                if (dfInput && !dfInput.value.trim() && hlInput && hlInput.value.trim()) {
                     dfInput.value = _todayDateStr;
                 }
             }
+            if(tr) updateRowStatus(tr);
             saveCurrentDayColetasSilent();
         }
 
@@ -1226,15 +1228,16 @@
                 </td>
                 <td><input type="text" class="input-delivery" value="${deliveryVal}" style="font-weight: 700; color: #60a5fa;" oninput="updateWppMessage(this.closest('tr'))" onblur="checkDuplicateDelivery(this); saveCurrentDayColetasSilent()"></td>
                 <td><input type="text" class="input-cliente" value="${clienteVal}" title="${clienteVal}" onblur="autoExpandCliente(this)" onchange="autoExpandCliente(this)" oninput="updateWppMessage(this.closest('tr'))"></td>
-                <td><input type="number" class="input-paletes" value="${escapeAttr(rec.paletes || '')}" onblur="saveCurrentDayColetasSilent()"></td>
-                <td><input type="number" class="input-pc" value="${escapeAttr(rec.pc || rec.coletados || '')}" style="color: #34d399; font-weight: 700;" onblur="saveCurrentDayColetasSilent()"></td>
+                <td><input type="number" class="input-paletes" value="${escapeAttr(rec.paletes ?? '')}" onblur="saveCurrentDayColetasSilent()"></td>
+                <td><input type="number" class="input-pc" value="${escapeAttr(rec.pc ?? rec.coletados ?? '')}" style="color: #34d399; font-weight: 700;" onblur="updateRowStatus(this.closest('tr')); saveCurrentDayColetasSilent()" oninput="updateRowStatus(this.closest('tr'))"></td>
                 <td><input type="text" class="input-valor" value="${valorVal}" onblur="formatValorInput(this)" onchange="formatValorInput(this)"></td>
-                <td><input type="text" class="input-lhorario" value="${escapeAttr(rec.l_horario || rec.h_local || '')}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
-                <td><input type="text" class="input-chorario" value="${escapeAttr(rec.c_horario || rec.h_coletado || '')}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
-                <td><input type="text" class="input-fhorario" value="${fHorarioVal}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this)"></td>
+                <td><input type="text" class="input-lhorario" value="${escapeAttr(rec.l_horario || rec.h_local || '')}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this); updateRowStatus(this.closest('tr'))"></td>
+                <td><input type="text" class="input-chorario" value="${escapeAttr(rec.c_horario || rec.h_coletado || '')}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this); updateRowStatus(this.closest('tr'))"></td>
+                <td><input type="text" class="input-fhorario" value="${fHorarioVal}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this); updateRowStatus(this.closest('tr'))"></td>
                 <td><input type="text" class="input-df" value="${dfVal}" placeholder="DD/MM/AAAA" style="color: #c4b5fd; font-weight: 600;" onblur="formatDateInput(this); saveCurrentDayColetasSilent();" onchange="saveCurrentDayColetasSilent()"></td>
+                <td style="text-align: center; vertical-align: middle;"><div class="status-badge" style="font-weight: 700; font-size: 0.65rem; border-radius: 4px; padding: 4px 0; width: 100%; display: inline-block;">PENDENTE</div></td>
                 <td><input type="text" class="input-sr" value="${escapeAttr(rec.sr || '')}" onblur="saveCurrentDayColetasSilent()"></td>
-                <td><input type="text" class="input-observacao" value="${escapeAttr(rec.observacao || rec.motivo || rec.observacoes || '')}" onblur="saveCurrentDayColetasSilent()"></td>
+                <td><input type="text" class="input-observacao" value="${escapeAttr(rec.observacao || rec.motivo || rec.observacoes || '')}" onblur="updateRowStatus(this.closest('tr')); saveCurrentDayColetasSilent()" oninput="updateRowStatus(this.closest('tr'))"></td>
                 <td><span class="auto-tag cpf-val">${escapeAttr(driverInfo.cpf)}</span></td>
                 <td><span class="auto-tag cavalo-val">${escapeAttr(driverInfo.cavalo)}</span></td>
                 <td><span class="auto-tag carreta-val">${escapeAttr(driverInfo.carreta)}</span></td>
@@ -1250,6 +1253,8 @@
 
             // Renderiza card mobile tambem
             appendCardFromData(rec, isSearchMode);
+            
+            updateRowStatus(tr);
         }
 
         function appendCardFromData(rec, isSearchMode = false) {
@@ -1295,6 +1300,7 @@
                         <option value="ariel_nascimento" ${driverKey.includes('ariel')?'selected':''}>ARIEL NASCIMENTO</option>
                         <option value="leandro_de_andrade" ${driverKey.includes('leandro')?'selected':''}>LEANDRO DE ANDRADE</option>
                     </select>
+                    <div class="status-badge" style="font-weight: 700; font-size: 0.65rem; border-radius: 4px; padding: 4px 8px; display: inline-block; margin-right: 8px;">PENDENTE</div>
                     <button class="card-delete-btn" onclick="deleteCard(this)"><i class="fa-solid fa-trash"></i></button>
                 </div>
                 <div class="card-grid">
@@ -1304,7 +1310,7 @@
                     </div>
                     <div class="card-field">
                         <span class="card-label">Paletes</span>
-                        <input type="number" class="card-input input-paletes" value="${rec.paletes || ''}" onblur="saveCurrentDayColetasSilent()">
+                        <input type="number" class="card-input input-paletes" value="${escapeAttr(rec.paletes ?? '')}" onblur="saveCurrentDayColetasSilent()">
                     </div>
                     <div class="card-field full-width">
                         <span class="card-label">Cliente</span>
@@ -1312,7 +1318,7 @@
                     </div>
                     <div class="card-field">
                         <span class="card-label">P. Coletado</span>
-                        <input type="number" class="card-input input-pc" value="${rec.pc || ''}" style="color:#34d399;font-weight:700" onblur="saveCurrentDayColetasSilent()">
+                        <input type="number" class="card-input input-pc" value="${escapeAttr(rec.pc ?? '')}" style="color:#34d399;font-weight:700" onblur="updateRowStatus(this.closest('.coleta-card')); saveCurrentDayColetasSilent()" oninput="updateRowStatus(this.closest('.coleta-card'))">
                     </div>
                     <div class="card-field">
                         <span class="card-label">Valor</span>
@@ -1320,15 +1326,15 @@
                     </div>
                     <div class="card-field">
                         <span class="card-label">H_Local</span>
-                        <input type="text" class="card-input input-lhorario" value="${rec.l_horario || ''}" onblur="formatHoraInput(this)">
+                        <input type="text" class="card-input input-lhorario" value="${rec.l_horario || ''}" onblur="formatHoraInput(this)" oninput="updateRowStatus(this.closest('.coleta-card'))">
                     </div>
                     <div class="card-field">
                         <span class="card-label">H_Coletado</span>
-                        <input type="text" class="card-input input-chorario" value="${rec.c_horario || ''}" onblur="formatHoraInput(this)">
+                        <input type="text" class="card-input input-chorario" value="${rec.c_horario || ''}" onblur="formatHoraInput(this)" oninput="updateRowStatus(this.closest('.coleta-card'))">
                     </div>
                     <div class="card-field">
                         <span class="card-label">H_Finalizado</span>
-                        <input type="text" class="card-input input-fhorario" value="${fHorarioVal}" onblur="formatHoraInput(this)">
+                        <input type="text" class="card-input input-fhorario" value="${fHorarioVal}" onblur="formatHoraInput(this)" oninput="updateRowStatus(this.closest('.coleta-card'))">
                     </div>
                     <div class="card-field">
                         <span class="card-label" style="color:#a78bfa">DF (Data Feita)</span>
@@ -1340,7 +1346,7 @@
                     </div>
                     <div class="card-field full-width">
                         <span class="card-label">Motivo/Obs</span>
-                        <input type="text" class="card-input input-observacao" value="${rec.observacao || rec.observacoes || ''}" onblur="saveCurrentDayColetasSilent()">
+                        <input type="text" class="card-input input-observacao" value="${rec.observacao || rec.observacoes || ''}" onblur="updateRowStatus(this.closest('.coleta-card')); saveCurrentDayColetasSilent()" oninput="updateRowStatus(this.closest('.coleta-card'))">
                     </div>
                     <div class="card-field">
                         <span class="card-label" style="color:#93c5fd">CPF (AUTO)</span>
@@ -1357,6 +1363,7 @@
                 </div>
             `;
             mobileCards.appendChild(card);
+            updateRowStatus(card);
         }
 
         function updateCardDriverData(sel) {
@@ -1786,6 +1793,41 @@
                 }
             } catch (e) {
                 console.error("Erro ao verificar delivery duplo:", e);
+            }
+        }
+
+        function updateRowStatus(tr) {
+            if (!tr) return;
+            const pcVal = tr.querySelector('.input-pc')?.value.trim();
+            const hl = tr.querySelector('.input-lhorario')?.value.trim();
+            const hc = tr.querySelector('.input-chorario')?.value.trim();
+            const hf = tr.querySelector('.input-fhorario')?.value.trim();
+            const obs = (tr.querySelector('.input-observacao')?.value || '').trim().toLowerCase();
+            
+            let status = "PENDENTE";
+            let bgColor = "rgba(255, 255, 255, 0.05)";
+            let color = "#64748b";
+
+            if (pcVal !== '' && parseInt(pcVal, 10) > 0 && hl && hc && hf) {
+                status = "FINALIZADO";
+                bgColor = "rgba(16, 185, 129, 0.15)";
+                color = "#10b981"; // verde
+            } else if (pcVal === '0' && hl && hf && obs.includes("bloqueio")) {
+                status = "BLOQUEIO";
+                bgColor = "rgba(239, 68, 68, 0.15)";
+                color = "#ef4444"; // vermelho
+            } else if (pcVal === '0' && hl && hf && obs.includes("deslocamento")) {
+                status = "DESLOCAMENTO";
+                bgColor = "rgba(245, 158, 11, 0.15)";
+                color = "#f59e0b"; // amarelo
+            }
+
+            const badge = tr.querySelector('.status-badge');
+            if (badge) {
+                badge.innerText = status;
+                badge.style.backgroundColor = bgColor;
+                badge.style.color = color;
+                badge.style.border = `1px solid ${color}40`;
             }
         }
     </script>

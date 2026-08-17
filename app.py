@@ -158,14 +158,69 @@ def search_coletas():
     q = request.args.get("q", "").strip().lower()
     if not q:
         return jsonify({"status": "success", "data": []})
+        
+    import re
+    from datetime import datetime
+    
+    date_pattern = r'(\d{2}/\d{2}(?:/\d{2,4})?)'
+    dates = re.findall(date_pattern, q)
+    
+    target_status = None
+    if "deslocamento" in q: target_status = "deslocamento"
+    elif "bloqueio" in q: target_status = "bloqueio"
+    elif "finalizado" in q: target_status = "finalizado"
+
     try:
         all_data = db_select_all()
         results = []
-        for item in all_data:
-            # Busca a palavra-chave em qualquer campo do registro
-            row_str = " ".join([str(v) for v in item.values() if v is not None]).lower()
-            if q in row_str:
-                results.append(item)
+        
+        if target_status and len(dates) >= 2:
+            def parse_custom_date(ds):
+                parts = ds.split('/')
+                if len(parts) == 2:
+                    ds = f"{ds}/{datetime.now().year}"
+                try:
+                    return datetime.strptime(ds, "%d/%m/%Y")
+                except:
+                    try:
+                        return datetime.strptime(ds, "%d/%m/%y")
+                    except:
+                        return datetime.min
+                        
+            start_date = parse_custom_date(dates[0])
+            end_date = parse_custom_date(dates[-1])
+            if start_date > end_date:
+                start_date, end_date = end_date, start_date
+                
+            for item in all_data:
+                item_date = parse_date_for_sort(item.get("data", ""))
+                try:
+                    idt = datetime.strptime(item_date, "%Y-%m-%d")
+                except:
+                    continue
+                if start_date <= idt <= end_date:
+                    pc_val = sanitize_number(item.get("pc"))
+                    hl = item.get("l_horario")
+                    hc = item.get("c_horario")
+                    hf = item.get("f_horario")
+                    obs = str(item.get("observacao") or item.get("observacoes") or item.get("motivo") or "").lower()
+                    
+                    st = "pendente"
+                    if pc_val is not None and pc_val > 0 and hl and hc and hf:
+                        st = "finalizado"
+                    elif pc_val == 0 and hl and hf and "bloqueio" in obs:
+                        st = "bloqueio"
+                    elif pc_val == 0 and hl and hf and "deslocamento" in obs:
+                        st = "deslocamento"
+                        
+                    if st == target_status:
+                        results.append(item)
+        else:
+            for item in all_data:
+                # Busca a palavra-chave em qualquer campo do registro
+                row_str = " ".join([str(v) for v in item.values() if v is not None]).lower()
+                if q in row_str:
+                    results.append(item)
                 
         # Sort results by recent dates first
         results.sort(key=lambda x: parse_date_for_sort(x.get("data", "")), reverse=True)
