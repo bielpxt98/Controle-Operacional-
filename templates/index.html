@@ -1167,7 +1167,8 @@
                             if (!match.c_horario && bItem.c_horario) match.c_horario = bItem.c_horario;
                             if (!match.f_horario && bItem.f_horario) match.f_horario = bItem.f_horario;
                             if (!match.df && bItem.df) match.df = bItem.df;
-                        } else {
+                        } else if (!bItem.id) {
+                            // Só manter no cache local se for uma linha NOVA que ainda não foi salva (sem ID)
                             records.push(bItem);
                         }
                     });
