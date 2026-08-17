@@ -1020,6 +1020,11 @@
 
                 // TROCA INSTANTÂNEA DE DIA SEM NENHUM DELAY (SALVA EM SEGUNDO PLANO)
                 pill.onclick = () => {
+                    const searchInput = document.getElementById('searchInput');
+                    if (searchInput.value.trim() !== '') {
+                        searchInput.value = '';
+                    }
+
                     const prevDate = activeDateStr;
                     saveCurrentDayColetasDirectAsync(prevDate);
 
@@ -1051,9 +1056,15 @@
             const mobileCards = document.getElementById('mobileCards');
             
             if (!q) {
+                document.getElementById('currentDateText').innerText = activeDateStr;
+                renderDaysStrip(currentSelectedYear, currentSelectedMonthIndex);
                 fetchDayDataFromSupabase(activeDateStr);
                 return;
             }
+
+            // UI de busca
+            document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active'));
+            document.getElementById('currentDateText').innerText = `Busca Global: "${q}"`;
 
             // 1. Busca local instantanea (0ms) em todos os dias salvos no navegador
             const localStore = getLocalStore();

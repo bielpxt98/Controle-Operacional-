@@ -169,9 +169,22 @@ def search_coletas():
     if "deslocamento" in q: target_status = "deslocamento"
     elif "bloqueio" in q: target_status = "bloqueio"
     elif "finalizado" in q: target_status = "finalizado"
+    elif "pendente" in q: target_status = "pendente"
 
     try:
-        all_data = db_select_all()
+        raw_data = db_select_all()
+        all_data = []
+        min_date_global = datetime.strptime("01/08/2026", "%d/%m/%Y")
+        
+        for item in raw_data:
+            item_date = parse_date_for_sort(item.get("data", ""))
+            try:
+                idt = datetime.strptime(item_date, "%Y-%m-%d")
+                if idt >= min_date_global:
+                    all_data.append(item)
+            except:
+                pass
+        
         results = []
         
         if target_status and len(dates) >= 2:
