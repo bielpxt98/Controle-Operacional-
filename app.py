@@ -175,6 +175,32 @@ def search_coletas():
         print(f"Erro em search_coletas: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route("/api/check_delivery", methods=["GET"])
+def check_delivery():
+    delivery = request.args.get("delivery", "").strip()
+    exclude_id = request.args.get("exclude_id", "").strip()
+    if not delivery:
+        return jsonify({"status": "error", "message": "Delivery não fornecido"}), 400
+    
+    try:
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?delivery=eq.{delivery}&select=*"
+        res = requests.get(url, headers=get_headers(), timeout=5)
+        if res.status_code in [200, 201, 206]:
+            records = res.json()
+            # Filtra o exclude_id se necessário
+            if exclude_id:
+                records = [r for r in records if str(r.get("id")) != exclude_id]
+            
+            if records:
+                # Retorna o registro mais recente
+                records.sort(key=lambda x: parse_date_for_sort(x.get("data", "")), reverse=True)
+                return jsonify({"status": "success", "exists": True, "data": records[0]})
+            return jsonify({"status": "success", "exists": False})
+        return jsonify({"status": "error", "message": "Erro ao consultar Supabase"}), 500
+    except Exception as e:
+        print(f"Erro em check_delivery: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route("/api/coletas", methods=["GET"])
 def get_coletas():
     data_filtro = request.args.get("data")

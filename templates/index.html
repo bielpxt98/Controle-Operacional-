@@ -884,12 +884,12 @@
             if (parseInt(mm, 10) > 59) mm = '59';
             input.value = `${hh}:${mm}`;
 
-            // Se foi preenchido H_FINALIZADO e DF esta vazio, sugere a data do dia ativo
+            // Se foi preenchido H_FINALIZADO e DF esta vazio, sugere a data de hoje
             const tr = input.closest('tr');
             if (tr && input.classList.contains('input-fhorario')) {
                 const dfInput = tr.querySelector('.input-df');
                 if (dfInput && !dfInput.value.trim()) {
-                    dfInput.value = activeDateStr;
+                    dfInput.value = _todayDateStr;
                 }
             }
             saveCurrentDayColetasSilent();
@@ -1138,13 +1138,22 @@
                             if (!match.c_horario && bItem.c_horario) match.c_horario = bItem.c_horario;
                             if (!match.f_horario && bItem.f_horario) match.f_horario = bItem.f_horario;
                             if (!match.df && bItem.df) match.df = bItem.df;
-                        } else if (bItem.delivery || bItem.cliente) {
+                        } else {
                             records.push(bItem);
                         }
                     });
                 }
 
                 if (activeDateStr === dateStr) {
+                    // Prevenir re-render se o usuario esta digitando algo
+                    const activeElem = document.activeElement;
+                    if (activeElem && (activeElem.tagName === 'INPUT' || activeElem.tagName === 'SELECT') && 
+                       (tbody.contains(activeElem) || document.getElementById('mobileCards').contains(activeElem))) {
+                        // Apenas atualiza o background silently
+                        saveLocalBackupForDay(dateStr, records);
+                        return;
+                    }
+
                     tbody.innerHTML = '';
                     document.getElementById('mobileCards').innerHTML = '';
                     if (records.length === 0) {
@@ -1215,7 +1224,7 @@
                         <option value="leandro_de_andrade" ${driverKey.includes('leandro')?'selected':''}>LEANDRO DE ANDRADE ▼</option>
                     </select>
                 </td>
-                <td><input type="text" class="input-delivery" value="${deliveryVal}" style="font-weight: 700; color: #60a5fa;" oninput="updateWppMessage(this.closest('tr'))" onblur="saveCurrentDayColetasSilent()"></td>
+                <td><input type="text" class="input-delivery" value="${deliveryVal}" style="font-weight: 700; color: #60a5fa;" oninput="updateWppMessage(this.closest('tr'))" onblur="checkDuplicateDelivery(this); saveCurrentDayColetasSilent()"></td>
                 <td><input type="text" class="input-cliente" value="${clienteVal}" title="${clienteVal}" onblur="autoExpandCliente(this)" onchange="autoExpandCliente(this)" oninput="updateWppMessage(this.closest('tr'))"></td>
                 <td><input type="number" class="input-paletes" value="${escapeAttr(rec.paletes || '')}" onblur="saveCurrentDayColetasSilent()"></td>
                 <td><input type="number" class="input-pc" value="${escapeAttr(rec.pc || rec.coletados || '')}" style="color: #34d399; font-weight: 700;" onblur="saveCurrentDayColetasSilent()"></td>
@@ -1291,7 +1300,7 @@
                 <div class="card-grid">
                     <div class="card-field">
                         <span class="card-label">Delivery</span>
-                        <input type="text" class="card-input input-delivery" value="${deliveryVal}" style="color:#60a5fa;font-weight:700" oninput="updateCardWpp(this.closest('.coleta-card'))" onblur="saveCurrentDayColetasSilent()">
+                        <input type="text" class="card-input input-delivery" value="${deliveryVal}" style="color:#60a5fa;font-weight:700" oninput="updateCardWpp(this.closest('.coleta-card'))" onblur="checkDuplicateDelivery(this); saveCurrentDayColetasSilent()">
                     </div>
                     <div class="card-field">
                         <span class="card-label">Paletes</span>
@@ -1717,6 +1726,67 @@
 
         function exportToExcel() {
             window.location.href = `/api/export-excel?data=${encodeURIComponent(activeDateStr)}`;
+        }
+
+        async function checkDuplicateDelivery(inputElement) {
+            const deliveryVal = inputElement.value.trim();
+            if (!deliveryVal) return;
+            const tr = inputElement.closest('tr') || inputElement.closest('.coleta-card');
+            const idAttr = tr.getAttribute('data-id');
+            
+            try {
+                const res = await fetch(`/api/check_delivery?delivery=${encodeURIComponent(deliveryVal)}&exclude_id=${idAttr||''}`);
+                const json = await res.json();
+                if (json.status === 'success' && json.exists) {
+                    const match = json.data;
+                    if (match.data !== activeDateStr) {
+                        const confirmMove = confirm(`A coleta ${deliveryVal} já existe no dia ${match.data}. Deseja transferi-la para o dia atual (${activeDateStr})?`);
+                        if (confirmMove) {
+                            // Atualiza a data da coleta no backend e preenche os campos
+                            match.data = activeDateStr;
+                            
+                            // Aplica visualmente
+                            const driverKey = (match.motorista || '').toLowerCase().replace(/\s+/g, '_');
+                            const driverSel = tr.querySelector('.driver-select');
+                            if(driverSel) {
+                                Array.from(driverSel.options).forEach(opt => {
+                                    if(opt.value === driverKey) opt.selected = true;
+                                });
+                                if(tr.classList.contains('coleta-card')) updateCardDriverData(driverSel);
+                                else updateDriverData(driverSel);
+                            }
+                            
+                            if(tr.querySelector('.input-cliente')) tr.querySelector('.input-cliente').value = match.cliente || '';
+                            if(tr.querySelector('.input-paletes')) tr.querySelector('.input-paletes').value = match.paletes || '';
+                            if(tr.querySelector('.input-pc')) tr.querySelector('.input-pc').value = match.pc || '';
+                            if(tr.querySelector('.input-valor')) tr.querySelector('.input-valor').value = formatValorForDisplay(match.valor || match.valor_frete || match.val_frete || '');
+                            if(tr.querySelector('.input-lhorario')) tr.querySelector('.input-lhorario').value = match.l_horario || '';
+                            if(tr.querySelector('.input-chorario')) tr.querySelector('.input-chorario').value = match.c_horario || '';
+                            if(tr.querySelector('.input-fhorario')) tr.querySelector('.input-fhorario').value = match.f_horario || '';
+                            if(tr.querySelector('.input-df')) tr.querySelector('.input-df').value = match.df || match.data_finalizacao || '';
+                            if(tr.querySelector('.input-sr')) tr.querySelector('.input-sr').value = match.sr || '';
+                            if(tr.querySelector('.input-observacao')) tr.querySelector('.input-observacao').value = match.observacao || match.observacoes || match.motivo || '';
+                            
+                            if(tr.classList.contains('coleta-card')) updateCardWpp(tr);
+                            else updateWppMessage(tr);
+
+                            tr.setAttribute('data-id', match.id);
+
+                            saveCurrentDayColetasSilent();
+
+                            await fetch('/api/coletas', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ data: activeDateStr, coletas: [match] })
+                            });
+                            
+                            fetchDayDataFromSupabase(activeDateStr);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("Erro ao verificar delivery duplo:", e);
+            }
         }
     </script>
 </body>
