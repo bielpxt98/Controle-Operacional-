@@ -377,11 +377,29 @@ def delete_coleta(id_coleta):
 @app.route("/api/export-excel", methods=["GET"])
 def export_excel():
     data_filtro = request.args.get("data")
+    month_str = request.args.get("month")
+    year_str = request.args.get("year")
+    all_str = request.args.get("all")
+
     try:
         all_data = db_select_all()
-        if data_filtro:
+        sheet_name = "Coletas"
+        filename = "Relatorio_Coletas.xlsx"
+
+        if all_str:
+            data = all_data
+            filename = "Relatorio_Projeto_Todo.xlsx"
+            sheet_name = "Projeto Todo"
+        elif month_str and year_str:
+            suffix = f"/{month_str}/{year_str}"
+            data = [d for d in all_data if str(d.get("data", "")).strip().endswith(suffix)]
+            filename = f"Relatorio_Mes_{month_str}_{year_str}.xlsx"
+            sheet_name = f"Mes {month_str}-{year_str}"
+        elif data_filtro:
             variants = set(format_date_variants(data_filtro))
             data = [d for d in all_data if str(d.get("data", "")).strip() in variants]
+            filename = f"Relatorio_{data_filtro.replace('/', '_')}.xlsx"
+            sheet_name = f"Dia {data_filtro.replace('/', '-')}"
         else:
             data = all_data
 
@@ -412,7 +430,7 @@ def export_excel():
                     "H_FINALIZADO": d.get("f_horario", ""),
                     "DATA FINALIZACAO (DF)": df_display,
                     "SR": d.get("sr", ""),
-                    "MOTIVO": d.get("observacoes") or d.get("observacao") or "",
+                    "MOTIVO": d.get("motivo") or d.get("observacoes") or d.get("observacao") or "",
                     "CPF": d.get("cpf", ""),
                     "CAVALO": d.get("cavalo", ""),
                     "CARRETA": d.get("carreta", "")
@@ -421,10 +439,14 @@ def export_excel():
 
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            df.to_excel(writer, index=False, sheet_name="Coletas")
+            df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
+            
+            # Ajuste auto width para colunas
+            worksheet = writer.sheets[sheet_name[:31]]
+            for idx, col in enumerate(df.columns):
+                worksheet.column_dimensions[chr(65 + idx)].width = 20
+                
         output.seek(0)
-
-        filename = f"Relatorio_Coletas_{data_filtro.replace('/', '_') if data_filtro else 'Geral'}.xlsx"
         return send_file(output, download_name=filename, as_attachment=True, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
