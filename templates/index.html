@@ -805,15 +805,15 @@
         const _todayMonth = String(_today.getMonth() + 1).padStart(2, '0');
         const _todayDateStr = `${_todayDay}/${_todayMonth}/${_today.getFullYear()}`;
 
-        // Restaura o último dia visitado (persiste o F5)
-        const _savedDate = localStorage.getItem('controle_active_date') || _todayDateStr;
+        // Restaura o último dia visitado na mesma sessão (se fechar a aba, volta pro dia de hoje)
+        const _savedDate = sessionStorage.getItem('controle_active_date') || _todayDateStr;
         const _savedParts = _savedDate.split('/');
         let currentSelectedYear = parseInt(_savedParts[2]) || _today.getFullYear();
         let currentSelectedMonthIndex = (parseInt(_savedParts[1]) - 1) || _today.getMonth();
         let activeDateStr = _savedDate;
 
         function persistActiveDate(dateStr) {
-            localStorage.setItem('controle_active_date', dateStr);
+            sessionStorage.setItem('controle_active_date', dateStr);
         }
 
         function getLocalStore() {
