@@ -947,52 +947,6 @@
             saveCurrentDayColetasSilent();
         }
 
-        function halveValor(btn) {
-            const container = btn.closest('div');
-            const input = container.querySelector('.input-valor');
-            if (!input) return;
-
-            let val = input.value.trim();
-            if (!val || val === '-') return;
-
-            let clean = val.replace(/[^\d,\.]/g, '');
-            if (!clean) return;
-
-            let num = 0;
-            if (clean.includes(',')) {
-                let parts = clean.split(',');
-                let intPart = parts[0].replace(/\D/g, '');
-                let decPart = (parts[1] || '00').slice(0, 2);
-                num = parseFloat(intPart + '.' + decPart);
-            } else if (clean.includes('.')) {
-                num = parseFloat(clean);
-            } else {
-                let digits = clean.replace(/\D/g, '');
-                if (digits.length > 0) {
-                    num = parseFloat(digits);
-                    if (digits.length > 2 && !val.includes('R$')) {
-                        num = num / 100;
-                    }
-                }
-            }
-
-            if (num > 0) {
-                let halved = num / 2;
-                input.value = halved.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                saveCurrentDayColetasSilent();
-                
-                // Piscar verde para dar feedback visual
-                const originalBg = btn.style.background;
-                const originalColor = btn.style.color;
-                btn.style.background = '#059669';
-                btn.style.color = '#fff';
-                setTimeout(() => {
-                    btn.style.background = originalBg;
-                    btn.style.color = originalColor;
-                }, 400);
-            }
-        }
-
         function autoExpandCliente(input) {
             let val = input.value.trim();
             if (/^WMS\b/i.test(val) && !/MAX ATACADO/i.test(val)) {
@@ -1323,12 +1277,7 @@
                 <td><input type="text" class="input-cliente" value="${clienteVal}" title="${clienteVal}" onblur="autoExpandCliente(this)" onchange="autoExpandCliente(this)" oninput="updateWppMessage(this.closest('tr'))"></td>
                 <td><input type="number" class="input-paletes" value="${escapeAttr(rec.paletes ?? '')}" onblur="saveCurrentDayColetasSilent()"></td>
                 <td><input type="number" class="input-pc" value="${escapeAttr(rec.pc ?? rec.coletados ?? '')}" style="color: #34d399; font-weight: 700;" onblur="updateRowStatus(this.closest('tr')); saveCurrentDayColetasSilent()" oninput="updateRowStatus(this.closest('tr'))"></td>
-                <td>
-                    <div style="position: relative; display: flex; align-items: center;">
-                        <input type="text" class="input-valor" value="${valorVal}" onblur="formatValorInput(this)" onchange="formatValorInput(this)" style="padding-right: 32px;">
-                        <button onclick="halveValor(this)" title="Cortar pela metade (Deslocamento)" style="position: absolute; right: 2px; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; border-radius: 4px; padding: 2px 4px; font-size: 0.65rem; cursor: pointer; font-weight: 700;">50%</button>
-                    </div>
-                </td>
+                <td><input type="text" class="input-valor" value="${valorVal}" onblur="formatValorInput(this)" onchange="formatValorInput(this)"></td>
                 <td><input type="text" class="input-lhorario" value="${escapeAttr(rec.l_horario || rec.h_local || '')}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this); updateRowStatus(this.closest('tr'))"></td>
                 <td><input type="text" class="input-chorario" value="${escapeAttr(rec.c_horario || rec.h_coletado || '')}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this); updateRowStatus(this.closest('tr'))"></td>
                 <td><input type="text" class="input-fhorario" value="${fHorarioVal}" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="if(this.value.length>=4)formatHoraInput(this); updateRowStatus(this.closest('tr'))"></td>
@@ -1420,10 +1369,7 @@
                     </div>
                     <div class="card-field">
                         <span class="card-label">Valor</span>
-                        <div style="position: relative; display: flex; align-items: center;">
-                            <input type="text" class="card-input input-valor" value="${valorVal}" onblur="formatValorInput(this)" style="padding-right: 32px; width: 100%;">
-                            <button onclick="halveValor(this)" title="Cortar pela metade" style="position: absolute; right: 2px; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; border-radius: 4px; padding: 2px 4px; font-size: 0.65rem; cursor: pointer; font-weight: 700;">50%</button>
-                        </div>
+                        <input type="text" class="card-input input-valor" value="${valorVal}" onblur="formatValorInput(this)">
                     </div>
                     <div class="card-field">
                         <span class="card-label">H_Local</span>
