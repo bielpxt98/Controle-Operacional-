@@ -1521,7 +1521,12 @@
                 if (driverName === '-- SELECIONE --' || driverName === '-- SELECIONE MOTORISTA --') driverName = '';
                 const delivery = tr.querySelector('.input-delivery')?.value || '';
                 const cliente = tr.querySelector('.input-cliente')?.value || '';
-                if (!delivery && !cliente && !driverName) return;
+                const paletes = tr.querySelector('.input-paletes')?.value || '';
+                const pc = tr.querySelector('.input-pc')?.value || '';
+                const valor = tr.querySelector('.input-valor')?.value || '';
+                const obs = tr.querySelector('.input-observacao')?.value || '';
+                
+                if (!delivery && !cliente && !driverName && !paletes && !pc && !valor && !obs) return;
 
                 const originalDate = tr.getAttribute('data-original-date');
                 const item = {
@@ -1559,7 +1564,12 @@
                 if (driverName === '-- SELECIONE --' || driverName === '-- SELECIONE MOTORISTA --') driverName = '';
                 const delivery = card.querySelector('.input-delivery')?.value || '';
                 const cliente = card.querySelector('.input-cliente')?.value || '';
-                if (!delivery && !cliente && !driverName) return;
+                const paletes = card.querySelector('.input-paletes')?.value || '';
+                const pc = card.querySelector('.input-pc')?.value || '';
+                const valor = card.querySelector('.input-valor')?.value || '';
+                const obs = card.querySelector('.input-observacao')?.value || '';
+                
+                if (!delivery && !cliente && !driverName && !paletes && !pc && !valor && !obs) return;
 
                 const item = {
                     data: activeDateStr,
