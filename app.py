@@ -341,11 +341,11 @@ def save_coletas():
             }
 
             if real_cols:
-                registro = {k: v for k, v in raw_registro.items() if k in real_cols and k != "id"}
+                registro = {k: v for k, v in raw_registr✅items() if k in real_cols and k != "id"}
             else:
                 registro = raw_registro
 
-            registro_final = {k: (None if v == "" or v == "-" else v) for k, v in registro.items()}
+            registro_final = {k: (None if v == "" or v == "-" else v) for k, v in registr✅items()}
 
             rec_id = item.get("id")
             is_valid_id = rec_id is not None and str(rec_id).isdigit() and int(rec_id) > 0
@@ -366,7 +366,7 @@ def save_coletas():
 def delete_coleta(id_coleta):
     try:
         db_delete(id_coleta)
-        return jsonify({"status": "success", "message": "Coleta excluída com sucesso."})
+        return jsonify({"status": "success", "message": "Coleta excluída com sucess✅"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -405,7 +405,7 @@ def export_excel():
 
         if all_str:
             data = all_data
-            filename = "Relatorio_Projeto_Todo.xlsx"
+            filename = "Relatorio_Projeto_Tod✅xlsx"
             sheet_name = "Projeto Todo"
         elif month_str and year_str:
             suffix = f"/{month_str}/{year_str}"
@@ -415,8 +415,8 @@ def export_excel():
         elif data_filtro:
             variants = set(format_date_variants(data_filtro))
             data = [d for d in all_data if str(d.get("data", "")).strip() in variants]
-            filename = f"Relatorio_{data_filtro.replace('/', '_')}.xlsx"
-            sheet_name = f"Dia {data_filtro.replace('/', '-')}"
+            filename = f"Relatorio_{data_filtr✅replace('/', '_')}.xlsx"
+            sheet_name = f"Dia {data_filtr✅replace('/', '-')}"
         else:
             data = all_data
 
@@ -475,15 +475,7 @@ def whatsapp_qr():
     qr_path = os.path.join(app.static_folder, "qr.png")
     if os.path.exists(qr_path):
         return "<h1>Conecte o WhatsApp</h1><p>Escaneie o QR Code abaixo:</p><img src='/static/qr.png' /><p>Atualize a página em 10 seg.</p>"
-    return "<h1>✅ WhatsApp Conectado ou Iniciando...</h1>"
-
-@app.route("/whatsapp")
-def whatsapp_qr():
-    import os
-    qr_path = os.path.join(app.static_folder, "qr.png")
-    if os.path.exists(qr_path):
-        return "<h1>Conecte o WhatsApp</h1><p>Escaneie o QR Code abaixo:</p><img src='/static/qr.png' /><p>Atualize a pagina em 10 seg.</p>"
-    return "<h1>? WhatsApp Conectado ou Iniciando...</h1>"
+    return "<h1>✅ WhatsApp Conectado ou Iniciand✅..</h1>"
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
