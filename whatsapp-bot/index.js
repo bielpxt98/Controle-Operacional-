@@ -72,7 +72,9 @@ async function startWhatsApp() {
         const nomeDela = "luciana ribeiro";
         
         const nomeRemetenteLower = senderName.toLowerCase();
-        const msgDeDonaLuciana = remetenteNum.includes(numA) || remetenteNum.includes(numB) || nomeRemetenteLower.includes(nomeDela) || nomeRemetenteLower.includes("luciana");
+        const numC = "558183493082";
+        const numD = "5581983493082";
+        const msgDeDonaLuciana = remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || nomeRemetenteLower.includes(nomeDela) || nomeRemetenteLower.includes("luciana");
 
         // Se a mensagem NAO for dela e estiver num grupo, o robo ignora
         if (!msgDeDonaLuciana && isFromGroup) {
