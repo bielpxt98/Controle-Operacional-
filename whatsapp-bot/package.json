@@ -1,0 +1,18 @@
+﻿{
+  "name": "whatsapp-bot-chep",
+  "version": "1.0.0",
+  "description": "WhatsApp Bot for Controle Operacional CHEP",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.1.3",
+    "@supabase/supabase-js": "^2.39.3",
+    "@whiskeysockets/baileys": "^6.6.0",
+    "dotenv": "^16.4.1",
+    "express": "^4.18.2",
+    "pino": "^8.19.0",
+    "qrcode": "^1.5.3"
+  }
+}

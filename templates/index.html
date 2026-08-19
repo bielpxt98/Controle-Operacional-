@@ -963,7 +963,7 @@
             const driverSelect = tr.querySelector('.driver-select');
             const driverName = driverSelect ? driverSelect.selectedOptions[0].text.replace(' ▼', '') : '';
 
-            const driverPrefix = driverName.length >= 2 ? driverName.substring(0, 2).toLowerCase() : driverName.toLowerCase();
+            const driverPrefix = driverName.length >= 2 ? driverName.substring(0, 2).toUpperCase() : driverName.toUpperCase();
             const wppText = `${delivery} - ${cliente} -@${driverPrefix}`;
             const wppSpan = tr.querySelector('.wpp-text');
             if (wppSpan) {
@@ -1429,7 +1429,7 @@
             const sel = card.querySelector('.driver-select');
             const driverName = sel ? sel.selectedOptions[0].text : '';
             const wppSpan = card.querySelector('.wpp-text');
-            const driverPrefix = driverName.length >= 2 ? driverName.substring(0, 2).toLowerCase() : driverName.toLowerCase();
+            const driverPrefix = driverName.length >= 2 ? driverName.substring(0, 2).toUpperCase() : driverName.toUpperCase();
             if (wppSpan) wppSpan.innerText = `${delivery} - ${cliente} -@${driverPrefix}`;
         }
 
