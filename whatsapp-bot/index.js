@@ -66,22 +66,23 @@ async function startWhatsApp() {
         if (Object.keys(msg.message)[0] !== 'imageMessage') return;
         const remetenteNum = msg.key.participant || msg.key.remoteJid;
         
-        // ================= TRAVA DE SEGURANÇA: SÓ DONA LUCIANA =================
+        // ================= REGRAS DE LEITURA =================
         const numA = "558194346196";
-        const numB = "5581994346196"; // Com o 9 extra
+        const numB = "5581994346196"; 
+        const numC = "558183493082";
+        const numD = "5581983493082";
         const nomeDela = "luciana ribeiro";
         
         const nomeRemetenteLower = senderName.toLowerCase();
-        const numC = "558183493082";
-        const numD = "5581983493082";
-        const msgDeDonaLuciana = remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || nomeRemetenteLower.includes(nomeDela) || nomeRemetenteLower.includes("luciana");
+        const msgDaProgramacao = remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || nomeRemetenteLower.includes(nomeDela) || nomeRemetenteLower.includes("luciana");
 
-        // Se a mensagem NAO for dela e estiver num grupo, o robo ignora
-        if (!msgDeDonaLuciana && isFromGroup) {
-             console.log("[WPP] -> Ignorado: Imagem enviada por " + senderName + " (" + remetenteNum + "), nao eh a Dona Luciana.");
+        // Se for mensagem no PRIVADO, SÓ PODE SER DESSES DOIS NUMEROS (que enviam a programacao)
+        if (!isFromGroup && !msgDaProgramacao) {
+             console.log("[WPP] -> Ignorado: Mensagem privada de " + senderName + " (" + remetenteNum + "), não é um número autorizado para programação.");
              return;
         }
-        // =======================================================================
+        // Se for no GRUPO PURM SALVADOR, aceitamos mensagens de QUALQUER UM (para os comandos hlocal, hcoletado, etc)
+        // =====================================================
         
         console.log("[WPP] -> ATENÇÃO! Nova imagem recebida de DONA LUCIANA:");
         console.log("[WPP] -> NOME: " + senderName);
@@ -90,8 +91,20 @@ async function startWhatsApp() {
         const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: "silent" }) });
         const json = await classifyImage(buffer, textCaption, isFromGroup);
         if (!json || json.tipo === "IRRELEVANTE") return console.log("[WPP] Imagem irrelevante, ignorando.");
-        if (json.tipo === "ESCALA") await handleEscala(json);
-        else if (isFromGroup) await handleMotorista(json, senderName);
+        
+        if (json.tipo === "ESCALA") {
+            await handleEscala(json);
+        } else {
+            // Se for do privado (e passou pela trava), é a programação (motorista + delivery)
+            if (!isFromGroup) {
+                await handleMotorista(json, senderName);
+            } else {
+                // Se for do grupo, é o motorista mandando a foto da NF (hlocal, hcoletado, hfinalizado)
+                // Vamos mandar para o handleMotorista por enquanto para extrair e salvar, 
+                // e em breve implementamos a logica exata de mudar os status.
+                await handleMotorista(json, senderName);
+            }
+        }
     });
 }
 
