@@ -65,7 +65,23 @@ async function startWhatsApp() {
         const textCaption = msg.message.imageMessage?.caption || "";
         if (Object.keys(msg.message)[0] !== 'imageMessage') return;
         const remetenteNum = msg.key.participant || msg.key.remoteJid;
-        console.log("[WPP] -> ATENÇÃO! Nova imagem recebida de:");
+        
+        // ================= TRAVA DE SEGURANÇA: SÓ DONA LUCIANA =================
+        const numA = "558194346196";
+        const numB = "5581994346196"; // Com o 9 extra
+        const nomeDela = "luciana ribeiro";
+        
+        const nomeRemetenteLower = senderName.toLowerCase();
+        const msgDeDonaLuciana = remetenteNum.includes(numA) || remetenteNum.includes(numB) || nomeRemetenteLower.includes(nomeDela) || nomeRemetenteLower.includes("luciana");
+
+        // Se a mensagem NAO for dela e estiver num grupo, o robo ignora
+        if (!msgDeDonaLuciana && isFromGroup) {
+             console.log("[WPP] -> Ignorado: Imagem enviada por " + senderName + " (" + remetenteNum + "), nao eh a Dona Luciana.");
+             return;
+        }
+        // =======================================================================
+        
+        console.log("[WPP] -> ATENÇÃO! Nova imagem recebida de DONA LUCIANA:");
         console.log("[WPP] -> NOME: " + senderName);
         console.log("[WPP] -> NUMERO/ID: " + remetenteNum);
         console.log("[WPP] -> FONTE: " + (isFromGroup ? "GRUPO PURM SALVADOR" : "PRIVADO"));
