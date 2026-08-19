@@ -64,7 +64,11 @@ async function startWhatsApp() {
         const senderName = msg.pushName || "";
         const textCaption = msg.message.imageMessage?.caption || "";
         if (Object.keys(msg.message)[0] !== 'imageMessage') return;
-        console.log("[WPP] Imagem aceita de " + senderName + " (" + (isFromGroup ? "GRUPO PURM" : "PRIVADO") + ")");
+        const remetenteNum = msg.key.participant || msg.key.remoteJid;
+        console.log("[WPP] -> ATENÇÃO! Nova imagem recebida de:");
+        console.log("[WPP] -> NOME: " + senderName);
+        console.log("[WPP] -> NUMERO/ID: " + remetenteNum);
+        console.log("[WPP] -> FONTE: " + (isFromGroup ? "GRUPO PURM SALVADOR" : "PRIVADO"));
         const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: "silent" }) });
         const json = await classifyImage(buffer, textCaption, isFromGroup);
         if (!json || json.tipo === "IRRELEVANTE") return console.log("[WPP] Imagem irrelevante, ignorando.");
