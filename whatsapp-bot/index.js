@@ -50,10 +50,21 @@ async function startWhatsApp() {
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
         const isFromGroup = msg.key.remoteJid?.endsWith('@g.us');
+        
+        if (isFromGroup) {
+            try {
+                const groupMeta = await sock.groupMetadata(msg.key.remoteJid);
+                const groupName = groupMeta.subject || "";
+                if (!groupName.toLowerCase().includes("purm salvador")) {
+                    return; // Ignora se não for o grupo correto
+                }
+            } catch(e) { return; }
+        }
+
         const senderName = msg.pushName || "";
         const textCaption = msg.message.imageMessage?.caption || "";
         if (Object.keys(msg.message)[0] !== 'imageMessage') return;
-        console.log("[WPP] Imagem de " + senderName + " (" + (isFromGroup ? "GRUPO" : "PRIVADO") + ")");
+        console.log("[WPP] Imagem aceita de " + senderName + " (" + (isFromGroup ? "GRUPO PURM" : "PRIVADO") + ")");
         const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: "silent" }) });
         const json = await classifyImage(buffer, textCaption, isFromGroup);
         if (!json || json.tipo === "IRRELEVANTE") return console.log("[WPP] Imagem irrelevante, ignorando.");
