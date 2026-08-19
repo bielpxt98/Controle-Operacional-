@@ -1,4 +1,4 @@
-﻿FROM nikolaik/python-nodejs:python3.11-nodejs20
+FROM nikolaik/python-nodejs:python3.11-nodejs20
 
 USER root
 
@@ -27,7 +27,7 @@ RUN pip install -r requirements.txt
 
 # Instala dependencias Node (Robos WPP e CHEP)
 COPY whatsapp-bot/package*.json ./whatsapp-bot/
-RUN cd whatsapp-bot && npm ci
+RUN cd whatsapp-bot && npm ci && npx playwright install chromium
 
 # Copia todo o projeto
 COPY . .
