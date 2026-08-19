@@ -41,8 +41,6 @@ async function startWhatsApp() {
         } else if (connection === 'open') {
             if (fs.existsSync(qrPath)) fs.unlinkSync(qrPath);
             console.log('[WPP] Conectado e pronto!');
-            // INICIA O LOOP DA CHEP
-            iniciarLoopCHEP();
         }
     });
     sock.ev.on('creds.update', saveCreds);
@@ -158,3 +156,6 @@ async function iniciarLoopCHEP() {
     }
 }
 startWhatsApp();
+
+// INICIA O LOOP DA CHEP DE FORMA INDEPENDENTE DO WPP
+iniciarLoopCHEP();
