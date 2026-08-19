@@ -69,16 +69,24 @@ async function handleLogic(json) {
         const normalize = str => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
         const extraidoNorm = normalize(extraido.cliente);
         const extraidoWords = extraidoNorm.split(' ').filter(p => p.length > 3);
-        
-        let match = coletas.find(c => {
-            if (!c.cliente) return false;
+
+        // Sistema de pontuacao: escolhe o cliente com MAIS palavras em comum
+        let bestScore = 0;
+        let match = null;
+        for (const c of coletas) {
+            if (!c.cliente) continue;
             const dbNorm = normalize(c.cliente);
             const dbWords = dbNorm.split(' ').filter(p => p.length > 3);
-            // Busca bidirecional: qualquer palavra relevante do DB aparece na escala, OU vice-versa
-            const dbMatchesEscala = dbWords.some(p => extraidoNorm.includes(p));
-            const escalaMatchesDb = extraidoWords.some(p => dbNorm.includes(p));
-            return dbMatchesEscala || escalaMatchesDb;
-        });
+            // Conta quantas palavras da escala aparecem no nome do banco e vice-versa
+            const score = extraidoWords.filter(p => dbNorm.includes(p)).length
+                        + dbWords.filter(p => extraidoNorm.includes(p)).length;
+            if (score > bestScore) {
+                bestScore = score;
+                match = c;
+            }
+        }
+        // Exige pelo menos 1 palavra em comum para evitar falsos positivos
+        if (bestScore === 0) match = null;
         
         if (match) {
             let updateData = {};
