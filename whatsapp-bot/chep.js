@@ -224,10 +224,20 @@ async function runChepProgramacaoAmanha(deliveries) {
                         if (coletasPendentes.length > 0) {
                             console.log(`[WEB] Iniciando busca avancada (Cascata) para ${coletasPendentes.length} pendentes...`);
                             let cascatasProcessadas = new Set();
+                            let maxCascataLoops = 15;
 
-                            while (coletasPendentes.length > 0) {
+                            while (coletasPendentes.length > 0 && maxCascataLoops > 0) {
+                                maxCascataLoops--;
                                 let reiniciarCascata = false;
                                 try {
+                                    // Refaz a busca pelo frame principal caso tenha ficado stale
+                                    for (const f of targetPage.frames()) {
+                                        if (await f.locator('table.listTable').count() > 0 || await f.locator('text="ID da carga"').count() > 0) {
+                                            resultsFrame = f;
+                                            break;
+                                        }
+                                    }
+
                                     // Desmarca caixinhas
                                     const caixinhasAtivas = await resultsFrame.locator('input[type="checkbox"]:checked').all();
                                     for (const cx of caixinhasAtivas) {
@@ -364,13 +374,14 @@ async function runChepProgramacaoAmanha(deliveries) {
                                             const strErr = rowE.message || "";
                                             if (strErr.includes("Timeout") || strErr.toLowerCase().includes("stale") || strErr.includes("Target closed")) {
                                                 console.log("[WEB] -> A pagina recarregou. Reiniciando a busca...");
+                                                await targetPage.waitForTimeout(2000);
                                                 reiniciarCascata = true;
                                                 break;
                                             }
                                         }
                                     }
 
-                                    if (!reiniciarCascata) {
+                                    if (!reiniciarCascata || maxCascataLoops === 0) {
                                         console.log("[WEB] Varredura de cascatas concluida.");
                                         break;
                                     }
