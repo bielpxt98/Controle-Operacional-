@@ -65,7 +65,20 @@ async function handleLogic(json) {
     }
 
     for (let extraido of json.dados_escala) {
-        let match = coletas.find(c => c.cliente && c.cliente.toUpperCase().split(' ').some(p => p.length > 3 && extraido.cliente.toUpperCase().includes(p)));
+        // Normaliza texto removendo acentos para comparacao robusta
+        const normalize = str => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+        const extraidoNorm = normalize(extraido.cliente);
+        const extraidoWords = extraidoNorm.split(' ').filter(p => p.length > 3);
+        
+        let match = coletas.find(c => {
+            if (!c.cliente) return false;
+            const dbNorm = normalize(c.cliente);
+            const dbWords = dbNorm.split(' ').filter(p => p.length > 3);
+            // Busca bidirecional: qualquer palavra relevante do DB aparece na escala, OU vice-versa
+            const dbMatchesEscala = dbWords.some(p => extraidoNorm.includes(p));
+            const escalaMatchesDb = extraidoWords.some(p => dbNorm.includes(p));
+            return dbMatchesEscala || escalaMatchesDb;
+        });
         
         if (match) {
             let updateData = {};
