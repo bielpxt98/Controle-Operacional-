@@ -12,11 +12,17 @@ async function runChepProgramacaoAmanha(deliveries) {
     if (!deliveries || deliveries.length === 0) return;
     console.log("[WEB] Iniciando Playwright (Node.js) portado do local...");
 
+    const path = require('path');
     let bdMotoristas = {};
     try {
-        const jsonStr = fs.readFileSync(__dirname + '/motoristas.json', 'utf8');
+        const jsonPath = path.join(__dirname, 'motoristas.json');
+        console.log("[WEB] Lendo motoristas de:", jsonPath);
+        const jsonStr = fs.readFileSync(jsonPath, 'utf8');
         bdMotoristas = JSON.parse(jsonStr);
-    } catch(e) { console.log("Aviso: motoristas.json nao encontrado"); }
+        console.log("[WEB] Motoristas carregados com sucesso!");
+    } catch(e) { 
+        console.error("[WEB] ERRO GRAVE ao ler motoristas.json:", e); 
+    }
 
     const dadosExtraidos = [];
     for (const d of deliveries) {
