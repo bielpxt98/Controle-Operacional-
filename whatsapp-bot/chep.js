@@ -1,5 +1,6 @@
 const { chromium } = require('playwright');
 const { createClient } = require('@supabase/supabase-js');
+const fs = require('fs');
 require('dotenv').config();
 
 const supabase = createClient(
@@ -33,7 +34,7 @@ async function runChepProgramacaoAmanha(deliveries) {
         });
     }
 
-    const browser = await chromium.launch({ headless: false, slowMo: 50 });
+    const browser = await chromium.launch({ headless: true, slowMo: 50 });
     const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await context.newPage();
 
