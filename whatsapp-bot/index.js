@@ -44,7 +44,7 @@ Retorne APENAS um JSON bruto, sem markdown:
     }
 }
 
-async function handleLogic(json, senderName) {
+async function handleLogic(json) {
     if (!json || json.tipo !== "ESCALA") return;
     
     console.log(`[ESCALA] Recebida programação para o dia: ${json.data_programacao}`);
@@ -53,7 +53,6 @@ async function handleLogic(json, senderName) {
         return console.log("[LOGICA] Nenhum dado encontrado na escala.");
     }
 
-    // Busca coletas APENAS da data extraída
     const { data: coletas, error } = await supabase
         .from('deliveries')
         .select('*')
@@ -62,33 +61,16 @@ async function handleLogic(json, senderName) {
     if (error) return console.error("[SUPABASE] Erro:", error);
     
     if (!coletas || coletas.length === 0) {
-        return console.log(`[LOGICA] Nenhuma coleta encontrada no banco para a data ${json.data_programacao}. Crie as coletas no site primeiro.`);
+        return console.log(`[LOGICA] Nenhuma coleta encontrada no banco para a data ${json.data_programacao}.`);
     }
 
-    // Atualiza os dados
     for (let extraido of json.dados_escala) {
-        // Encontra a coleta pelo nome do cliente (similaridade simples)
         let match = coletas.find(c => c.cliente && c.cliente.toUpperCase().split(' ').some(p => p.length > 3 && extraido.cliente.toUpperCase().includes(p)));
         
         if (match) {
             let updateData = {};
-            // Só atualiza se estiver vazio, conforme o pedido: "preencher tudo que falta (caso ja tenha algum preenchido)"
-            if (!match.motorista || match.motorista.trim() === "") {
-                updateData.motorista = extraido.motorista;
-            } else {
-                // Se o usuario quiser que SUBSTITUA, ele removeria o if. Mas pelo texto "caso ja tenha algum preenchido", 
-                // assumimos que queremos respeitar os que estao preenchidos ou que forçamos a atualizaçao?
-                // Vou SOBRESCREVER o motorista porque o usuario disse "vou editar algumas do dia 19 e realizar o teste".
-                // Ele quer que o robo PREENCHA o restante. 
-                // Na verdade, se o site já tem, é melhor deixar ele atualizar se for para consertar?
-                // "preencher tudo que falta (caso ja tenha algum preenchido)" -> preencher SOMENTE o que falta!
-                if (!match.motorista) updateData.motorista = extraido.motorista;
-            }
-
-            // O mesmo para paletes
-            if ((!match.paletes || match.paletes == 0) && extraido.paletes) {
-                updateData.paletes = extraido.paletes;
-            }
+            if (!match.motorista || match.motorista.trim() === "") updateData.motorista = extraido.motorista;
+            if ((!match.paletes || match.paletes == 0) && extraido.paletes) updateData.paletes = extraido.paletes;
 
             if (Object.keys(updateData).length > 0) {
                 await supabase.from('deliveries').update(updateData).eq('id', match.id);
@@ -123,20 +105,14 @@ async function startWhatsApp() {
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
 
-        const senderName = msg.pushName || "";
-        
-        // FILTRO: Aceitar apenas se o nome for Osvaldo purm (ignorando maiusculas/minusculas)
-        if (!senderName.toLowerCase().includes("osvaldo purm")) {
-            return;
-        }
-
+        const senderName = msg.pushName || "Desconhecido";
         const textCaption = msg.message.imageMessage?.caption || "";
 
         if (Object.keys(msg.message)[0] === 'imageMessage') {
             console.log(`[WPP] Imagem recebida de ${senderName}`);
             const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: "silent" }) });
             const json = await processImageWithGemini(buffer, textCaption);
-            if (json) await handleLogic(json, senderName);
+            if (json) await handleLogic(json);
         }
     });
 }
