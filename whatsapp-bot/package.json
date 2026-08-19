@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "whatsapp-bot-chep",
   "version": "1.0.0",
   "description": "WhatsApp Bot for Controle Operacional CHEP",
@@ -13,6 +13,7 @@
     "dotenv": "^16.4.1",
     "express": "^4.18.2",
     "pino": "^8.19.0",
+    "puppeteer": "^25.8.0",
     "qrcode": "^1.5.3"
   }
 }
