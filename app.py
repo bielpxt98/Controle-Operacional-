@@ -468,6 +468,23 @@ def export_excel():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
+@app.route("/whatsapp")
+def whatsapp_qr():
+    import os
+    qr_path = os.path.join(app.static_folder, "qr.png")
+    if os.path.exists(qr_path):
+        return "<h1>Conecte o WhatsApp</h1><p>Escaneie o QR Code abaixo:</p><img src='/static/qr.png' /><p>Atualize a página em 10 seg.</p>"
+    return "<h1>✅ WhatsApp Conectado ou Iniciando...</h1>"
+
+@app.route("/whatsapp")
+def whatsapp_qr():
+    import os
+    qr_path = os.path.join(app.static_folder, "qr.png")
+    if os.path.exists(qr_path):
+        return "<h1>Conecte o WhatsApp</h1><p>Escaneie o QR Code abaixo:</p><img src='/static/qr.png' /><p>Atualize a pagina em 10 seg.</p>"
+    return "<h1>? WhatsApp Conectado ou Iniciando...</h1>"
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
