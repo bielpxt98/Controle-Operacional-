@@ -9,7 +9,7 @@ const {
 const pino = require('pino');
 const qrcode = require('qrcode');
 const fs = require('fs');
-const JSZip = require('jszip');
+
 const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { createClient } = require('@supabase/supabase-js');
@@ -23,7 +23,13 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const qrPath = path.join(__dirname, '..', 'static', 'qr.png');
 
+// ============================================================
+// ============================================================
+// SESSAO LOCAL
+// ============================================================
 const { useMultiFileAuthState } = require('@whiskeysockets/baileys');
+
+async function startWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
     const sock = makeWASocket({ auth: state, printQRInTerminal: false, logger: pino({ level: "silent" }), browser: ["Controle CHEP", "Chrome", "10.0.0"] });
     sock.ev.on('connection.update', async (update) => {
@@ -104,27 +110,5 @@ async function iniciarLoopCHEP() {
           chepRodando = false;
       }, 5000);
     }
-}
-startWhatsApp();
-        } else if (connection === 'open') {
-            if (fs.existsSync(qrPath)) fs.unlinkSync(qrPath);
-            console.log('[WPP] ✅ Conectado e pronto!');
-        }
-    });
-    sock.ev.on('creds.update', saveCreds);
-    sock.ev.on('messages.upsert', async (m) => {
-        const msg = m.messages[0];
-        if (!msg.message || msg.key.fromMe) return;
-        const isFromGroup = msg.key.remoteJid?.endsWith('@g.us');
-        const senderName = msg.pushName || "";
-        const textCaption = msg.message.imageMessage?.caption || "";
-        if (Object.keys(msg.message)[0] !== 'imageMessage') return;
-        console.log("[WPP] Imagem de " + senderName + " (" + (isFromGroup ? "GRUPO" : "PRIVADO") + ")");
-        const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: "silent" }) });
-        const json = await classifyImage(buffer, textCaption, isFromGroup);
-        if (!json || json.tipo === "IRRELEVANTE") return console.log("[WPP] Imagem irrelevante, ignorando.");
-        if (json.tipo === "ESCALA") await handleEscala(json);
-        else if (isFromGroup) await handleMotorista(json, senderName);
-    });
 }
 startWhatsApp();
