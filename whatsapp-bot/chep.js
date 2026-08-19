@@ -17,7 +17,11 @@ async function runChepProgramacaoAmanha(deliveries) {
     try {
         const jsonPath = path.join(__dirname, 'motoristas.json');
         console.log("[WEB] Lendo motoristas de:", jsonPath);
-        const jsonStr = fs.readFileSync(jsonPath, 'utf8');
+        let jsonStr = fs.readFileSync(jsonPath, 'utf8');
+        // Remove BOM invisível do Windows se existir
+        if (jsonStr.charCodeAt(0) === 0xFEFF) {
+            jsonStr = jsonStr.slice(1);
+        }
         bdMotoristas = JSON.parse(jsonStr);
         console.log("[WEB] Motoristas carregados com sucesso!");
     } catch(e) { 
