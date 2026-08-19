@@ -17,7 +17,7 @@ const qrPath = path.join(__dirname, '..', 'static', 'qr.png');
 
 async function processImageWithGemini(buffer, textCaption) {
     console.log("[GEMINI] Analisando imagem da programacao...");
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     const prompt = `Analise esta imagem da escala de motoristas. Legenda: ${textCaption}
 
 Regras:
