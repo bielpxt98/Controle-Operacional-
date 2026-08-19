@@ -9,6 +9,7 @@ const {
 const pino = require('pino');
 const qrcode = require('qrcode');
 const fs = require('fs');
+const JSZip = require('jszip');
 const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { createClient } = require('@supabase/supabase-js');
@@ -24,172 +25,60 @@ const qrPath = path.join(__dirname, '..', 'static', 'qr.png');
 
 // ============================================================
 // ============================================================
-// SESSAO PERSISTENTE NO SUPABASE (C/ CACHE EM MEMORIA)
+// SESSAO HIBRIDA (LOCAL + BACKUP NO SUPABASE)
 // ============================================================
-async function useSupabaseAuthState() {
-    let memoryCache = {};
-    let writeQueue = {};
-    let isWriting = false;
+const { useMultiFileAuthState } = require('@whiskeysockets/baileys');
+const JSZip = require('jszip');
 
-    const { data: allData } = await supabase.from('whatsapp_session').select('*');
-    if (allData) {
-        allData.forEach(row => { memoryCache[row.key] = row.value; });
-    }
-
-    const flushQueue = async () => {
-        if (isWriting || Object.keys(writeQueue).length === 0) return;
-        isWriting = true;
-        const keysToProcess = Object.keys(writeQueue);
-        const toUpsert = [];
-        const toDelete = [];
-        
-        for (const k of keysToProcess) {
-            if (writeQueue[k] === null) toDelete.push(k);
-            else toUpsert.push({ key: k, value: writeQueue[k] });
-            delete writeQueue[k];
-        }
-
-        try {
-            if (toUpsert.length > 0) await supabase.from('whatsapp_session').upsert(toUpsert, { onConflict: 'key' });
-            if (toDelete.length > 0) await supabase.from('whatsapp_session').delete().in('key', toDelete);
-        } catch (e) {
-            console.error("[SUPABASE] Erro ao salvar sessao:", e.message);
-        }
-        
-        isWriting = false;
-        if (Object.keys(writeQueue).length > 0) setTimeout(flushQueue, 1000);
-    };
-
-    const queueWrite = (key, value) => {
-        memoryCache[key] = value;
-        writeQueue[key] = value;
-        setTimeout(flushQueue, 2000);
-    };
-
-    const creds = memoryCache['creds'] || initAuthCreds();
-
-    return {
-        state: {
-            creds,
-            keys: makeCacheableSignalKeyStore({
-                get: (type, ids) => {
-                    const data = {};
-                    ids.forEach(id => {
-                        const val = memoryCache[type + '-' + id];
-                        if (val) data[id] = val;
-                    });
-                    return data;
-                },
-                set: (data) => {
-                    for (const [type, ids] of Object.entries(data)) {
-                        for (const [id, value] of Object.entries(ids)) {
-                            queueWrite(type + '-' + id, value || null);
-                        }
-                    }
-                }
-            }, pino({ level: 'silent' }))
-        },
-        saveCreds: () => { queueWrite('creds', creds); }
-    };
-}
-
-// ============================================================
-// CLASSIFICACAO COM GEMINI (contexto diferente por origem)
-// ============================================================
-async function classifyImage(buffer, textCaption, isFromGroup) {
-    const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
-    const groupPrompt = `Analise esta imagem de um GRUPO de motoristas de caminhao. Legenda: "${textCaption}"
-Classifique:
-1. 'CHEGADA': Foto da rua, volante, fachada, GPS indicando chegada no cliente.
-2. 'NF_FINALIZADA': Nota Fiscal COM CARIMBO DE RECEBIDO ou ASSINATURA GRANDE indicando entrega finalizada.
-3. 'NF_COLETA': Nota Fiscal LIMPA sem carimbo.
-4. 'IRRELEVANTE': Qualquer outra coisa (memes, comida, texto).
-Retorne JSON: { "tipo": "...", "motorista": null, "delivery": null, "cliente": null, "paletes": null }`;
-
-    const privatePrompt = `Analise esta imagem de conversa PRIVADA. Legenda: "${textCaption}"
-Classifique como 'ESCALA' SOMENTE se a imagem for uma tabela/planilha de programacao de coletas que contenha EXPLICITAMENTE colunas com nomes de MOTORISTAS e nomes de CLIENTES/DESTINOS.
-Se nao tiver as duas informacoes claramente, classifique como 'IRRELEVANTE'.
-Retorne JSON: { "tipo": "ESCALA" ou "IRRELEVANTE", "data_programacao": "DD/MM/AAAA", "dados_escala": [{"motorista": "LUIZ", "cliente": "JDE CAFE", "paletes": "476"}] }`;
-
+async function useHybridAuthState() {
+    // 1. Tenta baixar o backup do Supabase
     try {
-        const result = await model.generateContent([isFromGroup ? groupPrompt : privatePrompt, { inlineData: { data: buffer.toString("base64"), mimeType: "image/jpeg" } }]);
-        let text = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
-        return JSON.parse(text);
-    } catch (error) {
-        console.error("[GEMINI] Erro:", error.message);
-        return null;
-    }
-}
-
-// ============================================================
-// LOGICA DE ESCALA (programacao de motoristas)
-// ============================================================
-const normalize = str => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
-
-async function handleEscala(json) {
-    if (!json.dados_escala || json.dados_escala.length === 0) return console.log("[ESCALA] Sem dados.");
-    console.log("[ESCALA] Programacao para: " + json.data_programacao);
-    const { data: coletas, error } = await supabase.from('deliveries').select('*').eq('data', json.data_programacao);
-    if (error || !coletas?.length) return console.log("[ESCALA] Sem coletas no banco para " + json.data_programacao);
-
-    for (let extraido of json.dados_escala) {
-        const extraidoNorm = normalize(extraido.cliente);
-        const extraidoWords = extraidoNorm.split(' ').filter(p => p.length > 3);
-        let bestScore = 0, match = null;
-        for (const c of coletas) {
-            if (!c.cliente) continue;
-            const dbNorm = normalize(c.cliente);
-            const dbWords = dbNorm.split(' ').filter(p => p.length > 3);
-            const score = extraidoWords.filter(p => dbNorm.includes(p)).length + dbWords.filter(p => extraidoNorm.includes(p)).length;
-            if (score > bestScore) { bestScore = score; match = c; }
+        const { data } = await supabase.from('whatsapp_session').select('value').eq('key', 'backup_zip').single();
+        if (data && data.value) {
+            console.log("[SESSAO] Restaurando backup do Supabase...");
+            const zip = new JSZip();
+            const zipBuffer = Buffer.from(data.value, 'base64');
+            await zip.loadAsync(zipBuffer);
+            if (!fs.existsSync('auth_info_baileys')) fs.mkdirSync('auth_info_baileys');
+            for (const filename of Object.keys(zip.files)) {
+                const fileData = await zip.file(filename).async('nodebuffer');
+                fs.writeFileSync('auth_info_baileys/' + filename, fileData);
+            }
+            console.log("[SESSAO] Backup restaurado com sucesso!");
         }
-        if (!match || bestScore === 0) { console.log("[ESCALA] Nao encontrado: " + extraido.cliente); continue; }
-        let updateData = {};
-        if (!match.motorista?.trim()) updateData.motorista = extraido.motorista;
-        if ((!match.paletes || match.paletes == 0) && extraido.paletes) updateData.paletes = extraido.paletes;
-        if (Object.keys(updateData).length > 0) {
-            await supabase.from('deliveries').update(updateData).eq('id', match.id);
-            console.log("✅ [ESCALA] " + match.cliente + " -> " + JSON.stringify(updateData));
-        } else {
-            console.log("ℹ️ [ESCALA] " + match.cliente + " ja preenchido.");
-        }
-    }
+    } catch (e) { console.log("[SESSAO] Nenhum backup anterior encontrado (Normal)."); }
+
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+    
+    let isBackingUp = false;
+    let needsBackup = false;
+
+    const doBackup = async () => {
+        if (isBackingUp || !fs.existsSync('auth_info_baileys')) return;
+        isBackingUp = true;
+        needsBackup = false;
+        try {
+            const zip = new JSZip();
+            const files = fs.readdirSync('auth_info_baileys');
+            for (const f of files) {
+                zip.file(f, fs.readFileSync('auth_info_baileys/' + f));
+            }
+            const content = await zip.generateAsync({ type: 'base64' });
+            await supabase.from('whatsapp_session').upsert({ key: 'backup_zip', value: content }, { onConflict: 'key' });
+        } catch (e) { console.error("[SESSAO] Erro no backup:", e.message); }
+        isBackingUp = false;
+        if (needsBackup) setTimeout(doBackup, 10000);
+    };
+
+    const saveCredsAndBackup = async () => {
+        await saveCreds();
+        needsBackup = true;
+        setTimeout(doBackup, 5000); // Debounce de 5 seg
+    };
+
+    return { state, saveCreds: saveCredsAndBackup };
 }
-
-// ============================================================
-// LOGICA DE MOTORISTA (chegada, coleta, finalizacao)
-// ============================================================
-async function handleMotorista(json, senderName) {
-    if (!["CHEGADA", "NF_COLETA", "NF_FINALIZADA"].includes(json.tipo)) return;
-    const { data: coletas, error } = await supabase.from('deliveries').select('*').order('id', { ascending: false }).limit(80);
-    if (error) return console.error("[SUPABASE]", error);
-
-    let coletaMatch = null;
-    if (json.delivery) coletaMatch = coletas.find(c => String(c.delivery).includes(String(json.delivery)));
-    if (!coletaMatch) {
-        const nomeBuscado = normalize((json.motorista || senderName).replace("MOTORISTA", "").trim()).split(' ')[0];
-        const coletasMotorista = coletas.filter(c => c.motorista && normalize(c.motorista).includes(nomeBuscado));
-        if (coletasMotorista.length === 1) coletaMatch = coletasMotorista[0];
-        else if (coletasMotorista.length > 1 && json.cliente) {
-            const cNorm = normalize(json.cliente).split(' ')[0];
-            coletaMatch = coletasMotorista.find(c => c.cliente && normalize(c.cliente).includes(cNorm)) || coletasMotorista[0];
-        }
-    }
-    if (!coletaMatch) return console.log("[MOTORISTA] Nao encontrado para: " + senderName);
-
-    const agora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
-    let updateData = {};
-    if (json.tipo === "CHEGADA")      { updateData.l_horario = agora; console.log("📍 " + coletaMatch.motorista + " CHEGOU as " + agora); }
-    else if (json.tipo === "NF_COLETA")    { updateData.c_horario = agora; if (json.paletes) updateData.pc = Number(json.paletes); console.log("📦 " + coletaMatch.motorista + " COLETOU as " + agora); }
-    else if (json.tipo === "NF_FINALIZADA") { updateData.f_horario = agora; console.log("🏁 " + coletaMatch.motorista + " FINALIZOU as " + agora); }
-    if (Object.keys(updateData).length > 0) await supabase.from('deliveries').update(updateData).eq('id', coletaMatch.id);
-}
-
-// ============================================================
-// WHATSAPP
-// ============================================================
-async function startWhatsApp() {
-    const { state, saveCreds } = await useSupabaseAuthState();
+    const { state, saveCreds } = await useHybridAuthState();
     const sock = makeWASocket({ auth: state, printQRInTerminal: false, logger: pino({ level: "silent" }), browser: ["Controle CHEP", "Chrome", "10.0.0"] });
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
