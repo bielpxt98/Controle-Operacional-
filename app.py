@@ -471,11 +471,11 @@ def export_excel():
 
 @app.route("/whatsapp")
 def whatsapp_qr():
-    import os
-    qr_path = os.path.join(app.static_folder, "qr.png")
-    if os.path.exists(qr_path):
-        return "<h1>Conecte o WhatsApp</h1><p>Escaneie o QR Code abaixo:</p><img src='/static/qr.png' /><p>Atualize a página em 10 seg.</p>"
-    return "<h1>✅ WhatsApp Conectado ou Iniciando...</h1>"
+    import os as _os
+    qr_path = _os.path.join(app.static_folder, "qr.png")
+    if _os.path.exists(qr_path):
+        return "<h1>Conecte o WhatsApp</h1><p>Escaneie o QR Code abaixo:</p><img src='/static/qr.png' style='width:300px'/><p>Atualize a pagina em 10 seg.</p>"
+    return "<h1>WhatsApp Conectado!</h1><p>Bot ativo e monitorando mensagens.</p>"
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
