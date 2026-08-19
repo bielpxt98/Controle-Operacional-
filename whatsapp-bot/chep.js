@@ -13,7 +13,7 @@ async function runChepProgramacaoAmanha(deliveries) {
 
     let bdMotoristas = {};
     try {
-        const jsonStr = fs.readFileSync('motoristas.json', 'utf8');
+        const jsonStr = fs.readFileSync(__dirname + '/motoristas.json', 'utf8');
         bdMotoristas = JSON.parse(jsonStr);
     } catch(e) { console.log("Aviso: motoristas.json nao encontrado"); }
 
