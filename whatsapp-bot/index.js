@@ -24,9 +24,74 @@ const qrPath = path.join(__dirname, '..', 'static', 'qr.png');
 
 // ============================================================
 // ============================================================
-// SESSAO LOCAL (TESTE)
+// SESSAO PERSISTENTE NO SUPABASE (C/ CACHE EM MEMORIA)
 // ============================================================
-const { useMultiFileAuthState } = require('@whiskeysockets/baileys');
+async function useSupabaseAuthState() {
+    let memoryCache = {};
+    let writeQueue = {};
+    let isWriting = false;
+
+    const { data: allData } = await supabase.from('whatsapp_session').select('*');
+    if (allData) {
+        allData.forEach(row => { memoryCache[row.key] = row.value; });
+    }
+
+    const flushQueue = async () => {
+        if (isWriting || Object.keys(writeQueue).length === 0) return;
+        isWriting = true;
+        const keysToProcess = Object.keys(writeQueue);
+        const toUpsert = [];
+        const toDelete = [];
+        
+        for (const k of keysToProcess) {
+            if (writeQueue[k] === null) toDelete.push(k);
+            else toUpsert.push({ key: k, value: writeQueue[k] });
+            delete writeQueue[k];
+        }
+
+        try {
+            if (toUpsert.length > 0) await supabase.from('whatsapp_session').upsert(toUpsert, { onConflict: 'key' });
+            if (toDelete.length > 0) await supabase.from('whatsapp_session').delete().in('key', toDelete);
+        } catch (e) {
+            console.error("[SUPABASE] Erro ao salvar sessao:", e.message);
+        }
+        
+        isWriting = false;
+        if (Object.keys(writeQueue).length > 0) setTimeout(flushQueue, 1000);
+    };
+
+    const queueWrite = (key, value) => {
+        memoryCache[key] = value;
+        writeQueue[key] = value;
+        setTimeout(flushQueue, 2000);
+    };
+
+    const creds = memoryCache['creds'] || initAuthCreds();
+
+    return {
+        state: {
+            creds,
+            keys: makeCacheableSignalKeyStore({
+                get: (type, ids) => {
+                    const data = {};
+                    ids.forEach(id => {
+                        const val = memoryCache[type + '-' + id];
+                        if (val) data[id] = val;
+                    });
+                    return data;
+                },
+                set: (data) => {
+                    for (const [type, ids] of Object.entries(data)) {
+                        for (const [id, value] of Object.entries(ids)) {
+                            queueWrite(type + '-' + id, value || null);
+                        }
+                    }
+                }
+            }, pino({ level: 'silent' }))
+        },
+        saveCreds: () => { queueWrite('creds', creds); }
+    };
+}
 
 // ============================================================
 // CLASSIFICACAO COM GEMINI (contexto diferente por origem)
@@ -124,7 +189,7 @@ async function handleMotorista(json, senderName) {
 // WHATSAPP
 // ============================================================
 async function startWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
+    const { state, saveCreds } = await useSupabaseAuthState();
     const sock = makeWASocket({ auth: state, printQRInTerminal: false, logger: pino({ level: "silent" }), browser: ["Controle CHEP", "Chrome", "10.0.0"] });
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
