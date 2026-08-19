@@ -16,26 +16,22 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const qrPath = path.join(__dirname, '..', 'static', 'qr.png');
 
 async function processImageWithGemini(buffer, textCaption) {
-    console.log("[GEMINI] Analisando imagem do motorista...");
+    console.log("[GEMINI] Analisando imagem da programacao...");
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const prompt = `Analise esta imagem que um motorista enviou. Legenda: ${textCaption}
+    const prompt = `Analise esta imagem da escala de motoristas. Legenda: ${textCaption}
 
-Regras (campo 'tipo'):
-1. 'CHEGADA': Foto da rua, volante, fachada, ou localizacao GPS indicando chegada.
-2. 'NF_FINALIZADA': Nota Fiscal (NF) ou comprovante COM CARIMBO DE RECEBIDO ou ASSINATURA GRANDE no meio/fim.
-3. 'NF_COLETA': Nota Fiscal (NF) LIMPA, sem carimbo de recebido.
-4. 'ESCALA': Tabela de escala (MOTORISTA, CLIENTE, PALETES).
-5. 'IRRELEVANTE': Memes, figurinhas, comida.
+Regras:
+1. Extraia a DATA DA PROGRAMACAO mencionada na imagem ou na legenda (ex: '19.08.26', '19/08/2026'). Formate a data EXATAMENTE como DD/MM/AAAA (ex: 19/08/2026).
+2. Extraia todas as linhas da tabela de escala, relacionando MOTORISTA, CLIENTE e PALETES.
 
-Retorne JSON: {
-  "tipo": "CHEGADA" | "NF_FINALIZADA" | "NF_COLETA" | "ESCALA" | "IRRELEVANTE",
-  "motorista": "Nome legível ou null",
-  "delivery": "Número de 10 dígitos (ex: 3788438763) escrito na NF ou null",
-  "cliente": "Nome do destino (ex: YOKI, ASSAI) ou null",
-  "paletes": "Quantidade (número). Busque na legenda ou NF, senão null",
-  "dados_escala": [{"motorista": "LUIZ", "cliente": "JDE CAFE"}]
-}
-Apenas o JSON bruto sem markdown.`;
+Retorne APENAS um JSON bruto, sem markdown:
+{
+  "tipo": "ESCALA",
+  "data_programacao": "DD/MM/AAAA",
+  "dados_escala": [
+    {"motorista": "LUIZ", "cliente": "JDE CAFE", "paletes": "476"}
+  ]
+}`;
 
     try {
         const result = await model.generateContent([prompt, { inlineData: { data: buffer.toString("base64"), mimeType: "image/jpeg" } }]);
@@ -49,42 +45,61 @@ Apenas o JSON bruto sem markdown.`;
 }
 
 async function handleLogic(json, senderName) {
-    if (!json || json.tipo === "IRRELEVANTE") return;
-
-    const { data: coletas, error } = await supabase.from('deliveries').select('*').order('id', { ascending: false }).limit(80);
-    if (error) return console.error("[SUPABASE] Erro:", error);
-
-    if (json.tipo === "ESCALA" && json.dados_escala) {
-        for (let extraido of json.dados_escala) {
-            let match = coletas.find(c => c.cliente && c.cliente.toUpperCase().split(' ').some(p => p.length > 3 && extraido.cliente.toUpperCase().includes(p)));
-            if (match) await supabase.from('deliveries').update({ motorista: extraido.motorista }).eq('id', match.id);
-        }
-        return;
-    }
-
-    let coletaMatch = null;
-    if (json.delivery) coletaMatch = coletas.find(c => String(c.delivery).includes(String(json.delivery)));
+    if (!json || json.tipo !== "ESCALA") return;
     
-    if (!coletaMatch) {
-        let nomeBuscado = (json.motorista || senderName).toUpperCase().replace(" MOTORISTA", "").trim();
-        let coletasMotorista = coletas.filter(c => c.motorista && c.motorista.toUpperCase().includes(nomeBuscado.split(' ')[0]));
-        
-        if (coletasMotorista.length === 1) coletaMatch = coletasMotorista[0];
-        else if (coletasMotorista.length > 1 && json.cliente) {
-            coletaMatch = coletasMotorista.find(c => c.cliente && c.cliente.toUpperCase().includes(json.cliente.toUpperCase().split(' ')[0])) || coletasMotorista[0];
-        }
+    console.log(`[ESCALA] Recebida programação para o dia: ${json.data_programacao}`);
+
+    if (!json.dados_escala || json.dados_escala.length === 0) {
+        return console.log("[LOGICA] Nenhum dado encontrado na escala.");
     }
 
-    if (!coletaMatch) return console.log("[LOGICA] Coleta nao encontrada.");
+    // Busca coletas APENAS da data extraída
+    const { data: coletas, error } = await supabase
+        .from('deliveries')
+        .select('*')
+        .eq('data', json.data_programacao);
 
-    const agora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
-    let updateData = {};
+    if (error) return console.error("[SUPABASE] Erro:", error);
+    
+    if (!coletas || coletas.length === 0) {
+        return console.log(`[LOGICA] Nenhuma coleta encontrada no banco para a data ${json.data_programacao}. Crie as coletas no site primeiro.`);
+    }
 
-    if (json.tipo === "CHEGADA") updateData.l_horario = agora;
-    else if (json.tipo === "NF_COLETA") { updateData.c_horario = agora; if (json.paletes) updateData.pc = Number(json.paletes); }
-    else if (json.tipo === "NF_FINALIZADA") { updateData.f_horario = agora; console.log("GATILHO CHEP"); }
+    // Atualiza os dados
+    for (let extraido of json.dados_escala) {
+        // Encontra a coleta pelo nome do cliente (similaridade simples)
+        let match = coletas.find(c => c.cliente && c.cliente.toUpperCase().split(' ').some(p => p.length > 3 && extraido.cliente.toUpperCase().includes(p)));
+        
+        if (match) {
+            let updateData = {};
+            // Só atualiza se estiver vazio, conforme o pedido: "preencher tudo que falta (caso ja tenha algum preenchido)"
+            if (!match.motorista || match.motorista.trim() === "") {
+                updateData.motorista = extraido.motorista;
+            } else {
+                // Se o usuario quiser que SUBSTITUA, ele removeria o if. Mas pelo texto "caso ja tenha algum preenchido", 
+                // assumimos que queremos respeitar os que estao preenchidos ou que forçamos a atualizaçao?
+                // Vou SOBRESCREVER o motorista porque o usuario disse "vou editar algumas do dia 19 e realizar o teste".
+                // Ele quer que o robo PREENCHA o restante. 
+                // Na verdade, se o site já tem, é melhor deixar ele atualizar se for para consertar?
+                // "preencher tudo que falta (caso ja tenha algum preenchido)" -> preencher SOMENTE o que falta!
+                if (!match.motorista) updateData.motorista = extraido.motorista;
+            }
 
-    if (Object.keys(updateData).length > 0) await supabase.from('deliveries').update(updateData).eq('id', coletaMatch.id);
+            // O mesmo para paletes
+            if ((!match.paletes || match.paletes == 0) && extraido.paletes) {
+                updateData.paletes = extraido.paletes;
+            }
+
+            if (Object.keys(updateData).length > 0) {
+                await supabase.from('deliveries').update(updateData).eq('id', match.id);
+                console.log(`✅ [ESCALA] Atualizado ${match.cliente} -> ${JSON.stringify(updateData)}`);
+            } else {
+                console.log(`ℹ️ [ESCALA] ${match.cliente} já estava totalmente preenchido.`);
+            }
+        } else {
+            console.log(`❌ [ESCALA] Cliente ${extraido.cliente} não encontrado no banco para o dia ${json.data_programacao}`);
+        }
+    }
 }
 
 async function startWhatsApp() {
@@ -99,6 +114,7 @@ async function startWhatsApp() {
             if (lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut) startWhatsApp();
         } else if (connection === 'open') {
             if (fs.existsSync(qrPath)) fs.unlinkSync(qrPath);
+            console.log('[WPP] ✅ Conectado!');
         }
     });
     sock.ev.on('creds.update', saveCreds);
@@ -108,9 +124,16 @@ async function startWhatsApp() {
         if (!msg.message || msg.key.fromMe) return;
 
         const senderName = msg.pushName || "";
+        
+        // FILTRO: Aceitar apenas se o nome for Osvaldo purm (ignorando maiusculas/minusculas)
+        if (!senderName.toLowerCase().includes("osvaldo purm")) {
+            return;
+        }
+
         const textCaption = msg.message.imageMessage?.caption || "";
 
         if (Object.keys(msg.message)[0] === 'imageMessage') {
+            console.log(`[WPP] Imagem recebida de ${senderName}`);
             const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: "silent" }) });
             const json = await processImageWithGemini(buffer, textCaption);
             if (json) await handleLogic(json, senderName);
