@@ -163,10 +163,95 @@ startWhatsApp();
 // INICIA O LOOP DA CHEP DE FORMA INDEPENDENTE DO WPP
 iniciarLoopCHEP();
 
-// Funcoes de IA temporarias (Stubs) para evitar crash
+
+// ==========================================
+// CÉREBRO IA: GEMINI VISION + SUPABASE
+// ==========================================
+
 async function classifyImage(buffer, textCaption, isFromGroup) {
-    console.log("[GEMINI] classifyImage chamado, mas IA ainda nao foi portada pro Node. Ignorando imagem.");
-    return { tipo: "IRRELEVANTE" };
+    try {
+        console.log("[GEMINI] Analisando imagem recebida com Inteligência Artificial...");
+        
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const prompt = `Analise a imagem em anexo. Ela é uma tabela de programação de cargas diárias.
+Extraia os dados em formato JSON estrito, sem formatação markdown.
+
+Regras:
+1. Procure os nomes dos motoristas e os números das viagens (Delivery / Carga / Remessa). O número do delivery costuma ter 10 dígitos (ex: 3402673925, 8432...).
+2. Devolva no seguinte formato JSON:
+{"tipo": "PROGRAMACAO", "entregas": [{"motorista": "NOME DO MOTORISTA", "delivery": "NUMERO"}]}
+3. Pode haver mais de uma entrega na imagem, coloque todas no array "entregas".
+4. Se for meme, foto pessoal, ou não for tabela relacionada a logística, devolva apenas: {"tipo": "IRRELEVANTE"}
+
+Responda APENAS com o JSON.`;
+
+        const imagePart = {
+            inlineData: {
+                data: buffer.toString("base64"),
+                mimeType: "image/jpeg"
+            }
+        };
+
+        const result = await model.generateContent([prompt, imagePart]);
+        const responseText = result.response.text();
+        
+        let cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+        const json = JSON.parse(cleanJson);
+        console.log("[GEMINI] Resultado:", JSON.stringify(json));
+        return json;
+    } catch(e) {
+        console.error("[GEMINI] Erro na classificacao da imagem:", e.message);
+        return { tipo: "IRRELEVANTE" };
+    }
 }
-async function handleEscala(json) {}
-async function handleMotorista(json, senderName) {}
+
+async function handleEscala(json) {
+    console.log("[WPP] Funcionalidade de Escala ainda em construção...");
+}
+
+async function handleMotorista(json, senderName) {
+    if (!json.entregas || !Array.isArray(json.entregas)) return;
+    
+    console.log(`[WPP] Processando ${json.entregas.length} entregas identificadas pela IA...`);
+    
+    // Calcula a data de amanha
+    const hoje = new Date();
+    const mesAtual = hoje.getMonth() + 1;
+    const diaAmanha = (hoje.getDate() + 1).toString().padStart(2, '0');
+    const mesAmanha = mesAtual.toString().padStart(2, '0');
+    const anoAtual = hoje.getFullYear();
+    const dataAmanhaCurta = diaAmanha + '/' + mesAmanha; // 21/08
+    const dataAmanhaLonga = diaAmanha + '/' + mesAmanha + '/' + anoAtual; // 21/08/2026
+    
+    for (const entrega of json.entregas) {
+        if (!entrega.motorista || !entrega.delivery) continue;
+        
+        const deliveryFormatado = String(entrega.delivery).replace(/\D/g, '');
+        const motoristaFormatado = String(entrega.motorista).toUpperCase().trim();
+        
+        // Verifica se a entrega ja existe no banco de dados
+        const { data: existente } = await supabase
+            .from('deliveries')
+            .select('*')
+            .eq('delivery', deliveryFormatado)
+            .single();
+            
+        if (existente) {
+             console.log(`[WPP] Delivery ${deliveryFormatado} ja existe. Atualizando motorista para ${motoristaFormatado}...`);
+             await supabase.from('deliveries').update({ motorista: motoristaFormatado }).eq('id', existente.id);
+        } else {
+             console.log(`[WPP] Cadastrando NOVO Delivery ${deliveryFormatado} (${motoristaFormatado}) pro dia ${dataAmanhaLonga}...`);
+             await supabase.from('deliveries').insert([
+                 {
+                     motorista: motoristaFormatado,
+                     delivery: deliveryFormatado,
+                     data: dataAmanhaLonga,
+                     status: 'PENDENTE'
+                 }
+             ]);
+        }
+    }
+    console.log("[WPP] ===============================================");
+    console.log("[WPP] Programação salva com SUCESSO no banco de dados!");
+    console.log("[WPP] ===============================================");
+}
