@@ -75,7 +75,7 @@ async function startWhatsApp() {
         const nomeDela = "luciana ribeiro";
         
         const nomeRemetenteLower = senderName.toLowerCase();
-        const msgDaProgramacao = remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || nomeRemetenteLower.includes(nomeDela) || nomeRemetenteLower.includes("luciana");
+        const msgDaProgramacao = remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || nomeRemetenteLower.includes(nomeDela) || nomeRemetenteLower.includes("luciana") || nomeRemetenteLower.includes("osvaldo");
 
         // Se for mensagem no PRIVADO, SÓ PODE SER DESSES DOIS NUMEROS (que enviam a programacao)
         if (!isFromGroup && !msgDaProgramacao) {
@@ -250,3 +250,15 @@ async function handleMotorista(json, senderName) {
     console.log("[WPP] Cruzamento de dados finalizado com SUCESSO!");
     console.log("[WPP] ===============================================");
 }
+
+
+// ==========================================
+// ROTINA DE BACKUP AUTOMATICO
+// ==========================================
+const cron = require('node-cron');
+const { executarBackupDiario } = require('./backup.js');
+
+// Agenda o backup para rodar todos os dias as 23:50 (Horario de Brasilia)
+cron.schedule('50 23 * * *', () => {
+    executarBackupDiario();
+}, { timezone: "America/Sao_Paulo" });
