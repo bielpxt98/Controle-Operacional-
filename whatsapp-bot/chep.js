@@ -1,3 +1,5 @@
+const ws = require('ws');
+global.WebSocket = ws;
 const { chromium } = require('playwright');
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');

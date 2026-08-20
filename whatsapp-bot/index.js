@@ -1,3 +1,5 @@
+const ws = require('ws');
+global.WebSocket = ws;
 require('dotenv').config({ path: '../.env' });
 const { 
     default: makeWASocket, 
