@@ -450,7 +450,7 @@ async function processarConta(conta, deliveries) {
     await browser.close();
     
     // Filtra quem ainda não teve sucesso
-    const pendentes = deliveries.filter(d => !sucessos.includes(d.id_banco));
+    const pendentes = deliveries.filter(d => !sucessos.includes(d.id));
     return pendentes;
 }
 
