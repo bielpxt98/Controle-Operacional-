@@ -265,6 +265,9 @@ async function processarConta(conta, deliveries) {
 
                                     const linhas = await resultsFrame.locator('table.listTable tbody tr').all();
                                     for (let row of linhas) {
+                                          try {
+                                              if (await row.locator(':scope > td').count() < 3) continue;
+                                          } catch(e) { continue; }
                                         if (coletasPendentes.length === 0) break;
 
                                         try {
