@@ -172,7 +172,7 @@ async function classifyImage(buffer, textCaption, isFromGroup) {
     try {
         console.log("[GEMINI] Analisando imagem recebida com Inteligência Artificial...");
         
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
         const prompt = `Analise a imagem em anexo. Ela é uma tabela de programação de cargas diárias.
 Extraia os dados em formato JSON estrito, sem formatação markdown.
 
