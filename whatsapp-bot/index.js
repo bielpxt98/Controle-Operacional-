@@ -177,11 +177,13 @@ async function classifyImage(buffer, textCaption, isFromGroup) {
 Extraia os dados em formato JSON estrito, sem formatação markdown.
 
 Regras:
-1. Procure os nomes dos motoristas e os números das viagens (Delivery / Carga / Remessa). O número do delivery costuma ter 10 dígitos (ex: 3402673925, 8432...).
-2. Devolva no seguinte formato JSON:
-{"tipo": "PROGRAMACAO", "entregas": [{"motorista": "NOME DO MOTORISTA", "delivery": "NUMERO"}]}
-3. Pode haver mais de uma entrega na imagem, coloque todas no array "entregas".
-4. Se for meme, foto pessoal, ou não for tabela relacionada a logística, devolva apenas: {"tipo": "IRRELEVANTE"}
+1. Extraia o nome do motorista.
+2. Na coluna de destino, extraia apenas a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (em maiúsculas). Ex: se estiver escrito "ASSAI VASCO DA GAMA", extraia apenas "ASSAI". Se for "ATACADÃO BR 324", extraia "ATACADAO". Se for "JDE CAFE", extraia "JDE". Se for "WMS MAX ATACADO", extraia "WMS". Se for "DECMINAS CAMACARI", extraia "DECMINAS".
+3. Extraia também a quantidade de paletes (um número). Ex: "476 PALLETES" -> 476.
+4. Devolva no seguinte formato JSON:
+{"tipo": "PROGRAMACAO", "entregas": [{"motorista": "NOME DO MOTORISTA", "primeiro_nome_cliente": "PRIMEIRA_PALAVRA_CLIENTE", "paletes": 476}]}
+5. Pode haver mais de uma entrega na imagem, coloque todas no array "entregas".
+6. Se for meme, foto pessoal, ou não for tabela relacionada a logística, devolva apenas: {"tipo": "IRRELEVANTE"}
 
 Responda APENAS com o JSON.`;
 
@@ -205,53 +207,46 @@ Responda APENAS com o JSON.`;
     }
 }
 
-async function handleEscala(json) {
-    console.log("[WPP] Funcionalidade de Escala ainda em construção...");
-}
+async function handleEscala(json) {}
 
 async function handleMotorista(json, senderName) {
     if (!json.entregas || !Array.isArray(json.entregas)) return;
     
     console.log(`[WPP] Processando ${json.entregas.length} entregas identificadas pela IA...`);
     
-    // Calcula a data de amanha
     const hoje = new Date();
     const mesAtual = hoje.getMonth() + 1;
     const diaAmanha = (hoje.getDate() + 1).toString().padStart(2, '0');
     const mesAmanha = mesAtual.toString().padStart(2, '0');
-    const anoAtual = hoje.getFullYear();
     const dataAmanhaCurta = diaAmanha + '/' + mesAmanha; // 21/08
-    const dataAmanhaLonga = diaAmanha + '/' + mesAmanha + '/' + anoAtual; // 21/08/2026
     
     for (const entrega of json.entregas) {
-        if (!entrega.motorista || !entrega.delivery) continue;
+        if (!entrega.motorista || !entrega.primeiro_nome_cliente) continue;
         
-        const deliveryFormatado = String(entrega.delivery).replace(/\D/g, '');
+        const clienteBusca = String(entrega.primeiro_nome_cliente).toUpperCase().trim();
         const motoristaFormatado = String(entrega.motorista).toUpperCase().trim();
+        const paletes = Number(entrega.paletes) || 0;
         
-        // Verifica se a entrega ja existe no banco de dados
-        const { data: existente } = await supabase
+        console.log(`[WPP] Buscando no banco: Cliente '${clienteBusca}' com ${paletes} paletes para o motorista ${motoristaFormatado}...`);
+        
+        // Busca flexível: Cliente que contém a palavra E quantidade de paletes idêntica E que a data contém amanhã
+        const { data: encontrados, error } = await supabase
             .from('deliveries')
             .select('*')
-            .eq('delivery', deliveryFormatado)
-            .single();
+            .ilike('data', `%${dataAmanhaCurta}%`)
+            .ilike('clientes', `%${clienteBusca}%`)
+            .eq('paletes', paletes)
+            .is('motorista', null); // So preenche se estiver vazio, evita sobrescrever errados
             
-        if (existente) {
-             console.log(`[WPP] Delivery ${deliveryFormatado} ja existe. Atualizando motorista para ${motoristaFormatado}...`);
-             await supabase.from('deliveries').update({ motorista: motoristaFormatado }).eq('id', existente.id);
+        if (encontrados && encontrados.length > 0) {
+             const alvo = encontrados[0];
+             console.log(`[WPP] MATCH PERFEITO! Atribuindo Delivery ${alvo.delivery} ao motorista ${motoristaFormatado}...`);
+             await supabase.from('deliveries').update({ motorista: motoristaFormatado }).eq('id', alvo.id);
         } else {
-             console.log(`[WPP] Cadastrando NOVO Delivery ${deliveryFormatado} (${motoristaFormatado}) pro dia ${dataAmanhaLonga}...`);
-             await supabase.from('deliveries').insert([
-                 {
-                     motorista: motoristaFormatado,
-                     delivery: deliveryFormatado,
-                     data: dataAmanhaLonga,
-                     status: 'PENDENTE'
-                 }
-             ]);
+             console.log(`[WPP] AVISO: Nao encontrei entrega vazia para amanha do cliente '${clienteBusca}' com ${paletes} paletes.`);
         }
     }
     console.log("[WPP] ===============================================");
-    console.log("[WPP] Programação salva com SUCESSO no banco de dados!");
+    console.log("[WPP] Cruzamento de dados finalizado com SUCESSO!");
     console.log("[WPP] ===============================================");
 }
