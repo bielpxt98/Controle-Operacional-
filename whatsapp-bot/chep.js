@@ -44,7 +44,12 @@ async function runChepProgramacaoAmanha(deliveries) {
         });
     }
 
-    const browser = await chromium.launch({ headless: true, slowMo: 50 });
+    const browser = await chromium.launch({ 
+        headless: true, 
+        slowMo: 50,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, // Usa o chromium do Docker se existir
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
+    });
     const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await context.newPage();
 
