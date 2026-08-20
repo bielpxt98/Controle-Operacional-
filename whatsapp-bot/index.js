@@ -162,3 +162,11 @@ startWhatsApp();
 
 // INICIA O LOOP DA CHEP DE FORMA INDEPENDENTE DO WPP
 iniciarLoopCHEP();
+
+// Funcoes de IA temporarias (Stubs) para evitar crash
+async function classifyImage(buffer, textCaption, isFromGroup) {
+    console.log("[GEMINI] classifyImage chamado, mas IA ainda nao foi portada pro Node. Ignorando imagem.");
+    return { tipo: "IRRELEVANTE" };
+}
+async function handleEscala(json) {}
+async function handleMotorista(json, senderName) {}

@@ -32,6 +32,7 @@ async function processarConta(conta, deliveries) {
     }
 
     const dadosExtraidos = [];
+    let sucessos = [];
     for (const d of deliveries) {
         let nomeLimpo = (d.motorista || "").replace('▼', '').trim().toUpperCase();
         const primNome = nomeLimpo.split(' ')[0];
@@ -173,7 +174,7 @@ async function processarConta(conta, deliveries) {
                             console.log("[WEB] Colunas:", colMap);
                         } catch(e) {}
 
-                        let sucessos = [];
+                        
 
                         for (const d of dadosExtraidos) {
                             const termoBusca = d.id_delivery;
