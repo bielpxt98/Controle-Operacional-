@@ -113,7 +113,7 @@ async function runChepProgramacaoAmanha(deliveries) {
                 let progAmanha = null;
                 for (let i = 0; i < 15; i++) {
                     for (const f of targetPage.frames()) {
-                        const loc = f.locator('td:has-text("PROGRAMAÇÃO AMANHÃ")').first();
+                        const loc = f.locator('td:has-text(\"AMANH\")').first();
                         if (await loc.count() > 0 && await loc.isVisible()) {
                             progAmanha = loc;
                             break;
@@ -121,6 +121,8 @@ async function runChepProgramacaoAmanha(deliveries) {
                     }
                     if (progAmanha) break;
                     await targetPage.waitForTimeout(2000);
+                    // Tira print pra debugar
+                    try { await targetPage.screenshot({ path: '../static/debug_smartbench.png' }); } catch(e){}
                 }
 
                 if (progAmanha) {
