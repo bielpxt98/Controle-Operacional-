@@ -29,6 +29,7 @@ const qrPath = path.join(__dirname, '..', 'static', 'qr.png');
 // ============================================================
 const { useMultiFileAuthState } = require('@whiskeysockets/baileys');
 
+
 async function startWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
     const sock = makeWASocket({ auth: state, printQRInTerminal: false, logger: pino({ level: "silent" }), browser: ["Controle CHEP", "Chrome", "10.0.0"] });
