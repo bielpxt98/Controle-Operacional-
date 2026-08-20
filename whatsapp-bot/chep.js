@@ -389,7 +389,15 @@ async function runChepProgramacaoAmanha(deliveries) {
                                     }
 
                                     if (!reiniciarCascata || maxCascataLoops === 0) {
-                                        console.log("[WEB] Varredura de cascatas concluida.");
+                                        
+                                    console.log("[WEB] Varredura de cascatas concluida. Clicando em Enviar (Salvar)...");
+                                    try {
+                                        const btnEnviarCascata = resultsFrame.locator('a[title="Enviar"], a:has-text("Enviar")').first();
+                                        if (await btnEnviarCascata.count() > 0) {
+                                            await btnEnviarCascata.click();
+                                            await targetPage.waitForTimeout(3000);
+                                        }
+                                    } catch(e) {}
                                         break;
                                     }
                                 } catch(e) { break; }
