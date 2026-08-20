@@ -111,7 +111,7 @@ async function processarConta(conta, deliveries) {
                 console.log("[WEB] Clicando em Smartbench...");
                 try {
                     const [newPage] = await Promise.all([
-                        context.waitForEvent('page', { timeout: 5000 }),
+                        context.waitForEvent('page', { timeout: 30000 }),
                         sbLink.click()
                     ]);
                     targetPage = newPage;
