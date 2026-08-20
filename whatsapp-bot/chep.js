@@ -48,9 +48,19 @@ async function processarConta(conta, deliveries) {
         headless: true, 
         slowMo: 50,
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, // Usa o chromium do Docker se existir
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-zygote'] 
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-zygote', '--single-process', '--js-flags="--max-old-space-size=256"'] 
     });
     const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    
+    // BLOQUEIA IMAGENS, FONTES E MIDIA PARA SALVAR MUITA MEMORIA RAM!
+    await context.route('**/*', route => {
+        const type = route.request().resourceType();
+        if (['image', 'media', 'font', 'other'].includes(type)) {
+            route.abort();
+        } else {
+            route.continue();
+        }
+    });
     const page = await context.newPage();
 
     console.log("[WEB] Acessando CHEP...");
