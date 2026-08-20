@@ -12,7 +12,8 @@ const supabase = createClient(
 
 async function processarConta(conta, deliveries) {
     if (!deliveries || deliveries.length === 0) return;
-    console.log("[WEB] Iniciando Playwright (Node.js) portado do local...");
+    console.log(`\n[+] Entrando no perfil ${conta.user} para processar ${deliveries.length} carga(s)...`);
+    console.log("[WEB] Iniciando Playwright para o perfil " + conta.user + "...");
 
     const path = require('path');
     let bdMotoristas = {};
@@ -82,9 +83,9 @@ async function processarConta(conta, deliveries) {
             await passInput.waitFor({ state: 'visible', timeout: 10000 });
 
             await userInput.focus();
-            await userInput.fill('210256_2');
+            await userInput.fill(conta.user);
             await passInput.focus();
-            await passInput.fill('560221');
+            await passInput.fill(conta.pass);
 
             const submitBtn = targetFrame.locator('a img[src*="login"], a:has-text("Login"), input[type="submit"], button:visible').first();
             if (await submitBtn.isVisible()) {
@@ -443,7 +444,7 @@ async function processarConta(conta, deliveries) {
         }
     } catch(e) { console.log("Erro Fatal:", e.message); }
 
-        console.log("[WEB] Fim desta conta. Fechando em 5 seg...");
+        console.log("[WEB] Fechando navegador para trocar de perfil...");
     await new Promise(r => setTimeout(r, 5000));
     await browser.close();
     
