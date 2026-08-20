@@ -464,6 +464,37 @@ def whatsapp_qr():
         return f"<h1>Conecte o WhatsApp</h1><p>Escaneie o QR Code abaixo:</p><img src='/static/qr.png?t={ts}' style='width:300px'/><p>Atualize a pagina em 10 seg.</p>"
     return "<h1>WhatsApp Conectado!</h1><p>Bot ativo e monitorando mensagens.</p>"
 
+
+@app.route("/logs")
+def view_logs():
+    import subprocess
+    try:
+        log_out = subprocess.check_output(["pm2", "logs", "RoboWPP", "--lines", "100", "--nostream"], text=True, stderr=subprocess.STDOUT)
+    except Exception as e:
+        log_out = f"Erro ao ler logs via PM2: {str(e)}"
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Logs do Robo WhatsApp & CHEP</title>
+        <meta http-equiv="refresh" content="5">
+        <style>
+            body {{ background: #0d1117; color: #c9d1d9; font-family: monospace; padding: 20px; }}
+            h2 {{ color: #58a6ff; margin-bottom: 5px; }}
+            p {{ color: #8b949e; margin-top: 0; font-size: 14px; }}
+            pre {{ background: #161b22; padding: 15px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; font-size: 13px; line-height: 1.5; border: 1px solid #30363d; }}
+        </style>
+    </head>
+    <body>
+        <h2>📋 Logs do Robo (WhatsApp + CHEP)</h2>
+        <p>Atualizando automaticamente a cada 5 segundos...</p>
+        <pre>{log_out}</pre>
+    </body>
+    </html>
+    """
+    return html
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
