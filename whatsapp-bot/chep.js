@@ -8,7 +8,7 @@ const supabase = createClient(
     process.env.SUPABASE_KEY || "sb_publishable_8pSOHjRSllI9wWVYPkmYFA_AfzxV-QS"
 );
 
-async function runChepProgramacaoAmanha(deliveries) {
+async function processarConta(conta, deliveries) {
     if (!deliveries || deliveries.length === 0) return;
     console.log("[WEB] Iniciando Playwright (Node.js) portado do local...");
 
@@ -428,9 +428,36 @@ async function runChepProgramacaoAmanha(deliveries) {
         }
     } catch(e) { console.log("Erro Fatal:", e.message); }
 
-    console.log("[WEB] Fim. Fechando em 5 seg...");
+        console.log("[WEB] Fim desta conta. Fechando em 5 seg...");
     await new Promise(r => setTimeout(r, 5000));
     await browser.close();
+    
+    // Filtra quem ainda não teve sucesso
+    const pendentes = deliveries.filter(d => !sucessos.includes(d.id_banco));
+    return pendentes;
+}
+
+// O novo wrapper
+async function runChepProgramacaoAmanha(deliveries) {
+    if (!deliveries || deliveries.length === 0) return;
+    console.log("[WEB] Iniciando Playwright para múltiplas contas (Perfis)...");
+    let pendentes = [...deliveries];
+    const contas = [
+        { user: '210256_2', pass: '560221' },
+        { user: '210289_3', pass: '890221' }
+    ];
+
+    for (const conta of contas) {
+        if (pendentes.length === 0) {
+            console.log("[WEB] Todas as coletas foram preenchidas!");
+            break;
+        }
+        console.log(`[WEB] ========================================`);
+        console.log(`[WEB] Logando na conta: ${conta.user}`);
+        console.log(`[WEB] ========================================`);
+        pendentes = await processarConta(conta, pendentes);
+    }
+    console.log("[WEB] Fim de todas as contas.");
 }
 
 module.exports = { runChepProgramacaoAmanha };
