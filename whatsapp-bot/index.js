@@ -64,65 +64,108 @@ async function startWhatsApp() {
     });
     sock.ev.on('creds.update', saveCreds);
     sock.ev.on('messages.upsert', async (m) => {
-        const msg = m.messages[0];
-        if (!msg.message || msg.key.fromMe) return;
-        const isFromGroup = msg.key.remoteJid?.endsWith('@g.us');
-        
-        if (isFromGroup) {
-            try {
-                const groupMeta = await sock.groupMetadata(msg.key.remoteJid);
-                const groupName = groupMeta.subject || "";
-                if (!groupName.toLowerCase().includes("purm salvador")) {
-                    return; // Ignora se não for o grupo correto
-                }
-            } catch(e) { return; }
-        }
+    const msg = m.messages[0];
+    if (!msg.message || msg.key.fromMe) return;
+    
+    const isFromGroup = msg.key.remoteJid?.endsWith('@g.us');
+    let groupName = "";
+    
+    if (isFromGroup) {
+        try {
+            const groupMeta = await sock.groupMetadata(msg.key.remoteJid);
+            groupName = groupMeta.subject || "";
+            if (!groupName.toLowerCase().includes("purm salvador")) return;
+        } catch(e) { return; }
+    }
 
-        const senderName = msg.pushName || "";
-        const textCaption = msg.message.imageMessage?.caption || "";
-        if (Object.keys(msg.message)[0] !== 'imageMessage') return;
-        const remetenteNum = msg.key.participant || msg.key.remoteJid;
-        
-        // ================= REGRAS DE LEITURA =================
-        const numA = "558194346196";
-        const numB = "5581994346196"; 
-        const numC = "558183493082";
-        const numD = "5581983493082";
-        const nomeDela = "luciana ribeiro";
-        
-        const nomeRemetenteLower = senderName.toLowerCase();
-        const msgDaProgramacao = remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || nomeRemetenteLower.includes(nomeDela) || nomeRemetenteLower.includes("luciana") || nomeRemetenteLower.includes("osvaldo");
+    const senderName = msg.pushName || "";
+    const remetenteNum = msg.key.participant || msg.key.remoteJid;
+    
+    const txtMsg = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
+    const captionMsg = msg.message.imageMessage?.caption || "";
+    const textoCompleto = (txtMsg + " " + captionMsg).toLowerCase();
+    const quotedMsg = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
+    
+    const numA = "558194346196";
+    const numB = "5581994346196"; 
+    const numC = "558183493082";
+    const numD = "5581983493082";
+    const isAdmin = remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || senderName.toLowerCase().includes("luciana") || senderName.toLowerCase().includes("osvaldo");
 
-        // Se for mensagem no PRIVADO, SÓ PODE SER DESSES DOIS NUMEROS (que enviam a programacao)
-        if (!isFromGroup && !msgDaProgramacao) {
-             console.log("[WPP] -> Ignorado: Mensagem privada de " + senderName + " (" + remetenteNum + "), não é um número autorizado para programação.");
-             return;
-        }
-        // Se for no GRUPO PURM SALVADOR, aceitamos mensagens de QUALQUER UM (para os comandos hlocal, hcoletado, etc)
-        // =====================================================
+    // =========================================================
+    // 1. MENSAGEM NO PRIVADO
+    // =========================================================
+    if (!isFromGroup) {
+        if (!isAdmin) return; 
+        if (!msg.message.imageMessage) return; 
         
-        console.log("[WPP] -> ATENÇÃO! Nova imagem recebida de DONA LUCIANA:");
-        console.log("[WPP] -> NOME: " + senderName);
-        console.log("[WPP] -> NUMERO/ID: " + remetenteNum);
-        console.log("[WPP] -> FONTE: " + (isFromGroup ? "GRUPO PURM SALVADOR" : "PRIVADO"));
+        console.log("[WPP-PRIVADO] Nova imagem de programacao de " + senderName);
+        const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+        const pino = require('pino');
         const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: "silent" }) });
-        const json = await classifyImage(buffer, textCaption, isFromGroup);
-        if (!json || json.tipo === "IRRELEVANTE") return console.log("[WPP] Imagem irrelevante, ignorando.");
+        const json = await classifyImage(buffer, captionMsg, isFromGroup);
+        if (json && json.tipo === "PROGRAMACAO") {
+            await handleMotorista(json, senderName);
+        }
+        return;
+    }
+
+    // =========================================================
+    // 2. MENSAGENS NO GRUPO (PURM SALVADOR)
+    // =========================================================
+    
+    const motoristaPrimeiroNome = senderName.split(' ')[0].toUpperCase();
+    
+    const hojeObj = new Date();
+    const dataHojeCurta = hojeObj.getDate().toString().padStart(2, '0') + '/' + (hojeObj.getMonth() + 1).toString().padStart(2, '0');
+    const horaAtual = hojeObj.getHours().toString().padStart(2, '0') + ':' + hojeObj.getMinutes().toString().padStart(2, '0');
+
+    const deliveryMatch = txtMsg.match(/\b\d{10}\b/);
+    if (deliveryMatch && quotedMsg && quotedMsg.imageMessage) {
+        const numeroDelivery = deliveryMatch[0];
+        const legendaOriginal = quotedMsg.imageMessage.caption || "";
+        const paletesMatch = legendaOriginal.match(/(\d+)\s*palet/i);
+        const paletesNum = paletesMatch ? parseInt(paletesMatch[1]) : 0;
         
-        if (json.tipo === "ESCALA") {
-            await handleEscala(json);
-        } else {
-            // Se for do privado (e passou pela trava), é a programação (motorista + delivery)
-            if (!isFromGroup) {
-                await handleMotorista(json, senderName);
-            } else {
-                // Se for do grupo, é o motorista mandando a foto da NF (hlocal, hcoletado, hfinalizado)
-                // Vamos mandar para o handleMotorista por enquanto para extrair e salvar, 
-                // e em breve implementamos a logica exata de mudar os status.
-                await handleMotorista(json, senderName);
+        console.log(`[WPP-GRUPO] H_COLETADO detectado. Delivery: ${numeroDelivery}, Paletes: ${paletesNum}`);
+        const { error } = await supabase.from('deliveries').update({ h_coletado: horaAtual, paletes_coletado: paletesNum }).eq('delivery', numeroDelivery);
+        if (!error) await sock.sendMessage(msg.key.remoteJid, { react: { text: "📦", key: msg.key } });
+        return;
+    }
+
+    const isLocation = !!msg.message.locationMessage || !!msg.message.liveLocationMessage;
+    const isChegada = textoCompleto.includes("cheguei") || textoCompleto.includes("no cliente") || textoCompleto.includes("no local") || textoCompleto.includes("aguardando") || textoCompleto.includes("na doca") || textoCompleto.includes("descarregar");
+
+    if ((isLocation || isChegada) && !isAdmin) {
+        console.log(`[WPP-GRUPO] H_LOCAL detectado para o motorista ${motoristaPrimeiroNome}`);
+        const { data: pendentes } = await supabase.from('deliveries').select('id').ilike('motorista', `%${motoristaPrimeiroNome}%`).ilike('data', `%${dataHojeCurta}%`).is('h_local', null).order('id', { ascending: true }).limit(1);
+        if (pendentes && pendentes.length > 0) {
+            await supabase.from('deliveries').update({ h_local: horaAtual }).eq('id', pendentes[0].id);
+            await sock.sendMessage(msg.key.remoteJid, { react: { text: "📍", key: msg.key } });
+            console.log(`[WPP-GRUPO] H_LOCAL marcado no banco!`);
+        }
+        return;
+    }
+
+    if (msg.message.imageMessage && !deliveryMatch && !isAdmin) {
+        console.log(`[WPP-GRUPO] Foto enviada por ${motoristaPrimeiroNome}. Analisando se é NF Carimbada...`);
+        const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+        const pino = require('pino');
+        const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: "silent" }) });
+        const json = await classifyImage(buffer, captionMsg, isFromGroup);
+        if (json && json.tipo === "NF_ASSINADA") {
+            const clienteLimpo = (json.cliente || "").toUpperCase().trim();
+            console.log(`[WPP-GRUPO] NF ASSINADA! Cliente: ${clienteLimpo}`);
+            const { data: finalizaveis } = await supabase.from('deliveries').select('id').ilike('motorista', `%${motoristaPrimeiroNome}%`).ilike('data', `%${dataHojeCurta}%`).ilike('clientes', `%${clienteLimpo}%`).is('h_finalizado', null).limit(1);
+            if (finalizaveis && finalizaveis.length > 0) {
+                await supabase.from('deliveries').update({ h_finalizado: horaAtual, status: 'CONCLUIDO' }).eq('id', finalizaveis[0].id);
+                await sock.sendMessage(msg.key.remoteJid, { react: { text: "✅", key: msg.key } });
+                console.log(`[WPP-GRUPO] H_FINALIZADO marcado!`);
             }
         }
-    });
+        return;
+    }
+});
 }
 
 let chepRodando = false;
