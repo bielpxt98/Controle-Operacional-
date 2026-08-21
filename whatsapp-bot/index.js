@@ -144,9 +144,9 @@ async function startWhatsApp() {
     }
 
     const isLocation = !!msg.message.locationMessage || !!msg.message.liveLocationMessage;
-    const isChegada = textoCompleto.includes("cheguei") || textoCompleto.includes("no cliente") || textoCompleto.includes("no local") || textoCompleto.includes("chegamos");
+    
 
-    if ((isLocation || isChegada) && !isAdmin) {
+    if (isLocation && !isAdmin) {
         console.log(`[WPP-GRUPO] H_LOCAL detectado para o motorista ${motoristaPrimeiroNome}`);
         const { data: pendentes } = await supabase.from('deliveries').select('id').ilike('motorista', `%${motoristaPrimeiroNome}%`).ilike('data', `%${dataHojeCurta}%`).is('l_horario', null).order('id', { ascending: true }).limit(1);
         if (pendentes && pendentes.length > 0) {
