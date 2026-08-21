@@ -135,13 +135,26 @@ async function startWhatsApp() {
     if (deliveryMatch && quotedMsg && quotedMsg.imageMessage) {
         const numeroDelivery = deliveryMatch[0];
         const legendaOriginal = quotedMsg.imageMessage.caption || "";
-        const paletesMatch = legendaOriginal.match(/(\d+)\s*palet/i);
         let paletesNumStr = "N/A";
         const updatePayload = { c_horario: horaAtual };
+        let extractedNum = null;
         
-        if (paletesMatch) {
-            updatePayload.pc = parseInt(paletesMatch[1]);
-            paletesNumStr = updatePayload.pc.toString();
+        let matchSufixo = legendaOriginal.match(/(\d+)\s*(?:palet|un|und|p\b|cx|peca|peça)/i);
+        if (matchSufixo) {
+            extractedNum = parseInt(matchSufixo[1]);
+        } else {
+            let fallbackSoNumero = legendaOriginal.match(/^\s*(\d+)\s*$/);
+            if (fallbackSoNumero) {
+                extractedNum = parseInt(fallbackSoNumero[1]);
+            } else {
+                let fallbackPrimeiro = legendaOriginal.match(/\b(\d{1,4})\b/);
+                if (fallbackPrimeiro) extractedNum = parseInt(fallbackPrimeiro[1]);
+            }
+        }
+        
+        if (extractedNum !== null) {
+            updatePayload.pc = extractedNum;
+            paletesNumStr = extractedNum.toString();
         }
         
         console.log(`[WPP-GRUPO] H_COLETADO detectado. Delivery: ${numeroDelivery}, Paletes: ${paletesNumStr}`);
