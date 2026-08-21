@@ -136,10 +136,16 @@ async function startWhatsApp() {
         const numeroDelivery = deliveryMatch[0];
         const legendaOriginal = quotedMsg.imageMessage.caption || "";
         const paletesMatch = legendaOriginal.match(/(\d+)\s*palet/i);
-        const paletesNum = paletesMatch ? parseInt(paletesMatch[1]) : 0;
+        let paletesNumStr = "N/A";
+        const updatePayload = { c_horario: horaAtual };
         
-        console.log(`[WPP-GRUPO] H_COLETADO detectado. Delivery: ${numeroDelivery}, Paletes: ${paletesNum}`);
-        const { error } = await supabase.from('deliveries').update({ c_horario: horaAtual, pc: paletesNum }).eq('delivery', numeroDelivery);
+        if (paletesMatch) {
+            updatePayload.pc = parseInt(paletesMatch[1]);
+            paletesNumStr = updatePayload.pc.toString();
+        }
+        
+        console.log(`[WPP-GRUPO] H_COLETADO detectado. Delivery: ${numeroDelivery}, Paletes: ${paletesNumStr}`);
+        const { error } = await supabase.from('deliveries').update(updatePayload).eq('delivery', numeroDelivery);
         if (!error) await sock.sendMessage(msg.key.remoteJid, { react: { text: "📦", key: msg.key } });
         return;
     }
