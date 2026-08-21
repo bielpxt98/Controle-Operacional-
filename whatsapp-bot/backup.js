@@ -18,27 +18,42 @@ async function executarBackupDiario() {
         const worksheet = workbook.addWorksheet('Relatorio CHEP');
         
         worksheet.columns = [
+            { header: 'Data', key: 'data', width: 15 },
             { header: 'Motorista', key: 'motorista', width: 25 },
             { header: 'Delivery', key: 'delivery', width: 20 },
-            { header: 'Cliente', key: 'clientes', width: 30 },
+            { header: 'Cliente', key: 'cliente', width: 30 },
             { header: 'Paletes', key: 'paletes', width: 15 },
+            { header: 'P. Coletados', key: 'paletes_coletado', width: 15 },
             { header: 'Valor', key: 'valor', width: 15 },
-            { header: 'Data', key: 'data', width: 15 },
+            { header: 'H_Local', key: 'h_local', width: 15 },
+            { header: 'H_Coletado', key: 'h_coletado', width: 15 },
+            { header: 'H_Finalizado', key: 'h_finalizado', width: 15 },
+            { header: 'Data Fechamento', key: 'df', width: 15 },
             { header: 'Status Operacional', key: 'status', width: 20 },
-            { header: 'Status CHEP', key: 'status_chep', width: 20 }
+            { header: 'Status CHEP', key: 'status_chep', width: 20 },
+            { header: 'SR', key: 'sr', width: 15 },
+            { header: 'Motivo', key: 'motivo', width: 25 }
         ];
         
         data.forEach(row => {
             worksheet.addRow({
+                data: row.data || '-',
                 motorista: row.motorista || '-',
                 delivery: row.delivery || '-',
-                clientes: row.clientes || '-',
+                cliente: row.cliente || '-',
                 paletes: row.paletes || '-',
+                paletes_coletado: row.paletes_coletado || '-',
                 valor: row.valor || '-',
-                data: row.data || '-',
+                h_local: row.h_local || '-',
+                h_coletado: row.h_coletado || '-',
+                h_finalizado: row.h_finalizado || '-',
+                df: row.df || row.data_finalizacao || '-',
                 status: row.status || '-',
-                status_chep: row.status_chep || '-'
+                status_chep: row.status_chep || '-',
+                sr: row.sr || '-',
+                motivo: row.motivo || '-'
             });
+        });
         });
         
         const hoje = new Date();
