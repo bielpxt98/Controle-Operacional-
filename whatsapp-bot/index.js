@@ -170,22 +170,29 @@ iniciarLoopCHEP();
 
 async function classifyImage(buffer, textCaption, isFromGroup) {
     try {
-        console.log("[GEMINI] Analisando imagem recebida com Inteligência Artificial...");
-        
+        console.log("[GEMINI] Analisando imagem recebida...");
         const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
-        const prompt = `Analise a imagem em anexo. Ela é uma tabela de programação de cargas diárias.
+        
+        let prompt = "";
+        if (isFromGroup) {
+            prompt = `Analise a imagem em anexo, que é um documento enviado por um motorista.
+Regras:
+1. Se a imagem contiver carimbos de recebimento, assinaturas grandes confirmando a entrega, ou textos manuscritos como 'recebido', isso indica que a carga foi FINALIZADA.
+2. Neste caso, extraia a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente que está impresso no topo da nota ou declaração (ex: "ASSAI", "ATACADAO", "JDE", "WMS", "DECMINAS", "MULTICOM").
+3. Devolva EXATAMENTE no formato JSON: {"tipo": "NF_ASSINADA", "cliente": "PRIMEIRA_PALAVRA_CLIENTE"}
+4. Se a imagem não tiver carimbos/assinaturas de conclusão, ou se não for um documento, devolva: {"tipo": "IRRELEVANTE"}`;
+        } else {
+            prompt = `Analise a imagem em anexo. Ela é uma tabela de programação de cargas diárias.
 Extraia os dados em formato JSON estrito, sem formatação markdown.
-
 Regras:
 1. Extraia o nome do motorista.
-2. Na coluna de destino, extraia apenas a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (em maiúsculas). Ex: se estiver escrito "ASSAI VASCO DA GAMA", extraia apenas "ASSAI". Se for "ATACADÃO BR 324", extraia "ATACADAO". Se for "JDE CAFE", extraia "JDE". Se for "WMS MAX ATACADO", extraia "WMS". Se for "DECMINAS CAMACARI", extraia "DECMINAS".
-3. Extraia também a quantidade de paletes (um número). Ex: "476 PALLETES" -> 476.
-4. Devolva no seguinte formato JSON:
-{"tipo": "PROGRAMACAO", "entregas": [{"motorista": "NOME DO MOTORISTA", "primeiro_nome_cliente": "PRIMEIRA_PALAVRA_CLIENTE", "paletes": 476}]}
-5. Pode haver mais de uma entrega na imagem, coloque todas no array "entregas".
-6. Se for meme, foto pessoal, ou não for tabela relacionada a logística, devolva apenas: {"tipo": "IRRELEVANTE"}
-
+2. Na coluna de destino, extraia apenas a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (em maiúsculas).
+3. Extraia também a quantidade de paletes (um número).
+4. Devolva no seguinte formato JSON: {"tipo": "PROGRAMACAO", "entregas": [{"motorista": "NOME DO MOTORISTA", "primeiro_nome_cliente": "PRIMEIRA_PALAVRA_CLIENTE", "paletes": 476}]}
+5. Pode haver mais de uma entrega, coloque todas no array "entregas".
+6. Se não for tabela, devolva apenas: {"tipo": "IRRELEVANTE"}
 Responda APENAS com o JSON.`;
+        }
 
         const imagePart = {
             inlineData: {
