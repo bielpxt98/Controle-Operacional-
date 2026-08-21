@@ -150,7 +150,9 @@ async function startWhatsApp() {
         if (pendentes && pendentes.length > 0) {
             await supabase.from('deliveries').update({ h_local: horaAtual }).eq('id', pendentes[0].id);
             await sock.sendMessage(msg.key.remoteJid, { react: { text: "📍", key: msg.key } });
-            console.log(`[WPP-GRUPO] H_LOCAL marcado no banco!`);
+            console.log(`[WPP-GRUPO] H_LOCAL marcado no banco! (${horaAtual})`);
+        } else {
+            console.log(`[WPP-GRUPO] FALHA: Nenhuma carga vazia (h_local=null) achada para motorista=${motoristaPrimeiroNome} na data=${dataHojeCurta}`);
         }
         return;
     }
@@ -169,6 +171,8 @@ async function startWhatsApp() {
                 await supabase.from('deliveries').update({ h_finalizado: horaAtual, status: 'CONCLUIDO' }).eq('id', finalizaveis[0].id);
                 await sock.sendMessage(msg.key.remoteJid, { react: { text: "✅", key: msg.key } });
                 console.log(`[WPP-GRUPO] H_FINALIZADO marcado!`);
+            } else {
+                console.log(`[WPP-GRUPO] FALHA: Nenhuma carga aberta achada para motorista=${motoristaPrimeiroNome}, cliente=${clienteLimpo}, data=${dataHojeCurta}`);
             }
         }
         return;
