@@ -144,7 +144,7 @@ async function startWhatsApp() {
     }
 
     const isLocation = !!msg.message.locationMessage || !!msg.message.liveLocationMessage;
-    const isChegada = textoCompleto.includes("cheguei") || textoCompleto.includes("no cliente") || textoCompleto.includes("no local") || textoCompleto.includes("aguardando") || textoCompleto.includes("na doca") || textoCompleto.includes("descarregar");
+    const isChegada = textoCompleto.includes("cheguei") || textoCompleto.includes("no cliente") || textoCompleto.includes("no local") || textoCompleto.includes("chegamos");
 
     if ((isLocation || isChegada) && !isAdmin) {
         console.log(`[WPP-GRUPO] H_LOCAL detectado para o motorista ${motoristaPrimeiroNome}`);
