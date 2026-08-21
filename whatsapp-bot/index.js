@@ -128,7 +128,8 @@ async function startWhatsApp() {
     
     const hojeObj = new Date();
     const dataHojeCurta = hojeObj.getDate().toString().padStart(2, '0') + '/' + (hojeObj.getMonth() + 1).toString().padStart(2, '0');
-    const horaAtual = hojeObj.getHours().toString().padStart(2, '0') + ':' + hojeObj.getMinutes().toString().padStart(2, '0');
+    const formatterHora = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false });
+    const horaAtual = formatterHora.format(new Date());
 
     const deliveryMatch = txtMsg.match(/\b\d{10}\b/);
     if (deliveryMatch && quotedMsg && quotedMsg.imageMessage) {
