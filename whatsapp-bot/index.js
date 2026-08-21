@@ -65,7 +65,7 @@ async function startWhatsApp() {
     sock.ev.on('creds.update', saveCreds);
     sock.ev.on('messages.upsert', async (m) => {
     const msg = m.messages[0];
-    if (!msg.message || msg.key.fromMe) return;
+    if (!msg.message) return; // Removida a trava fromMe para permitir que o próprio dono ative os gatilhos
     
     
     const isFromGroup = msg.key.remoteJid?.endsWith('@g.us');
