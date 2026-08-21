@@ -122,7 +122,8 @@ async function startWhatsApp() {
     // 2. MENSAGENS NO GRUPO (PURM SALVADOR)
     // =========================================================
     
-    const motoristaPrimeiroNome = senderName.split(' ')[0].toUpperCase();
+    let motoristaPrimeiroNome = senderName.split(' ')[0].toUpperCase();
+    if (motoristaPrimeiroNome.includes("GABRIEL")) motoristaPrimeiroNome = "GABRIEL";
     
     const hojeObj = new Date();
     const dataHojeCurta = hojeObj.getDate().toString().padStart(2, '0') + '/' + (hojeObj.getMonth() + 1).toString().padStart(2, '0');
