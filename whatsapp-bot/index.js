@@ -98,7 +98,8 @@ async function startWhatsApp() {
     const numB = "5581994346196"; 
     const numC = "558183493082";
     const numD = "5581983493082";
-    const isAdmin = remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || senderName.toLowerCase().includes("luciana") || senderName.toLowerCase().includes("osvaldo");
+    const numE = "558193792908"; // Gabriel Peixoto
+    const isAdmin = remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || remetenteNum.includes(numE) || senderName.toLowerCase().includes("luciana") || senderName.toLowerCase().includes("osvaldo");
 
     // =========================================================
     // 1. MENSAGEM NO PRIVADO
