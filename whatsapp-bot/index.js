@@ -148,7 +148,7 @@ async function startWhatsApp() {
 
     if (isLocation && !isAdmin) {
         console.log(`[WPP-GRUPO] H_LOCAL detectado para o motorista ${motoristaPrimeiroNome}`);
-        const { data: pendentes } = await supabase.from('deliveries').select('id').ilike('motorista', `%${motoristaPrimeiroNome}%`).ilike('data', `%${dataHojeCurta}%`).is('l_horario', null).order('id', { ascending: true }).limit(1);
+        const { data: pendentes } = await supabase.from('deliveries').select('id').ilike('motorista', `%${motoristaPrimeiroNome}%`).ilike('data', `%${dataHojeCurta}%`).is('l_horario', null).not('delivery', 'ilike', '340%').order('id', { ascending: true }).limit(1);
         if (pendentes && pendentes.length > 0) {
             await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', pendentes[0].id);
             await sock.sendMessage(msg.key.remoteJid, { react: { text: "📍", key: msg.key } });
@@ -167,8 +167,17 @@ async function startWhatsApp() {
         const json = await classifyImage(buffer, captionMsg, isFromGroup);
         if (json && json.tipo === "NF_ASSINADA") {
             const clienteLimpo = (json.cliente || "").toUpperCase().trim();
-            console.log(`[WPP-GRUPO] NF ASSINADA! Cliente: ${clienteLimpo}`);
-            const { data: finalizaveis } = await supabase.from('deliveries').select('id').ilike('motorista', `%${motoristaPrimeiroNome}%`).ilike('data', `%${dataHojeCurta}%`).ilike('clientes', `%${clienteLimpo}%`).is('f_horario', null).limit(1);
+            const deliveryLido = json.delivery || "";
+            console.log(`[WPP-GRUPO] NF ASSINADA! Cliente: ${clienteLimpo} | Delivery: ${deliveryLido}`);
+            
+            let query = supabase.from('deliveries').select('id').ilike('motorista', `%${motoristaPrimeiroNome}%`).is('f_horario', null);
+            
+            if (deliveryLido && String(deliveryLido).length === 10) {
+                query = query.eq('delivery', String(deliveryLido));
+            } else {
+                query = query.ilike('data', `%${dataHojeCurta}%`).ilike('clientes', `%${clienteLimpo}%`);
+            }
+            const { data: finalizaveis } = await query.limit(1);
             if (finalizaveis && finalizaveis.length > 0) {
                 await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO' }).eq('id', finalizaveis[0].id);
                 await sock.sendMessage(msg.key.remoteJid, { react: { text: "✅", key: msg.key } });
@@ -250,10 +259,12 @@ async function classifyImage(buffer, textCaption, isFromGroup) {
         if (isFromGroup) {
             prompt = `Analise a imagem em anexo, que é um documento enviado por um motorista.
 Regras:
-1. Se a imagem contiver carimbos de recebimento, assinaturas grandes confirmando a entrega, ou textos manuscritos como 'recebido', isso indica que a carga foi FINALIZADA.
-2. Neste caso, extraia a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente que está impresso no topo da nota ou declaração (ex: "ASSAI", "ATACADAO", "JDE", "WMS", "DECMINAS", "MULTICOM").
-3. Devolva EXATAMENTE no formato JSON: {"tipo": "NF_ASSINADA", "cliente": "PRIMEIRA_PALAVRA_CLIENTE"}
-4. Se a imagem não tiver carimbos/assinaturas de conclusão, ou se não for um documento, devolva: {"tipo": "IRRELEVANTE"}`;
+1. Verifique se a imagem contém carimbos de recebimento, assinaturas grandes confirmando a entrega, ou textos manuscritos como 'recebido'. Se SIM, isso indica que a carga foi FINALIZADA.
+2. Neste caso, além de extrair a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (ex: "ASSAI", "ATACADAO", "JDE", "WMS"), PROCURE POR UM NÚMERO DE DELIVERY.
+3. O número do Delivery é frequentemente escrito à mão (manuscrito) na nota e contém EXATAMENTE 10 dígitos (geralmente começando com 37 ou 34). Exemplo: 3788446193.
+4. Se encontrar o número do Delivery na imagem, inclua-o no JSON.
+5. Devolva EXATAMENTE no formato JSON: {"tipo": "NF_ASSINADA", "cliente": "PRIMEIRA_PALAVRA_CLIENTE", "delivery": "NUMERO_DE_10_DIGITOS"} (Se não achar o delivery, mande null).
+6. Se a imagem não tiver carimbos/assinaturas de conclusão, devolva: {"tipo": "IRRELEVANTE"}`;
         } else {
             prompt = `Analise a imagem em anexo. Ela é uma tabela de programação de cargas diárias.
 Extraia os dados em formato JSON estrito, sem formatação markdown.
