@@ -67,15 +67,23 @@ async function startWhatsApp() {
     const msg = m.messages[0];
     if (!msg.message || msg.key.fromMe) return;
     
+    
     const isFromGroup = msg.key.remoteJid?.endsWith('@g.us');
+    console.log(`[WPP-DEBUG] Mensagem recebida de ${msg.pushName} no JID ${msg.key.remoteJid}`);
+
     let groupName = "";
     
     if (isFromGroup) {
         try {
             const groupMeta = await sock.groupMetadata(msg.key.remoteJid);
             groupName = groupMeta.subject || "";
-            if (!groupName.toLowerCase().includes("purm salvador")) return;
-        } catch(e) { return; }
+            
+            if (!groupName.toLowerCase().includes("purm salvador")) {
+                console.log(`[WPP-DEBUG] Ignorando grupo: ${groupName}`);
+                return;
+            }
+
+        } catch(e) { console.error(`[WPP-DEBUG] Erro groupMetadata:`, e.message); return; }
     }
 
     const senderName = msg.pushName || "";
