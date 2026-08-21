@@ -273,7 +273,7 @@ iniciarLoopCHEP();
 async function classifyImage(buffer, textCaption, isFromGroup) {
     try {
         console.log("[GEMINI] Analisando imagem recebida...");
-        const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         
         let prompt = "";
         if (isFromGroup) {
@@ -305,7 +305,9 @@ Responda APENAS com o JSON.`;
             }
         };
 
-        const result = await model.generateContent([prompt, imagePart]);
+        const resultPromise = model.generateContent([prompt, imagePart]);
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout: Gemini demorou mais de 40 segundos para responder.")), 40000));
+        const result = await Promise.race([resultPromise, timeoutPromise]);
         const responseText = result.response.text();
         
         let cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
