@@ -54,7 +54,6 @@ async function executarBackupDiario() {
                 motivo: row.motivo || '-'
             });
         });
-        });
         
         const hoje = new Date();
         const nomeArquivo = `Backup_CHEP_${hoje.getDate()}_${hoje.getMonth()+1}_${hoje.getFullYear()}.xlsx`;

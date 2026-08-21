@@ -1,3 +1,19 @@
+
+// ==========================================
+// CONFIGURACAO DE LOGS COM HORARIO
+// ==========================================
+const originalLog = console.log;
+console.log = function() {
+    const agora = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const args = Array.from(arguments);
+    args.unshift(`[${agora}]`);
+    originalLog.apply(console, args);
+};
+
+console.log("==========================================");
+console.log("🚀 ROBÔ REINICIADO / CÓDIGO ATUALIZADO 🚀");
+console.log("==========================================");
+
 const ws = require('ws');
 global.WebSocket = ws;
 require('dotenv').config({ path: '../.env' });
