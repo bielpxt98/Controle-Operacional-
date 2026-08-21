@@ -138,7 +138,7 @@ async function startWhatsApp() {
         const paletesNum = paletesMatch ? parseInt(paletesMatch[1]) : 0;
         
         console.log(`[WPP-GRUPO] H_COLETADO detectado. Delivery: ${numeroDelivery}, Paletes: ${paletesNum}`);
-        const { error } = await supabase.from('deliveries').update({ h_coletado: horaAtual, paletes_coletado: paletesNum }).eq('delivery', numeroDelivery);
+        const { error } = await supabase.from('deliveries').update({ c_horario: horaAtual, pc: paletesNum }).eq('delivery', numeroDelivery);
         if (!error) await sock.sendMessage(msg.key.remoteJid, { react: { text: "📦", key: msg.key } });
         return;
     }
@@ -148,13 +148,13 @@ async function startWhatsApp() {
 
     if ((isLocation || isChegada) && !isAdmin) {
         console.log(`[WPP-GRUPO] H_LOCAL detectado para o motorista ${motoristaPrimeiroNome}`);
-        const { data: pendentes } = await supabase.from('deliveries').select('id').ilike('motorista', `%${motoristaPrimeiroNome}%`).ilike('data', `%${dataHojeCurta}%`).is('h_local', null).order('id', { ascending: true }).limit(1);
+        const { data: pendentes } = await supabase.from('deliveries').select('id').ilike('motorista', `%${motoristaPrimeiroNome}%`).ilike('data', `%${dataHojeCurta}%`).is('l_horario', null).order('id', { ascending: true }).limit(1);
         if (pendentes && pendentes.length > 0) {
-            await supabase.from('deliveries').update({ h_local: horaAtual }).eq('id', pendentes[0].id);
+            await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', pendentes[0].id);
             await sock.sendMessage(msg.key.remoteJid, { react: { text: "📍", key: msg.key } });
             console.log(`[WPP-GRUPO] H_LOCAL marcado no banco! (${horaAtual})`);
         } else {
-            console.log(`[WPP-GRUPO] FALHA: Nenhuma carga vazia (h_local=null) achada para motorista=${motoristaPrimeiroNome} na data=${dataHojeCurta}`);
+            console.log(`[WPP-GRUPO] FALHA: Nenhuma carga vazia (l_horario=null) achada para motorista=${motoristaPrimeiroNome} na data=${dataHojeCurta}`);
         }
         return;
     }
@@ -168,9 +168,9 @@ async function startWhatsApp() {
         if (json && json.tipo === "NF_ASSINADA") {
             const clienteLimpo = (json.cliente || "").toUpperCase().trim();
             console.log(`[WPP-GRUPO] NF ASSINADA! Cliente: ${clienteLimpo}`);
-            const { data: finalizaveis } = await supabase.from('deliveries').select('id').ilike('motorista', `%${motoristaPrimeiroNome}%`).ilike('data', `%${dataHojeCurta}%`).ilike('clientes', `%${clienteLimpo}%`).is('h_finalizado', null).limit(1);
+            const { data: finalizaveis } = await supabase.from('deliveries').select('id').ilike('motorista', `%${motoristaPrimeiroNome}%`).ilike('data', `%${dataHojeCurta}%`).ilike('clientes', `%${clienteLimpo}%`).is('f_horario', null).limit(1);
             if (finalizaveis && finalizaveis.length > 0) {
-                await supabase.from('deliveries').update({ h_finalizado: horaAtual, status: 'CONCLUIDO' }).eq('id', finalizaveis[0].id);
+                await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO' }).eq('id', finalizaveis[0].id);
                 await sock.sendMessage(msg.key.remoteJid, { react: { text: "✅", key: msg.key } });
                 console.log(`[WPP-GRUPO] H_FINALIZADO marcado!`);
             } else {
