@@ -159,7 +159,22 @@ async function processarConta(conta, deliveries) {
                     }
 
                     if (resultsFrame) {
-                        await targetPage.waitForTimeout(500);
+                        await targetPage.waitForTimeout(1000);
+                        if (tab.sort) {
+                            console.log("[WEB] Ordenando por Data/hora decrescente...");
+                            try {
+                                const headerDate = resultsFrame.locator('div:has-text("Data/hora da retir")').first();
+                                if (await headerDate.isVisible({ timeout: 2000 })) {
+                                    await headerDate.click({ button: 'right' });
+                                    await targetPage.waitForTimeout(1000);
+                                    const sortBtn = targetPage.locator('div:has-text("Classificar tudo em ordem decrescente")').first();
+                                    if (await sortBtn.isVisible({ timeout: 2000 })) {
+                                        await sortBtn.click();
+                                        await targetPage.waitForTimeout(4000);
+                                    }
+                                }
+                            } catch(e) { console.log("Falha ao ordenar:", e.message); }
+                        }
                         
                         let colMap = { nome: 3, cpf: 4, placa_cavalo: 5, placa_reboque: -1 };
                         try {
