@@ -289,6 +289,9 @@ def save_coletas():
     try:
         # A sincronizacao de exclusoes automatica foi removida para seguranca.
 
+        existing_data = db_select_all()
+        existing_items = {str(r.get("id")): r for r in existing_data}
+        
         saved_items = []
         for item in coletas:
             obs_value = str(item.get("observacao") or item.get("motivo") or item.get("observacoes") or "").strip()
@@ -330,7 +333,15 @@ def save_coletas():
             else:
                 registro = raw_registro
 
-            registro_final = {k: (None if v == "" or v == "-" else v) for k, v in registro.items()}
+            registro_final = {}
+            protected_fields = ["l_horario", "c_horario", "f_horario", "pc", "motorista"]
+            existing = existing_items.get(str(item.get("id", "")), {})
+            
+            for k, v in registro.items():
+                is_empty = (v is None or v == "" or v == "-")
+                if is_empty and k in protected_fields and existing.get(k):
+                    continue  # Mantem o valor existente no banco (protege contra overwrite do frontend desatualizado)
+                registro_final[k] = None if is_empty else v
 
             rec_id = item.get("id")
             is_valid_id = rec_id is not None and str(rec_id).isdigit() and int(rec_id) > 0
