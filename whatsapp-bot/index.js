@@ -1,5 +1,20 @@
 
 // ==========================================
+// FILTRO DE LIXO DO BAILEYS / LIBSIGNAL
+// ==========================================
+const originalConsoleError = console.error;
+console.error = function(...args) {
+    if (args.length > 0 && typeof args[0] === 'string' && (args[0].includes('Bad MAC') || args[0].includes('Session error'))) return;
+    originalConsoleError.apply(console, args);
+};
+const originalConsoleLog = console.log;
+console.log = function(...args) {
+    if (args.length > 0 && typeof args[0] === 'string' && (args[0].includes('Bad MAC') || args[0].includes('Session error'))) return;
+    originalConsoleLog.apply(console, args);
+};
+
+
+// ==========================================
 // CONFIGURACAO DE LOGS COM HORARIO
 // ==========================================
 const originalLog = console.log;
