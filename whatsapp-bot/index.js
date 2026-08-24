@@ -175,7 +175,7 @@ async function startWhatsApp() {
         
         console.log(`[WPP-GRUPO] H_COLETADO detectado. Delivery: ${numeroDelivery}, Paletes: ${paletesNumStr}`);
         const { error } = await supabase.from('deliveries').update(updatePayload).eq('delivery', numeroDelivery);
-        if (!error) await sock.sendMessage(msg.key.remoteJid, { react: { text: "📦", key: msg.key } });
+        if (!error) await sock.sendMessage('558193792908@s.whatsapp.net', { text: `📦 H_COLETADO marcado! Delivery: ${numeroDelivery} | Paletes: ${paletesNumStr}` });
         return;
     }
 
@@ -187,7 +187,7 @@ async function startWhatsApp() {
         const { data: pendentes } = await supabase.from('deliveries').select('id').ilike('motorista', `%${motoristaPrimeiroNome}%`).ilike('data', `%${dataHojeCurta}%`).is('l_horario', null).not('delivery', 'ilike', '340%').order('id', { ascending: true }).limit(1);
         if (pendentes && pendentes.length > 0) {
             await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', pendentes[0].id);
-            await sock.sendMessage(msg.key.remoteJid, { react: { text: "📍", key: msg.key } });
+            await sock.sendMessage('558193792908@s.whatsapp.net', { text: `📍 H_LOCAL marcado para ${motoristaPrimeiroNome} (${horaAtual})` });
             console.log(`[WPP-GRUPO] H_LOCAL marcado no banco! (${horaAtual})`);
         } else {
             console.log(`[WPP-GRUPO] FALHA: Nenhuma carga vazia (l_horario=null) achada para motorista=${motoristaPrimeiroNome} na data=${dataHojeCurta}`);
@@ -216,7 +216,7 @@ async function startWhatsApp() {
             const { data: finalizaveis } = await query.limit(1);
             if (finalizaveis && finalizaveis.length > 0) {
                 await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO' }).eq('id', finalizaveis[0].id);
-                await sock.sendMessage(msg.key.remoteJid, { react: { text: "✅", key: msg.key } });
+                await sock.sendMessage('558193792908@s.whatsapp.net', { text: `✅ H_FINALIZADO marcado! Cliente: ${clienteLimpo} | Delivery: ${deliveryLido}` });
                 console.log(`[WPP-GRUPO] H_FINALIZADO marcado!`);
             } else {
                 console.log(`[WPP-GRUPO] FALHA: Nenhuma carga aberta achada para motorista=${motoristaPrimeiroNome}, cliente=${clienteLimpo}, data=${dataHojeCurta}`);
