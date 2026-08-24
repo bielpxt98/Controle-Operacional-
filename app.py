@@ -338,10 +338,16 @@ def save_coletas():
             existing = existing_items.get(str(item.get("id", "")), {})
             
             for k, v in registro.items():
-                is_empty = (v is None or v == "" or v == "-")
-                if is_empty and k in protected_fields and existing.get(k):
-                    continue  # Mantem o valor existente no banco (protege contra overwrite do frontend desatualizado)
-                registro_final[k] = None if is_empty else v
+                is_empty_stale = (v is None or str(v).strip() == "")
+                is_explicit_clear = (str(v).strip() == "-")
+                
+                if is_empty_stale and k in protected_fields and existing.get(k):
+                    continue  # Mantem o valor existente no banco (protege contra overwrite do frontend)
+                    
+                if is_explicit_clear:
+                    registro_final[k] = None # Delecao explicita autorizada
+                else:
+                    registro_final[k] = None if is_empty_stale else v
 
             rec_id = item.get("id")
             is_valid_id = rec_id is not None and str(rec_id).isdigit() and int(rec_id) > 0
