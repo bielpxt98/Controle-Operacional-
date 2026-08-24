@@ -290,7 +290,7 @@ iniciarLoopCHEP();
 async function classifyImage(buffer, textCaption, isFromGroup) {
     try {
         console.log("[GEMINI] Analisando imagem recebida...");
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         
         let prompt = "";
         if (isFromGroup) {
