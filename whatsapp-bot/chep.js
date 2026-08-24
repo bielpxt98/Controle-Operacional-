@@ -124,34 +124,26 @@ async function processarConta(conta, deliveries) {
                 }
 
                 console.log("[WEB] Aguardando Smartbench...");
-                
-                const isPerfil2 = (conta.user === '210256_2');
-                const normais = deliveries.filter(d => !(String(d.delivery).startsWith('340')));
-                const remessas = isPerfil2 ? deliveries.filter(d => String(d.delivery).startsWith('340')) : [];
-                
-                const tabs = [];
-                if (normais.length > 0) tabs.push({ name: "COLETAS", entregas: normais, sort: true });
-                if (remessas.length > 0) tabs.push({ name: "REMESSA", entregas: remessas, sort: false });
-
-                for (const tab of tabs) {
-                    let btnAba = null;
-                    for (let i = 0; i < 15; i++) {
-                        for (const f of targetPage.frames()) {
-                            const loc = f.locator(`td:text-is("${tab.name}")`).first();
-                            if (await loc.count() > 0 && await loc.isVisible()) {
-                                btnAba = loc; break;
-                            }
+                let progAmanha = null;
+                for (let i = 0; i < 15; i++) {
+                    for (const f of targetPage.frames()) {
+                        const loc = f.locator('td:has-text(\"AMANH\")').first();
+                        if (await loc.count() > 0 && await loc.isVisible()) {
+                            progAmanha = loc;
+                            break;
                         }
-                        if (btnAba) break;
-                        await targetPage.waitForTimeout(2000);
                     }
+                    if (progAmanha) break;
+                    await targetPage.waitForTimeout(2000);
+                    // Tira print pra debugar
+                    try { await targetPage.screenshot({ path: '../static/debug_smartbench.png' }); } catch(e){}
+                }
 
-                    if (btnAba) {
-                        console.log(`[WEB] Clicando na aba ${tab.name}...`);
-                        await btnAba.click();
-                        await targetPage.waitForTimeout(1000);
-                        await btnAba.dblclick();
-
+                if (progAmanha) {
+                    console.log("[WEB] Clicando PROGRAMAÇÃO AMANHÃ...");
+                    await progAmanha.click();
+                    await targetPage.waitForTimeout(1000);
+                    await progAmanha.dblclick();
 
                     console.log("[WEB] Aguardando tabela...");
                     let resultsFrame = null;
@@ -220,22 +212,6 @@ async function processarConta(conta, deliveries) {
                                                 break;
                                             }
                                         } catch(e) {}
-                            
-                            if (tab.sort) {
-                                console.log("[WEB] Ordenando por Data/hora decrescente...");
-                                try {
-                                    const headerDate = resultsFrame.locator('div:has-text("Data/hora da retir")').first();
-                                    if (await headerDate.isVisible({ timeout: 2000 })) {
-                                        await headerDate.click({ button: 'right' });
-                                        await targetPage.waitForTimeout(1000);
-                                        const sortBtn = targetPage.locator('div:has-text("Classificar tudo em ordem decrescente")').first();
-                                        if (await sortBtn.isVisible({ timeout: 2000 })) {
-                                            await sortBtn.click();
-                                            await targetPage.waitForTimeout(4000);
-                                        }
-                                    }
-                                } catch(e) { console.log("Falha ao ordenar:", e.message); }
-                            }
                                     }
                                 }
 
@@ -302,18 +278,6 @@ async function processarConta(conta, deliveries) {
 
                                             const idFornecimento = (await row.locator(':scope > td').nth(2).innerText({ timeout: 1000 })).trim();
                                             const txtLinha = (await row.innerText({ timeout: 1000 }));
-                                            
-                                            // Filtro de Data: Só analisa a cascata se a data da linha bater com a data de alguma carga pendente
-                                            const datasBuscadas = [...new Set(coletasPendentes.map(p => p.data).filter(Boolean))];
-                                            let matchesDate = false;
-                                            for (const d of datasBuscadas) {
-                                                if (txtLinha.includes(d)) matchesDate = true;
-                                            }
-                                            if (!matchesDate) {
-                                                console.log(`[WEB] Ignorando cascata ${idCarga} (Data diferente das pendentes)`);
-                                                cascatasProcessadas.add(idCarga); // Para nao reavaliar
-                                                continue;
-                                            }
 
                                             if (cascatasProcessadas.has(idCarga)) continue;
 
@@ -479,7 +443,6 @@ async function processarConta(conta, deliveries) {
                 }
             }
         }
-        } // Fecha if(btnAba)
     } catch(e) { console.log("Erro Fatal:", e.message); }
 
         console.log("[WEB] Fechando navegador para trocar de perfil...");
