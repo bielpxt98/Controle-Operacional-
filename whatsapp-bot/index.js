@@ -323,16 +323,20 @@ Responda APENAS com o JSON.`;
         };
 
         const resultPromise = model.generateContent([prompt, imagePart]);
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout: Gemini demorou mais de 40 segundos para responder.")), 40000));
-        const result = await Promise.race([resultPromise, timeoutPromise]);
-        const responseText = result.response.text();
+        let timerId;
+          const timeoutPromise = new Promise((_, reject) => {
+              timerId = setTimeout(() => reject(new Error("Timeout de 40s atingido!")), 40000);
+          });
+          const result = await Promise.race([model.generateContent([prompt, imagePart]), timeoutPromise]).finally(() => clearTimeout(timerId));
+          console.log("[GEMINI] Resposta recebida da API!");
+          const responseText = result.response.text();
         
         let cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
         const json = JSON.parse(cleanJson);
         console.log("[GEMINI] Resultado:", JSON.stringify(json));
         return json;
     } catch(e) {
-        console.error("[GEMINI] Erro na classificacao da imagem:", e.message);
+        console.log("[GEMINI] CAIU NO CATCH! Erro:", e.message);
         return { tipo: "IRRELEVANTE" };
     }
 }
