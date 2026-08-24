@@ -1908,6 +1908,54 @@
                 badge.style.border = `1px solid ${color}40`;
             }
         }
-    </script>
+    
+        // === SYNC REAL-TIME INVISIVEL ===
+        async function syncRealTime() {
+            if (isSearchActive()) return;
+            
+            // Nao interromper se o usuario estiver digitando algo
+            const activeEl = document.activeElement;
+            if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT')) return;
+            
+            try {
+                const res = await fetch(`/api/coletas?data=${encodeURIComponent(activeDateStr)}`);
+                const json = await res.json();
+                const records = json.data || [];
+                
+                const rows = document.querySelectorAll('#tableBody tr[data-id]');
+                
+                if (records.length !== rows.length) {
+                    fetchDayDataFromSupabase(activeDateStr);
+                    return;
+                }
+                
+                for (const row of rows) {
+                    const id = row.getAttribute('data-id');
+                    const rec = records.find(r => String(r.id) === id);
+                    if (rec) {
+                        const setVal = (cls, val) => {
+                            const input = row.querySelector(cls);
+                            if (input && input.value !== val) {
+                                input.value = val;
+                                input.style.transition = "background-color 0.5s";
+                                input.style.backgroundColor = "#dcfce7";
+                                setTimeout(() => input.style.backgroundColor = "", 1500);
+                            }
+                        };
+                        
+                        setVal('.input-lhorario', rec.l_horario || '');
+                        setVal('.input-chorario', rec.c_horario || '');
+                        setVal('.input-fhorario', rec.f_horario || '');
+                        setVal('.input-pc', rec.pc || '');
+                        
+                        updateRowStatus(row);
+                    }
+                }
+            } catch(e) {}
+        }
+        setInterval(syncRealTime, 10000);
+        // ================================
+
+</script>
 </body>
 </html>
