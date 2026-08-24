@@ -302,6 +302,18 @@ async function processarConta(conta, deliveries) {
 
                                             const idFornecimento = (await row.locator(':scope > td').nth(2).innerText({ timeout: 1000 })).trim();
                                             const txtLinha = (await row.innerText({ timeout: 1000 }));
+                                            
+                                            // Filtro de Data: Só analisa a cascata se a data da linha bater com a data de alguma carga pendente
+                                            const datasBuscadas = [...new Set(coletasPendentes.map(p => p.data).filter(Boolean))];
+                                            let matchesDate = false;
+                                            for (const d of datasBuscadas) {
+                                                if (txtLinha.includes(d)) matchesDate = true;
+                                            }
+                                            if (!matchesDate) {
+                                                console.log(`[WEB] Ignorando cascata ${idCarga} (Data diferente das pendentes)`);
+                                                cascatasProcessadas.add(idCarga); // Para nao reavaliar
+                                                continue;
+                                            }
 
                                             if (cascatasProcessadas.has(idCarga)) continue;
 
