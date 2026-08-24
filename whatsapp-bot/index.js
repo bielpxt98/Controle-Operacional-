@@ -124,6 +124,7 @@ async function startWhatsApp() {
     // =========================================================
     
     let motoristaPrimeiroNome = senderName.split(' ')[0].toUpperCase();
+    motoristaPrimeiroNome = motoristaPrimeiroNome.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     if (motoristaPrimeiroNome.includes("GABRIEL")) motoristaPrimeiroNome = "GABRIEL";
     
     const hojeObj = new Date();
