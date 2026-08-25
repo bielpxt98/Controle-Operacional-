@@ -393,13 +393,15 @@ Responda APENAS com o JSON.`;
 
         const keysToTry = [
             GEMINI_API_KEY,
-            "AIzaSyDnPqBHqjN8T6T9g9829qzS7AOAYIcQj1c"
-        ];
+            process.env.GEMINI_API_KEY_2 || "AIzaSyDnPqBHqjN8T6T9g9829qzS7AOAYIcQj1c",
+            process.env.GEMINI_API_KEY_3 || ""
+        ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
-            "gemini-3.6-flash",
             "gemini-2.5-flash",
-            "gemini-2.5-flash-lite"
+            "gemini-2.0-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-1.5-flash"
         ];
 
         let responseText = null;
