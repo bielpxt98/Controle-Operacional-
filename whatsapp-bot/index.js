@@ -1,4 +1,19 @@
 
+
+// SILENCIADOR MÁXIMO DE LOGS DE CRIPTOGRAFIA
+['log', 'info', 'warn', 'error', 'debug'].forEach(method => {
+    const orig = console[method];
+    console[method] = function(...args) {
+        if (args.length > 0 && typeof args[0] === 'string') {
+            const str = args[0];
+            if (str.includes('SessionEntry') || str.includes('ephemeralKeyPair') || str.includes('closing session') || str.includes('closing open session') || str.includes('chainKey') || str.includes('messageKeys')) {
+                return; // Ignora logs de criptografia do libsignal
+            }
+        }
+        orig.apply(console, args);
+    };
+});
+
 // ==========================================
 // FILTRO DE LIXO DO BAILEYS / LIBSIGNAL
 // ==========================================
