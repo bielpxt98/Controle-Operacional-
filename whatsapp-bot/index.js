@@ -168,7 +168,6 @@ async function startWhatsApp() {
                 
                 if (pendentes && pendentes.length > 0) {
                     const { error: updErr } = await supabase.from('deliveries').update({
-                        delivery: numeroSR,
                         sr: numeroSR,
                         f_horario: horaAtual,
                         status: 'CONCLUIDO',
