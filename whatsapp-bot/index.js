@@ -344,7 +344,7 @@ iniciarLoopCHEP();
 async function classifyImage(buffer, textCaption, isFromGroup) {
     try {
         console.log("[GEMINI] Analisando imagem recebida...");
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        let prompt = "";
         
         let prompt = "";
         if (isFromGroup) {
@@ -376,14 +376,36 @@ Responda APENAS com o JSON.`;
             }
         };
 
-        const resultPromise = model.generateContent([prompt, imagePart]);
-        let timerId;
-          const timeoutPromise = new Promise((_, reject) => {
-              timerId = setTimeout(() => reject(new Error("Timeout de 40s atingido!")), 40000);
-          });
-          const result = await Promise.race([model.generateContent([prompt, imagePart]), timeoutPromise]).finally(() => clearTimeout(timerId));
-          console.log("[GEMINI] Resposta recebida da API!");
-          const responseText = result.response.text();
+        const modelsToTry = [
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash"
+        ];
+
+        let responseText = null;
+        for (const modelName of modelsToTry) {
+            try {
+                console.log(`[GEMINI] Tentando com o modelo ${modelName}...`);
+                const model = genAI.getGenerativeModel({ model: modelName });
+                
+                let timerId;
+                const timeoutPromise = new Promise((_, reject) => {
+                    timerId = setTimeout(() => reject(new Error("Timeout de 40s atingido!")), 40000);
+                });
+                
+                const result = await Promise.race([model.generateContent([prompt, imagePart]), timeoutPromise]).finally(() => clearTimeout(timerId));
+                responseText = result.response.text();
+                console.log(`[GEMINI] Resposta recebida do ${modelName}!`);
+                break;
+            } catch (err) {
+                console.error(`[GEMINI] Falha no modelo ${modelName}, tentando o próximo... Erro:`, err.message);
+            }
+        }
+        
+        if (!responseText) {
+            throw new Error("Todos os modelos da lista falharam por timeout ou cota de limite.");
+        }
         
         let cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
         const json = JSON.parse(cleanJson);
