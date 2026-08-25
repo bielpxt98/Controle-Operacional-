@@ -8,58 +8,41 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         /* ===== MOBILE RESPONSIVE ===== */
-        @media (max-width: 768px) {
+                /* Wrapper para a barra de pesquisa */
+        .search-bar-wrapper {
+            background-color: rgba(15, 23, 42, 0.9);
+            padding: 8px 1.5rem;
+            border-bottom: 1px solid var(--card-border);
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        @media (max-width: 900px) {
             header {
                 padding: 0.6rem 1rem;
                 flex-wrap: wrap;
                 gap: 8px;
+                justify-content: center;
+                text-align: center;
             }
             .header-title h1 {
-                font-size: 0.85rem;
+                font-size: 0.95rem;
             }
-            .header-logo-img { height: 28px; }
-            .user-menu { font-size: 0.72rem; padding: 4px 10px; }
-
-            .months-nav {
-                padding: 0.4rem 0.75rem;
-                gap: 4px;
-            }
-            .month-btn { padding: 5px 10px; font-size: 0.7rem; }
-            .search-container { min-width: 100%; margin-left: 0; margin-top: 4px; }
-
-            .days-strip { padding: 0.5rem 0.75rem; gap: 6px; }
-            .day-pill { min-width: 70px; padding: 6px 8px; }
-            .day-pill .num { font-size: 0.75rem; }
-
-            main { padding: 0.6rem 0.75rem; }
-
-            .report-header {
-                flex-direction: column;
-                align-items: flex-start;
-                padding: 0.7rem 1rem;
-                gap: 8px;
-            }
-            .report-header h2 { font-size: 0.9rem; }
-            .excel-hint { display: none; }
-            .report-actions {
-                display: flex;
-                gap: 6px;
-                width: 100%;
-                flex-wrap: wrap;
-            }
-            .btn {
-                font-size: 0.72rem;
-                padding: 8px 10px;
-                flex: 1;
-                justify-content: center;
-                min-width: 0;
-            }
-
-            /* Esconde a tabela no celular */
-            .table-responsive { display: none; }
-
-            /* Mostra os cards no celular */
-            .mobile-cards { display: flex !important; flex-direction: column; gap: 12px; }
+            .header-logo-img { height: 24px; }
+            .user-menu { font-size: 0.8rem; padding: 6px 12px; width: 100%; justify-content: center; }
+            
+            .table-responsive { display: none !important; }
+            .mobile-cards { display: flex !important; flex-direction: column; gap: 16px; margin-top: 10px; }
+            
+            .search-bar-wrapper { padding: 10px; justify-content: center; }
+            .search-container { min-width: 100%; margin: 0; }
+            
+            .report-header { flex-direction: column; align-items: stretch; text-align: center; }
+            .report-actions { display: flex; flex-direction: column; width: 100%; gap: 10px; }
+            .report-actions button, .report-actions div { width: 100%; justify-content: center; }
+            
+            .days-strip { padding: 0.5rem; gap: 4px; }
+            .day-pill { min-width: 65px; padding: 6px 4px; }
         }
 
         @media (min-width: 769px) {
