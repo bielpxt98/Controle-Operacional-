@@ -148,6 +148,45 @@ async function startWhatsApp() {
     const formatterHora = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false });
     const horaAtual = formatterHora.format(new Date());
 
+
+    // ==========================================
+    // LOGICA DE SR ENVIADA PELO ADMIN
+    // ==========================================
+    if (isAdmin && txtMsg.toUpperCase().includes('SR') && quotedMsg && quotedMsg.imageMessage) {
+        const srMatch = txtMsg.match(/\b\d{8}\b/);
+        if (srMatch) {
+            const numeroSR = srMatch[0];
+            const motoristasConhecidos = ["WILSON", "GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIS", "FABIO", "JEAN", "ARIEL"];
+            let motoristaAlvo = motoristasConhecidos.find(m => txtMsg.toUpperCase().includes(m));
+            
+            if (motoristaAlvo) {
+                console.log(`[WPP-ADMIN] Identificada SR ${numeroSR} para ${motoristaAlvo}`);
+                
+                // Buscar a coleta pendente desse motorista hoje
+                let query = supabase.from('deliveries').select('id').ilike('motorista', `%${motoristaAlvo}%`).ilike('data', `%${dataHojeCurta}%`).is('f_horario', null).limit(1);
+                const { data: pendentes } = await query;
+                
+                if (pendentes && pendentes.length > 0) {
+                    const { error: updErr } = await supabase.from('deliveries').update({
+                        delivery: numeroSR,
+                        sr: numeroSR,
+                        f_horario: horaAtual,
+                        status: 'CONCLUIDO',
+                        data_finalizacao: dataHojeCurta
+                    }).eq('id', pendentes[0].id);
+                    
+                    if (updErr) console.log('[ERRO SUPABASE SR]', updErr);
+                    
+                    await sock.sendMessage('120363408148934220@g.us', { text: `âœ… SR ${numeroSR} registrada para ${motoristaAlvo}! (H_FINALIZADO: ${horaAtual})` });
+                    console.log(`[WPP-ADMIN] SR salva com sucesso.`);
+                    return; // Interrompe para nao processar como delivery normal
+                } else {
+                    console.log(`[WPP-ADMIN] Nao achei coleta pendente para ${motoristaAlvo} hoje.`);
+                }
+            }
+        }
+    }
+
     const deliveryMatch = txtMsg.match(/\b\d{10}\b/);
     if (deliveryMatch && quotedMsg && quotedMsg.imageMessage) {
         const numeroDelivery = deliveryMatch[0];
