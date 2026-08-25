@@ -374,6 +374,11 @@ Responda APENAS com o JSON.`;
             }
         };
 
+        const keysToTry = [
+            GEMINI_API_KEY,
+            "AIzaSyDnPqBHqjN8T6T9g9829qzS7AOAYIcQj1c"
+        ];
+        
         const modelsToTry = [
             "gemini-3.6-flash",
             "gemini-2.5-flash",
@@ -381,23 +386,28 @@ Responda APENAS com o JSON.`;
         ];
 
         let responseText = null;
-        for (const modelName of modelsToTry) {
-            try {
-                console.log(`[GEMINI] Tentando com o modelo ${modelName}...`);
-                const model = genAI.getGenerativeModel({ model: modelName });
-                
-                let timerId;
-                const timeoutPromise = new Promise((_, reject) => {
-                    timerId = setTimeout(() => reject(new Error("Timeout de 90s atingido!")), 90000);
-                });
-                
-                const result = await Promise.race([model.generateContent([prompt, imagePart]), timeoutPromise]).finally(() => clearTimeout(timerId));
-                responseText = result.response.text();
-                console.log(`[GEMINI] Resposta recebida do ${modelName}!`);
-                break;
-            } catch (err) {
-                console.error(`[GEMINI] Falha no modelo ${modelName}, tentando o próximo... Erro:`, err.message);
+        for (const apiKey of keysToTry) {
+            const localGenAI = new (require('@google/generative-ai').GoogleGenerativeAI)(apiKey);
+            for (const modelName of modelsToTry) {
+                try {
+                    console.log(`[GEMINI] Tentando ${modelName} na chave ...${apiKey.slice(-4)}...`);
+                    const model = localGenAI.getGenerativeModel({ model: modelName });
+                    
+                    let timerId;
+                    const timeoutPromise = new Promise((_, reject) => {
+                        timerId = setTimeout(() => reject(new Error("Timeout de 90s atingido!")), 90000);
+                    });
+                    
+                    const result = await Promise.race([model.generateContent([prompt, imagePart]), timeoutPromise]).finally(() => clearTimeout(timerId));
+                    responseText = result.response.text();
+                    console.log(`[GEMINI] Resposta recebida do ${modelName}!`);
+                    break;
+                } catch (err) {
+                    console.error(`[GEMINI] Falha: ${modelName} / ...${apiKey.slice(-4)} | Erro:`, err.message);
+                }
             }
+            if (responseText) break;
+        }
         }
         
         if (!responseText) {
