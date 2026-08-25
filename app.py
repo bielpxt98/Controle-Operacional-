@@ -221,10 +221,7 @@ def search_coletas():
 
         for item in all_data:
             item_date = parse_date_for_sort(item.get("data", ""))
-            try:
-                idt = datetime.strptime(item_date, "%Y-%m-%d")
-            except:
-                continue
+            idt = item_date
                 
             pc_val = sanitize_number(item.get("pc"))
             hl = item.get("l_horario")
