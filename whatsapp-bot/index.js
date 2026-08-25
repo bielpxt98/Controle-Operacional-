@@ -274,7 +274,24 @@ async function startWhatsApp() {
                 await sock.sendMessage('120363408148934220@g.us', { text: `✅ H_FINALIZADO marcado! Cliente: ${clienteLimpo} | Delivery: ${deliveryLido}` });
                 console.log(`[WPP-GRUPO] H_FINALIZADO marcado!`);
             } else {
-                console.log(`[WPP-GRUPO] FALHA: Nenhuma carga aberta achada para motorista=${motoristaPrimeiroNome}, cliente=${clienteLimpo}, data=${dataHojeCurta}`);
+                console.log(`[WPP-GRUPO] FALHA na busca exata. Tentando FALLBACK INTELIGENTE para motorista=${motoristaPrimeiroNome}...`);
+                
+                // Busca a primeira carga do motorista hoje que ainda não foi finalizada, independente do OCR ter errado cliente/delivery
+                const { data: fallbackData } = await supabase.from('deliveries').select('id, delivery, clientes').ilike('motorista', `%${motoristaPrimeiroNome}%`).ilike('data', `%${dataHojeCurta}%`).is('f_horario', null).order('id', { ascending: true }).limit(1);
+                
+                if (fallbackData && fallbackData.length > 0) {
+                    const fallbackID = fallbackData[0].id;
+                    const fallbackDelivery = fallbackData[0].delivery || "N/A";
+                    const fallbackCliente = fallbackData[0].clientes || "Desconhecido";
+                    
+                    const { error: updErr } = await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO', data_finalizacao: dataHojeCurta }).eq('id', fallbackID);
+                    if (updErr) console.log('[ERRO SUPABASE FALLBACK]', updErr);
+                    
+                    await sock.sendMessage('120363408148934220@g.us', { text: `✅ H_FINALIZADO (Pelo Fallback da IA)! Cliente: ${fallbackCliente} | Delivery: ${fallbackDelivery}` });
+                    console.log(`[WPP-GRUPO] H_FINALIZADO marcado por FALLBACK INTELIGENTE!`);
+                } else {
+                    console.log(`[WPP-GRUPO] FALHA TOTAL: Nenhuma carga pendente hoje para motorista=${motoristaPrimeiroNome}`);
+                }
             }
         }
         return;
