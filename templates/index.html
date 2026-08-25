@@ -1911,6 +1911,7 @@
     
         // === SYNC REAL-TIME INVISIVEL ===
         async function syncRealTime() {
+            if (document.hidden) return; // Nao polui o servidor se a aba estiver em segundo plano
             if (isSearchActive()) return;
             
             // Nao interromper se o usuario estiver digitando algo
