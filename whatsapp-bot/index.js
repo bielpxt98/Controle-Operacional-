@@ -345,8 +345,6 @@ async function classifyImage(buffer, textCaption, isFromGroup) {
     try {
         console.log("[GEMINI] Analisando imagem recebida...");
         let prompt = "";
-        
-        let prompt = "";
         if (isFromGroup) {
             prompt = `Analise a imagem em anexo, que é um documento enviado por um motorista.
 Regras:
