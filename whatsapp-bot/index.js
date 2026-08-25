@@ -216,7 +216,7 @@ async function startWhatsApp() {
             }
             const { data: finalizaveis } = await query.limit(1);
             if (finalizaveis && finalizaveis.length > 0) {
-                await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO' }).eq('id', finalizaveis[0].id);
+                await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO', df: dataHojeCurta }).eq('id', finalizaveis[0].id);
                 await sock.sendMessage('120363408148934220@g.us', { text: `✅ H_FINALIZADO marcado! Cliente: ${clienteLimpo} | Delivery: ${deliveryLido}` });
                 console.log(`[WPP-GRUPO] H_FINALIZADO marcado!`);
             } else {
