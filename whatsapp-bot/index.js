@@ -375,10 +375,9 @@ Responda APENAS com o JSON.`;
         };
 
         const modelsToTry = [
+            "gemini-3.6-flash",
             "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash"
+            "gemini-2.5-flash-lite"
         ];
 
         let responseText = null;
@@ -389,7 +388,7 @@ Responda APENAS com o JSON.`;
                 
                 let timerId;
                 const timeoutPromise = new Promise((_, reject) => {
-                    timerId = setTimeout(() => reject(new Error("Timeout de 40s atingido!")), 40000);
+                    timerId = setTimeout(() => reject(new Error("Timeout de 90s atingido!")), 90000);
                 });
                 
                 const result = await Promise.race([model.generateContent([prompt, imagePart]), timeoutPromise]).finally(() => clearTimeout(timerId));
