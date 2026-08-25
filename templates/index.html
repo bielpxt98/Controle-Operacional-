@@ -892,12 +892,11 @@
             if (parseInt(mm, 10) > 59) mm = '59';
             input.value = `${hh}:${mm}`;
 
-            // Se foi preenchido H_FINALIZADO e DF esta vazio, sugere a data de hoje (se H_LOCAL estiver preenchido)
+            // Toda vez que o usuario digitar o H_FINALIZADO manualmente, atualiza o DF para a data real de hoje (mesmo se ja tivesse outra data antes)
             const tr = input.closest('tr') || input.closest('.coleta-card');
             if (tr && input.classList.contains('input-fhorario')) {
                 const dfInput = tr.querySelector('.input-df');
-                const hlInput = tr.querySelector('.input-lhorario');
-                if (dfInput && !dfInput.value.trim() && hlInput && hlInput.value.trim()) {
+                if (dfInput) {
                     dfInput.value = _todayDateStr;
                 }
             }
