@@ -165,6 +165,28 @@ def search_coletas():
     date_pattern = r'(\d{2}/\d{2}(?:/\d{2,4})?)'
     dates = re.findall(date_pattern, q)
     
+    # Extrair linguagem natural como "dia 10 ao dia 20" ou "do dia 10 ao 20"
+    if not dates:
+        nat_pattern = r'(?:do\s+)?(?:dia\s+)?(\d{1,2})\s+(?:a|ao|ate|at[eé])\s+(?:o\s+)?(?:dia\s+)?(\d{1,2})'
+        nat_match = re.search(nat_pattern, q)
+        if nat_match:
+            d1, d2 = nat_match.groups()
+            curr_month = datetime.now().month
+            curr_year = datetime.now().year
+            dates = [f"{int(d1):02d}/{curr_month:02d}/{curr_year}", f"{int(d2):02d}/{curr_month:02d}/{curr_year}"]
+            q = re.sub(nat_pattern, '', q).strip()
+            
+    # Extrair também buscas por um único dia "dia 10"
+    if not dates:
+        single_day_pattern = r'dia\s+(\d{1,2})'
+        single_match = re.search(single_day_pattern, q)
+        if single_match:
+            d1 = single_match.group(1)
+            curr_month = datetime.now().month
+            curr_year = datetime.now().year
+            dates = [f"{int(d1):02d}/{curr_month:02d}/{curr_year}", f"{int(d1):02d}/{curr_month:02d}/{curr_year}"]
+            q = re.sub(single_day_pattern, '', q).strip()
+    
     target_status = None
     if "deslocamento" in q: target_status = "deslocamento"
     elif "bloqueio" in q: target_status = "bloqueio"
