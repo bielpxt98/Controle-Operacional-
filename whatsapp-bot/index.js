@@ -408,7 +408,6 @@ Responda APENAS com o JSON.`;
             }
             if (responseText) break;
         }
-        }
         
         if (!responseText) {
             throw new Error("Todos os modelos da lista falharam por timeout ou cota de limite.");
