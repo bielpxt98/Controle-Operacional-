@@ -1881,8 +1881,8 @@
                             }
                             
                             if(tr.querySelector('.input-cliente')) tr.querySelector('.input-cliente').value = match.cliente || '';
-                            if(tr.querySelector('.input-paletes')) tr.querySelector('.input-paletes').value = match.paletes || '';
-                            if(tr.querySelector('.input-pc')) tr.querySelector('.input-pc').value = match.pc || '';
+                            if(tr.querySelector('.input-paletes')) tr.querySelector('.input-paletes').value = match.paletes ?? '';
+                            if(tr.querySelector('.input-pc')) tr.querySelector('.input-pc').value = match.pc ?? '';
                             if(tr.querySelector('.input-valor')) tr.querySelector('.input-valor').value = formatValorForDisplay(match.valor || match.valor_frete || match.val_frete || '');
                             if(tr.querySelector('.input-lhorario')) tr.querySelector('.input-lhorario').value = match.l_horario || '';
                             if(tr.querySelector('.input-chorario')) tr.querySelector('.input-chorario').value = match.c_horario || '';
@@ -1995,7 +1995,7 @@
                         setVal('.input-lhorario', rec.l_horario || '');
                         setVal('.input-chorario', rec.c_horario || '');
                         setVal('.input-fhorario', rec.f_horario || '');
-                        setVal('.input-pc', rec.pc || '');
+                        setVal('.input-pc', rec.pc ?? '');
                         
                         updateRowStatus(row);
                     }
