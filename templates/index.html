@@ -723,7 +723,6 @@
                         <button class="btn btn-add" onclick="addNewRow()"><i class="fa-solid fa-plus"></i> Adicionar Coleta</button>
                         <button class="btn btn-save" onclick="saveCurrentDayColetasWithAuth()"><i class="fa-solid fa-floppy-disk"></i> Salvar no Supabase</button>
                         <div style="position: relative; display: inline-block;">
-                                                                  <button class="btn btn-add" id="copySheetBtn" style="display: none; background-color: #10b981; margin-right: 5px;" onclick="copyToSheet()"><i class="fa-solid fa-copy"></i> Copiar Deslocamentos</button>
                     <button class="export-btn" id="exportMenuBtn"><i class="fa-solid fa-file-excel"></i> Baixar Excel ▼</button>
                     <div id="exportDropdown" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 5px; background-color: #1e293b; min-width: 170px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5); z-index: 100; border-radius: 8px; overflow: hidden; border: 1px solid #334155;">
                         <a href="#" onclick="exportExcel('day')" style="color: #f8fafc; padding: 12px 16px; text-decoration: none; display: block; border-bottom: 1px solid #334155; font-size: 0.9rem;"><i class="fa-regular fa-calendar-day" style="width:20px;"></i> Diário (Este Dia)</a>
@@ -796,34 +795,29 @@
         let currentSelectedMonthIndex = (parseInt(_savedParts[1]) - 1) || _today.getMonth();
         let activeDateStr = _savedDate;
 
-        function copyToSheet() {
-            const rows = document.querySelectorAll('#coletasBody tr');
-            let tsv = "";
-            let count = 0;
-            rows.forEach(tr => {
-                const statusEl = tr.querySelector('.status-badge');
-                if (!statusEl || statusEl.textContent.trim() !== "DESLOCAMENTO") return;
-                const dataOriginal = tr.getAttribute('data-original-date') || activeDateStr;
-                const delivery = tr.querySelector('.input-delivery') ? tr.querySelector('.input-delivery').value : '';
-                const cliente = tr.querySelector('.input-cliente') ? tr.querySelector('.input-cliente').value : '';
-                const valorInput = tr.querySelector('.input-valor');
-                let valorMetade = "";
-                if (valorInput && valorInput.value) {
-                    let numStr = valorInput.value.replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
-                    let num = parseFloat(numStr);
-                    if (!isNaN(num)) {
-                        valorMetade = (num / 2).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                    }
+        function copyDeslocamento(btn) {
+            const container = btn.closest('tr') || btn.closest('.coleta-card');
+            if (!container) return;
+            const dataOriginal = container.getAttribute('data-original-date') || activeDateStr;
+            const valorInput = container.querySelector('.input-valor');
+            let valorMetade = "";
+            if (valorInput && valorInput.value) {
+                let numStr = valorInput.value.replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
+                let num = parseFloat(numStr);
+                if (!isNaN(num)) {
+                    valorMetade = (num / 2).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 }
-                tsv += `${dataOriginal}\t${delivery}\t${cliente}\tPENDENTE\t${valorMetade}\n`;
-                count++;
-            });
-            if (count === 0) {
-                alert("Nenhuma carga com status DESLOCAMENTO encontrada na tela.");
-                return;
             }
-            navigator.clipboard.writeText(tsv).then(() => {
-                alert(`${count} linhas copiadas! Agora é só abrir a planilha e apertar Ctrl+V.`);
+            const copyText = `${dataOriginal}\t${valorMetade}`;
+            navigator.clipboard.writeText(copyText).then(() => {
+                const oldHtml = btn.innerHTML;
+                const oldBg = btn.style.background;
+                btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+                btn.style.background = '#10b981';
+                setTimeout(() => {
+                    btn.innerHTML = oldHtml;
+                    btn.style.background = oldBg;
+                }, 1500);
             }).catch(err => {
                 alert("Erro ao copiar: " + err);
             });
@@ -1311,6 +1305,7 @@
                     <div class="wpp-tag">
                         <span class="wpp-text">${wppText}</span>
                         <button class="btn-copy-wpp" onclick="copyWppText(this)"><i class="fa-brands fa-whatsapp"></i> Copiar</button>
+                        <button class="btn-copy-wpp btn-copy-deslocamento" onclick="copyDeslocamento(this)" style="background: var(--accent-blue); color: white; display: none; margin-left: 5px;"><i class="fa-solid fa-copy"></i> Copiar Desl.</button>
                     </div>
                 </td>
                 <td><button class="btn-delete-row" onclick="deleteRow(this)" title="Excluir"><i class="fa-solid fa-trash"></i></button></td>
@@ -1426,6 +1421,7 @@
                 <div class="card-wpp-row">
                     <div class="card-wpp-text wpp-text">${wppText}</div>
                     <button class="card-copy-btn" onclick="copyCardWpp(this)"><i class="fa-brands fa-whatsapp"></i> Copiar</button>
+                    <button class="card-copy-btn btn-copy-deslocamento" onclick="copyDeslocamento(this)" style="background: var(--accent-blue); color: white; display: none; margin-left: 5px;"><i class="fa-solid fa-copy"></i> Desloc.</button>
                 </div>
             `;
             mobileCards.appendChild(card);
@@ -1927,6 +1923,15 @@
                 badge.style.backgroundColor = bgColor;
                 badge.style.color = color;
                 badge.style.border = `1px solid ${color}40`;
+            }
+
+            const btnDeslocamento = tr.querySelector('.btn-copy-deslocamento');
+            if (btnDeslocamento) {
+                if (status === "DESLOCAMENTO") {
+                    btnDeslocamento.style.display = "inline-block";
+                } else {
+                    btnDeslocamento.style.display = "none";
+                }
             }
         }
     
