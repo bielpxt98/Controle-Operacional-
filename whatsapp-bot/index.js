@@ -392,8 +392,8 @@ Responda APENAS com o JSON.`;
         };
 
         const keysToTry = [
-            process.env.GEMINI_API_KEY_NEW || "",
             GEMINI_API_KEY,
+            process.env.GEMINI_API_KEY_NEW || "",
             process.env.GEMINI_API_KEY_2 || "",
             process.env.GEMINI_API_KEY_3 || ""
         ].filter(k => k && k.length > 10);
