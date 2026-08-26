@@ -1,4 +1,4 @@
-﻿const { createClient } = require('@supabase/supabase-js');
+const { createClient } = require('@supabase/supabase-js');
 const ExcelJS = require('exceljs');
 const nodemailer = require('nodemailer');
 const fs = require('fs');
@@ -35,23 +35,51 @@ async function executarBackupDiario() {
             { header: 'Motivo', key: 'motivo', width: 25 }
         ];
         
+        // Order by date descending
+        data.sort((a, b) => {
+            const parseDate = (d) => {
+                if (!d) return 0;
+                const parts = d.split('/');
+                if (parts.length === 3) {
+                    return new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`).getTime();
+                }
+                return 0;
+            };
+            return parseDate(b.data) - parseDate(a.data);
+        });
+        
         data.forEach(row => {
+            let computedStatus = "PENDENTE";
+            const pc = parseInt(row.pc);
+            const hl = row.l_horario && row.l_horario.trim() !== '' && row.l_horario !== '-';
+            const hc = row.c_horario && row.c_horario.trim() !== '' && row.c_horario !== '-';
+            const hf = row.f_horario && row.f_horario.trim() !== '' && row.f_horario !== '-';
+            const obs = (row.observacao || row.observacoes || row.motivo || "").toLowerCase();
+            
+            if (!isNaN(pc) && pc > 0 && hl && hc && hf) {
+                computedStatus = "FINALIZADO";
+            } else if ((isNaN(pc) || pc === 0) && hl && hf && obs.includes("bloqueio")) {
+                computedStatus = "BLOQUEIO";
+            } else if ((isNaN(pc) || pc === 0) && hl && hf && obs.includes("deslocamento")) {
+                computedStatus = "DESLOCAMENTO";
+            }
+
             worksheet.addRow({
                 data: row.data || '-',
                 motorista: row.motorista || '-',
                 delivery: row.delivery || '-',
                 cliente: row.cliente || '-',
-                paletes: row.paletes || '-',
-                paletes_coletado: row.pc || '-',
-                valor: row.valor || '-',
+                paletes: (row.paletes !== null && row.paletes !== undefined) ? row.paletes : '-',
+                paletes_coletado: (row.pc !== null && row.pc !== undefined) ? row.pc : '-',
+                valor: row.valor || row.valor_frete || row.valor_total || '-',
                 h_local: row.l_horario || '-',
                 h_coletado: row.c_horario || '-',
                 h_finalizado: row.f_horario || '-',
                 df: row.df || row.data_finalizacao || '-',
-                status: row.status || '-',
+                status: computedStatus,
                 status_chep: row.status_chep || '-',
                 sr: row.sr || '-',
-                motivo: row.motivo || '-'
+                motivo: row.motivo || row.observacao || row.observacoes || '-'
             });
         });
         
