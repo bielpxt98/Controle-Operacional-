@@ -723,9 +723,8 @@
                         <button class="btn btn-add" onclick="addNewRow()"><i class="fa-solid fa-plus"></i> Adicionar Coleta</button>
                         <button class="btn btn-save" onclick="saveCurrentDayColetasWithAuth()"><i class="fa-solid fa-floppy-disk"></i> Salvar no Supabase</button>
                         <div style="position: relative; display: inline-block;">
-                    <button class="btn btn-add" id="copySheetBtn" style="display: none; background-color: #10b981; margin-right: 5px;" onclick="copyToSheet()"><i class="fa-solid fa-copy"></i> Copiar Deslocamentos</button>
-                    <button class="btn btn-add" id="copySheetBtn" style="display: none; background-color: #10b981; margin-right: 5px;" onclick="copyToSheet()"><i class="fa-solid fa-copy"></i> Copiar Deslocamentos</button>
-                          <button class="export-btn" id="exportMenuBtn"><i class="fa-solid fa-file-excel"></i> Baixar Excel ▼</button>
+                                                                  <button class="btn btn-add" id="copySheetBtn" style="display: none; background-color: #10b981; margin-right: 5px;" onclick="copyToSheet()"><i class="fa-solid fa-copy"></i> Copiar Deslocamentos</button>
+                    <button class="export-btn" id="exportMenuBtn"><i class="fa-solid fa-file-excel"></i> Baixar Excel ▼</button>
                     <div id="exportDropdown" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 5px; background-color: #1e293b; min-width: 170px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5); z-index: 100; border-radius: 8px; overflow: hidden; border: 1px solid #334155;">
                         <a href="#" onclick="exportExcel('day')" style="color: #f8fafc; padding: 12px 16px; text-decoration: none; display: block; border-bottom: 1px solid #334155; font-size: 0.9rem;"><i class="fa-regular fa-calendar-day" style="width:20px;"></i> Diário (Este Dia)</a>
                         <a href="#" onclick="exportExcel('month')" style="color: #f8fafc; padding: 12px 16px; text-decoration: none; display: block; border-bottom: 1px solid #334155; font-size: 0.9rem;"><i class="fa-regular fa-calendar-days" style="width:20px;"></i> Mensal (Este Mês)</a>
@@ -1056,6 +1055,7 @@
                     activeDateStr = fullDateStr;
                     persistActiveDate(fullDateStr);
                     document.getElementById('currentDateText').innerText = fullDateStr;
+                    const cBtn = document.getElementById('copySheetBtn'); if(cBtn) cBtn.style.display = 'none';
                     fetchDayDataFromSupabase(fullDateStr);
                 };
 
@@ -1080,6 +1080,7 @@
             
             if (!q) {
                 document.getElementById('currentDateText').innerText = activeDateStr;
+                const cBtn2 = document.getElementById('copySheetBtn'); if(cBtn2) cBtn2.style.display = 'none';
                 renderDaysStrip(currentSelectedYear, currentSelectedMonthIndex);
                 fetchDayDataFromSupabase(activeDateStr);
                 return;
@@ -1088,6 +1089,8 @@
             // UI de busca
             document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active'));
             document.getElementById('currentDateText').innerText = `Busca Global: "${q}"`;
+            const copyBtn = document.getElementById('copySheetBtn');
+            if (copyBtn) copyBtn.style.display = q.toLowerCase().includes('deslocamento') ? 'inline-block' : 'none';
 
             // 1. Busca local instantanea (0ms) em todos os dias salvos no navegador
             const localStore = getLocalStore();
@@ -1681,6 +1684,7 @@
             activeDateStr = firstDateStr;
             persistActiveDate(firstDateStr);
             document.getElementById('currentDateText').innerText = firstDateStr;
+            const cBtn3 = document.getElementById('copySheetBtn'); if(cBtn3) cBtn3.style.display = 'none';
             renderDaysStrip(currentSelectedYear, monthIdx);
             fetchDayDataFromSupabase(firstDateStr);
         }
@@ -1717,6 +1721,7 @@
                 btn.classList.toggle('active', idx === currentSelectedMonthIndex);
             });
             document.getElementById('currentDateText').innerText = activeDateStr;
+                const cBtn2 = document.getElementById('copySheetBtn'); if(cBtn2) cBtn2.style.display = 'none';
             renderDaysStrip(currentSelectedYear, currentSelectedMonthIndex);
             fetchDayDataFromSupabase(activeDateStr);
 
