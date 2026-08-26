@@ -799,6 +799,8 @@
             const container = btn.closest('tr') || btn.closest('.coleta-card');
             if (!container) return;
             const dataOriginal = container.getAttribute('data-original-date') || activeDateStr;
+            const delivery = container.querySelector('.input-delivery') ? container.querySelector('.input-delivery').value : '';
+            const cliente = container.querySelector('.input-cliente') ? container.querySelector('.input-cliente').value : '';
             const valorInput = container.querySelector('.input-valor');
             let valorMetade = "";
             if (valorInput && valorInput.value) {
@@ -808,19 +810,39 @@
                     valorMetade = (num / 2).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 }
             }
-            const copyText = `${dataOriginal}\t${valorMetade}`;
-            navigator.clipboard.writeText(copyText).then(() => {
+            const copyText = `${dataOriginal}\t${delivery}\t${cliente}\t${valorMetade}`;
+            
+            function onSuccess() {
                 const oldHtml = btn.innerHTML;
                 const oldBg = btn.style.background;
-                btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+                btn.innerHTML = '<i class="fa-solid fa-check"></i> Copiado!';
                 btn.style.background = '#10b981';
                 setTimeout(() => {
                     btn.innerHTML = oldHtml;
                     btn.style.background = oldBg;
                 }, 1500);
-            }).catch(err => {
-                alert("Erro ao copiar: " + err);
-            });
+            }
+
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(copyText).then(onSuccess).catch(err => {
+                    alert("Erro ao copiar: " + err);
+                });
+            } else {
+                try {
+                    let textArea = document.createElement("textarea");
+                    textArea.value = copyText;
+                    textArea.style.position = "fixed";
+                    textArea.style.left = "-999999px";
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    document.execCommand('copy');
+                    textArea.remove();
+                    onSuccess();
+                } catch (e) {
+                    alert("Erro ao copiar (modo antigo): " + e);
+                }
+            }
         }
         function persistActiveDate(dateStr) {
             sessionStorage.setItem('controle_active_date', dateStr);
