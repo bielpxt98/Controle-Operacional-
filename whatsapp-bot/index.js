@@ -265,7 +265,7 @@ async function startWhatsApp() {
             if (deliveryLido && String(deliveryLido).length === 10) {
                 query = query.eq('delivery', String(deliveryLido));
             } else {
-                query = query.ilike('data', `%${dataHojeCurta}%`).ilike('clientes', `%${clienteLimpo}%`);
+                query = query.ilike('data', `%${dataHojeCurta}%`).ilike('cliente', `%${clienteLimpo}%`);
             }
             const { data: finalizaveis } = await query.limit(1);
             if (finalizaveis && finalizaveis.length > 0) {
@@ -277,7 +277,7 @@ async function startWhatsApp() {
                 console.log(`[WPP-GRUPO] FALHA na busca exata. Tentando FALLBACK INTELIGENTE para motorista=${motoristaPrimeiroNome}...`);
                 
                 // Busca a primeira carga do motorista hoje que ainda não foi finalizada, independente do OCR ter errado cliente/delivery
-                const { data: fallbackData } = await supabase.from('deliveries').select('id, delivery, clientes').ilike('motorista', `%${motoristaPrimeiroNome}%`).ilike('data', `%${dataHojeCurta}%`).is('f_horario', null).order('id', { ascending: true }).limit(1);
+                const { data: fallbackData } = await supabase.from('deliveries').select('id, delivery, cliente').ilike('motorista', `%${motoristaPrimeiroNome}%`).ilike('data', `%${dataHojeCurta}%`).or('f_horario.is.null,f_horario.eq.,f_horario.eq.-').order('id', { ascending: true }).limit(1);
                 
                 if (fallbackData && fallbackData.length > 0) {
                     const fallbackID = fallbackData[0].id;
@@ -469,14 +469,18 @@ async function handleMotorista(json, senderName) {
             .from('deliveries')
             .select('*')
             .ilike('data', `%${dataAmanhaCurta}%`)
-            .ilike('clientes', `%${clienteBusca}%`)
-            .eq('paletes', paletes)
-            .is('motorista', null); // So preenche se estiver vazio, evita sobrescrever errados
+            .ilike('cliente', `%${clienteBusca}%`)
+            .eq('paletes', paletes);
             
         if (encontrados && encontrados.length > 0) {
-             const alvo = encontrados[0];
-             console.log(`[WPP] MATCH PERFEITO! Atribuindo Delivery ${alvo.delivery} ao motorista ${motoristaFormatado}...`);
-             await supabase.from('deliveries').update({ motorista: motoristaFormatado }).eq('id', alvo.id);
+             const vazios = encontrados.filter(e => !e.motorista || String(e.motorista).trim() === '' || String(e.motorista).includes('SELECIONE'));
+             if (vazios.length > 0) {
+                 const alvo = vazios[0];
+                 console.log(`[WPP] MATCH PERFEITO! Atribuindo Delivery ${alvo.delivery} ao motorista ${motoristaFormatado}...`);
+                 await supabase.from('deliveries').update({ motorista: motoristaFormatado }).eq('id', alvo.id);
+             } else {
+                 console.log(`[WPP] AVISO: Encontrei a entrega, mas ela JÁ TEM MOTORISTA ATRIBUÍDO: '${encontrados[0].motorista}'.`);
+             }
         } else {
              console.log(`[WPP] AVISO: Nao encontrei entrega vazia para amanha do cliente '${clienteBusca}' com ${paletes} paletes.`);
         }
