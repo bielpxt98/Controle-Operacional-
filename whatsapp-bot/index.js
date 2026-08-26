@@ -392,16 +392,16 @@ Responda APENAS com o JSON.`;
         };
 
         const keysToTry = [
+            process.env.GEMINI_API_KEY_NEW || "",
             GEMINI_API_KEY,
-            process.env.GEMINI_API_KEY_2 || "AIzaSyDnPqBHqjN8T6T9g9829qzS7AOAYIcQj1c",
+            process.env.GEMINI_API_KEY_2 || "",
             process.env.GEMINI_API_KEY_3 || ""
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
+            "gemini-3.6-flash",
             "gemini-2.5-flash",
-            "gemini-2.0-flash",
-            "gemini-2.5-flash-lite",
-            "gemini-1.5-flash"
+            "gemini-2.5-flash-lite"
         ];
 
         let responseText = null;
