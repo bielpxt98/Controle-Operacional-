@@ -1202,6 +1202,11 @@
                             if (!match.c_horario && bItem.c_horario) match.c_horario = bItem.c_horario;
                             if (!match.f_horario && bItem.f_horario) match.f_horario = bItem.f_horario;
                             if (!match.df && bItem.df) match.df = bItem.df;
+                            
+                            if (!match.paletes && bItem.paletes) match.paletes = bItem.paletes;
+                            if (match.pc == null && bItem.pc != null) match.pc = bItem.pc;
+                            if (!match.observacao && bItem.observacao) match.observacao = bItem.observacao;
+                            if (!match.sr && bItem.sr) match.sr = bItem.sr;
                         } else if (!bItem.id) {
                             // Só manter no cache local se for uma linha NOVA que ainda não foi salva (sem ID)
                             records.push(bItem);
@@ -1984,7 +1989,12 @@
                     if (rec) {
                         const setVal = (cls, val) => {
                             const input = row.querySelector(cls);
-                            if (input && input.value !== val) {
+                            if (!input) return;
+                            
+                            // Se o banco de dados tem valor vazio, mas o usuario digitou algo e nao salvou, preserva o que o usuario digitou
+                            if ((val === '' || val === null) && input.value !== '') return;
+                            
+                            if (String(input.value) !== String(val)) {
                                 input.value = val;
                                 input.style.transition = "background-color 0.5s";
                                 input.style.backgroundColor = "#dcfce7";
