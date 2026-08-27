@@ -1872,14 +1872,14 @@
                         const confirmMove = confirm(`A coleta ${deliveryVal} já existe no dia ${match.data}. Deseja transferi-la para o dia atual (${activeDateStr})?`);
                         if (confirmMove) {
                             // Atualiza a data da coleta no backend e preenche os campos
-                            match.data = activeDateStr;
-                            
                             // Aplica visualmente
-                            const driverKey = (match.motorista || '').toLowerCase().replace(/\s+/g, '_');
+                            const driverKey = (match.motorista || '').toLowerCase();
                             const driverSel = tr.querySelector('.driver-select');
                             if(driverSel) {
                                 Array.from(driverSel.options).forEach(opt => {
-                                    if(opt.value === driverKey) opt.selected = true;
+                                    if(opt.value && driverKey.includes(opt.value.split('_')[0])) {
+                                        opt.selected = true;
+                                    }
                                 });
                                 if(tr.classList.contains('coleta-card')) updateCardDriverData(driverSel);
                                 else updateDriverData(driverSel);

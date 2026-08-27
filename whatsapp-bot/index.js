@@ -386,15 +386,16 @@ Regras:
 5. Devolva EXATAMENTE no formato JSON: {"tipo": "NF_ASSINADA", "cliente": "PRIMEIRA_PALAVRA_CLIENTE", "delivery": "NUMERO_DE_10_DIGITOS"} (Se não achar o delivery, mande null).
 6. Se a imagem não tiver carimbos/assinaturas de conclusão, devolva: {"tipo": "IRRELEVANTE"}`;
         } else {
-            prompt = `Analise a imagem em anexo. Ela é uma tabela de programação de cargas diárias.
+            prompt = `Analise a imagem em anexo. Ela contém uma programação de cargas diárias (que pode estar em formato de tabela ou em formato de texto corrido/grudado, como 'ArgemiroWMS Max').
 Extraia os dados em formato JSON estrito, sem formatação markdown.
 Regras:
-1. Extraia o nome do motorista.
-2. Na coluna de destino, extraia apenas a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (em maiúsculas).
-3. Extraia também a quantidade de paletes (um número).
-4. Devolva no seguinte formato JSON: {"tipo": "PROGRAMACAO", "entregas": [{"motorista": "NOME DO MOTORISTA", "primeiro_nome_cliente": "PRIMEIRA_PALAVRA_CLIENTE", "paletes": 476}]}
-5. Pode haver mais de uma entrega, coloque todas no array "entregas".
-6. Se não for tabela, devolva apenas: {"tipo": "IRRELEVANTE"}
+1. Identifique TODOS os motoristas listados e suas respectivas entregas. Mesmo que o texto esteja grudado sem espaços (ex: "JonesAssaí" ou "Luiz RemessaJDE"), separe o nome do motorista do nome do cliente/destino!
+2. Extraia o NOME DO MOTORISTA (apenas o primeiro nome ou nome principal).
+3. Na coluna/texto de destino, extraia apenas a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (em maiúsculas). (Ex: se for "JDE Café", extraia "JDE". Se for "WMS Max Atacado", extraia "WMS").
+4. Extraia também a quantidade de paletes ou caixas (um número).
+5. Devolva no seguinte formato JSON: {"tipo": "PROGRAMACAO", "entregas": [{"motorista": "NOME DO MOTORISTA", "primeiro_nome_cliente": "PRIMEIRA_PALAVRA_CLIENTE", "paletes": 476}, ...]}
+6. É CRUCIAL que você coloque TODAS as entregas identificadas no array "entregas". Não pule nenhuma!
+7. Se não for sobre programação de entregas, devolva apenas: {"tipo": "IRRELEVANTE"}
 Responda APENAS com o JSON.`;
         }
 
