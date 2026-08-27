@@ -559,8 +559,8 @@ async function handleMotorista(json, senderName) {
     for (const entrega of json.entregas) {
         if (!entrega.motorista || !entrega.primeiro_nome_cliente) continue;
         
-        const clienteBusca = String(entrega.primeiro_nome_cliente).toUpperCase().trim();
-        const motoristaFormatado = String(entrega.motorista).toUpperCase().trim();
+        const clienteBusca = String(entrega.primeiro_nome_cliente).toUpperCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const motoristaFormatado = String(entrega.motorista).toUpperCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         const paletes = Number(entrega.paletes) || 0;
         
         console.log(`[WPP] Buscando no banco: Cliente '${clienteBusca}' com ${paletes} paletes para o motorista ${motoristaFormatado}...`);
