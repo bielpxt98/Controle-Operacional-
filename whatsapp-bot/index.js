@@ -412,9 +412,9 @@ Responda APENAS com o JSON.`;
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
+            "gemini-3.7-flash",
             "gemini-3.6-flash",
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite"
+            "gemini-3.5-flash-lite"
         ];
 
         let responseText = null;
@@ -430,8 +430,12 @@ Responda APENAS com o JSON.`;
                         timerId = setTimeout(() => reject(new Error("Timeout de 90s atingido!")), 90000);
                     });
                     
+                    const request = {
+                        contents: [{ role: 'user', parts: [{ text: prompt }, imagePart] }]
+                    };
+                    
                     const result = await Promise.race([
-                        model.generateContent([prompt, imagePart]),
+                        model.generateContent(request),
                         timeoutPromise
                     ]);
                     
@@ -488,9 +492,9 @@ Regras:
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
+            "gemini-3.7-flash",
             "gemini-3.6-flash",
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite"
+            "gemini-3.5-flash-lite"
         ];
 
         let responseText = null;
@@ -506,8 +510,12 @@ Regras:
                         timerId = setTimeout(() => reject(new Error("Timeout de 60s atingido!")), 60000);
                     });
                     
+                    const request = {
+                        contents: [{ role: 'user', parts: [{ text: prompt }] }]
+                    };
+                    
                     const result = await Promise.race([
-                        model.generateContent([prompt]), // Sem imagem
+                        model.generateContent(request),
                         timeoutPromise
                     ]);
                     
