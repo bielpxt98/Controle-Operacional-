@@ -108,7 +108,7 @@ async function startWhatsApp() {
             const groupMeta = await sock.groupMetadata(msg.key.remoteJid);
             groupName = groupMeta.subject || "";
             
-            if (!groupName.toLowerCase().includes("purm salvador")) {
+            if (!groupName.toLowerCase().includes("purm salvador") && !groupName.toLowerCase().includes("trabalho")) {
                 console.log(`[WPP-DEBUG] Ignorando grupo: ${groupName}`);
                 return;
             }
