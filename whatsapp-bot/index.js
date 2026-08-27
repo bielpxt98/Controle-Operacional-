@@ -439,7 +439,32 @@ Responda APENAS com o JSON.`;
         }
         
         if (!responseText) {
-            throw new Error("Todos os modelos da lista falharam por timeout ou cota de limite.");
+            console.log("[GEMINI] Todos os modelos falharam. Tentando GROQ como fallback...");
+            try {
+                const Groq = require('groq-sdk');
+                const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+                
+                const chatCompletion = await groq.chat.completions.create({
+                    messages: [
+                        {
+                            role: "user",
+                            content: [
+                                { type: "text", text: prompt },
+                                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${buffer.toString("base64")}` } }
+                            ]
+                        }
+                    ],
+                    model: "qwen/qwen3.8-27b",
+                    temperature: 0.1,
+                    response_format: { type: "json_object" }
+                });
+                
+                responseText = chatCompletion.choices[0].message.content;
+                console.log(`[GROQ] Resposta recebida!`);
+            } catch (groqErr) {
+                console.log("[GROQ] Falha no fallback:", groqErr.message);
+                throw new Error("Todos os modelos da lista e fallback Groq falharam.");
+            }
         }
         
         let cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
