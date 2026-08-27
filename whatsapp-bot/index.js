@@ -201,6 +201,19 @@ async function startWhatsApp() {
         }
     }
 
+    // ==========================================
+    // LÓGICA DE PROGRAMAÇÃO POR TEXTO (ADMIN)
+    // ==========================================
+    if (isAdmin && /^programa[cç][aã]o/i.test(txtMsg)) {
+        console.log("[WPP-ADMIN] Detectou texto de programação no grupo!");
+        const jsonText = await parseProgramacaoText(txtMsg);
+        if (jsonText && jsonText.tipo === "PROGRAMACAO") {
+            await handleMotorista(jsonText, senderName);
+            await sock.sendMessage(msg.key.remoteJid, { text: `✅ Programação de cargas processada com sucesso via texto!` });
+        }
+        return;
+    }
+
     const deliveryMatch = txtMsg.match(/\b\d{10}\b/);
     if (deliveryMatch && quotedMsg && quotedMsg.imageMessage) {
         const numeroDelivery = deliveryMatch[0];
@@ -452,6 +465,74 @@ Responda APENAS com o JSON.`;
     }
 }
 
+async function parseProgramacaoText(textoCompleto) {
+    try {
+        console.log("[GEMINI] Analisando texto de programação...");
+        const prompt = `Você é um assistente que organiza escalas de trabalho. Analise o seguinte texto de programação de cargas e extraia os dados em formato JSON estrito, sem formatação markdown.
+Texto recebido: """${textoCompleto}"""
+
+Regras:
+1. Extraia o nome do motorista para cada viagem.
+2. Extraia apenas a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (em maiúsculas). Exemplo: se estiver "WMS Max Atacado Valença", extraia "WMS". Se for "JDE Café", extraia "JDE".
+3. Extraia também a quantidade de paletes (se houver no texto, ex: 476). Se não houver, extraia 0.
+4. Devolva EXATAMENTE no seguinte formato JSON (e NADA mais):
+{"tipo": "PROGRAMACAO", "entregas": [{"motorista": "NOME DO MOTORISTA", "primeiro_nome_cliente": "CLIENTE", "paletes": 476}]}
+5. Coloque todas as entregas encontradas no array "entregas". Se não encontrar nenhuma, devolva {"tipo": "IRRELEVANTE"}.`;
+
+        const keysToTry = [
+            process.env.GEMINI_API_KEY_NEW || "",
+            GEMINI_API_KEY,
+            process.env.GEMINI_API_KEY_2 || "",
+            process.env.GEMINI_API_KEY_3 || ""
+        ].filter(k => k && k.length > 10);
+        
+        const modelsToTry = [
+            "gemini-3.6-flash",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite"
+        ];
+
+        let responseText = null;
+        for (const apiKey of keysToTry) {
+            const localGenAI = new (require('@google/generative-ai').GoogleGenerativeAI)(apiKey);
+            for (const modelName of modelsToTry) {
+                try {
+                    console.log(`[GEMINI-TEXTO] Tentando ${modelName} na chave ...${apiKey.slice(-4)}...`);
+                    const model = localGenAI.getGenerativeModel({ model: modelName });
+                    
+                    let timerId;
+                    const timeoutPromise = new Promise((_, reject) => {
+                        timerId = setTimeout(() => reject(new Error("Timeout de 60s atingido!")), 60000);
+                    });
+                    
+                    const result = await Promise.race([
+                        model.generateContent([prompt]), // Sem imagem
+                        timeoutPromise
+                    ]);
+                    
+                    clearTimeout(timerId);
+                    responseText = result.response.text();
+                    console.log(`[GEMINI-TEXTO] Resposta recebida do ${modelName}!`);
+                    break;
+                } catch (err) {
+                    console.error(`[GEMINI-TEXTO] Falha: ${modelName} / ...${apiKey.slice(-4)} | Erro:`, err.message);
+                }
+            }
+            if (responseText) break;
+        }
+        
+        if (!responseText) throw new Error("Todos os modelos de texto falharam.");
+        
+        let cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+        const json = JSON.parse(cleanJson);
+        console.log("[GEMINI-TEXTO] Resultado:", JSON.stringify(json));
+        return json;
+    } catch(e) {
+        console.log("[GEMINI-TEXTO] Erro no catch:", e.message);
+        return { tipo: "IRRELEVANTE" };
+    }
+}
+
 async function handleEscala(json) {}
 
 async function handleMotorista(json, senderName) {
@@ -474,13 +555,19 @@ async function handleMotorista(json, senderName) {
         
         console.log(`[WPP] Buscando no banco: Cliente '${clienteBusca}' com ${paletes} paletes para o motorista ${motoristaFormatado}...`);
         
-        // Busca flexível: Cliente que contém a palavra E quantidade de paletes idêntica E que a data contém amanhã
-        const { data: encontrados, error } = await supabase
+        // Busca flexível: Cliente que contém a palavra E que a data contém amanhã
+        let query = supabase
             .from('deliveries')
             .select('*')
             .ilike('data', `%${dataAmanhaCurta}%`)
-            .ilike('cliente', `%${clienteBusca}%`)
-            .eq('paletes', paletes);
+            .ilike('cliente', `%${clienteBusca}%`);
+            
+        // Só filtra por paletes se a IA conseguiu extrair um número maior que 0
+        if (paletes > 0) {
+            query = query.eq('paletes', paletes);
+        }
+        
+        const { data: encontrados, error } = await query;
             
         if (encontrados && encontrados.length > 0) {
              const vazios = encontrados.filter(e => !e.motorista || String(e.motorista).trim() === '' || String(e.motorista).includes('SELECIONE'));
