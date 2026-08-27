@@ -390,16 +390,6 @@ Responda APENAS com o JSON.`;
                 mimeType: "image/jpeg"
             }
         };
-        const parts = [
-            prompt,
-            {
-                inlineData: {
-                    data: buffer.toString("base64"),
-                    mimeType: "image/jpeg"
-                }
-            }
-        ];
-
         const keysToTry = [
             process.env.GEMINI_API_KEY_NEW || "",
             GEMINI_API_KEY,
@@ -427,7 +417,7 @@ Responda APENAS com o JSON.`;
                     });
                     
                     const result = await Promise.race([
-                        model.generateContent({ contents: [{ role: "user", parts }] }),
+                        model.generateContent([prompt, imagePart]),
                         timeoutPromise
                     ]);
                     
