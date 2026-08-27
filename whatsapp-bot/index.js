@@ -404,101 +404,42 @@ Responda APENAS com o JSON.`;
         ];
 
         let responseText = null;
-
-        // 1. Tentar OpenAI (gpt-4o-mini)
-        if (process.env.OPENAI_API_KEY) {
-            console.log("[OPENAI] Tentando OpenAI gpt-4o-mini...");
-            try {
-                const { OpenAI } = require('openai');
-                const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-                
-                const response = await openai.chat.completions.create({
-                    model: "gpt-4o-mini",
-                    messages: [
-                        {
-                            role: "user",
-                            content: [
-                                { type: "text", text: prompt },
-                                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${buffer.toString("base64")}` } }
-                            ]
-                        }
-                    ],
-                    response_format: { type: "json_object" },
-                    temperature: 0.1
-                });
-                responseText = response.choices[0].message.content;
-                console.log("[OPENAI] Resposta recebida com sucesso!");
-            } catch (err) {
-                console.error("[OPENAI] Falha na OpenAI:", err.message);
-            }
-        }
-
-        // 2. Tentar Gemini se OpenAI falhou (ou não está configurada)
-        if (!responseText) {
-            console.log("[GEMINI] Iniciando tentativa nos modelos Gemini (Backup 1)...");
-            for (const apiKey of keysToTry) {
-                const localGenAI = new (require('@google/generative-ai').GoogleGenerativeAI)(apiKey);
-                for (const modelName of modelsToTry) {
-                    try {
-                        console.log(`[GEMINI] Tentando ${modelName} na chave ...${apiKey.slice(-4)}...`);
-                        const model = localGenAI.getGenerativeModel({ model: modelName });
-                        
-                        let timerId;
-                        const timeoutPromise = new Promise((_, reject) => {
-                            timerId = setTimeout(() => reject(new Error("Timeout de 90s atingido!")), 90000);
-                        });
-                        
-                        const result = await Promise.race([
-                            model.generateContent([prompt, imagePart]),
-                            timeoutPromise
-                        ]);
-                        
-                        clearTimeout(timerId);
-                        responseText = result.response.text();
-                        console.log(`[GEMINI] Resposta recebida do ${modelName}!`);
-                        break;
-                    } catch (err) {
-                        if (err.message.includes("429") || err.message.includes("quota")) {
-                            console.error(`[GEMINI] Falha: Quota excedida na chave ...${apiKey.slice(-4)}`);
-                        } else if (err.message.includes("API_KEY_INVALID")) {
-                            console.error(`[GEMINI] Falha: Chave inválida ...${apiKey.slice(-4)}`);
-                        } else {
-                            console.error(`[GEMINI] Falha: ${modelName} / ...${apiKey.slice(-4)} | Erro:`, err.message);
-                        }
+        for (const apiKey of keysToTry) {
+            const localGenAI = new (require('@google/generative-ai').GoogleGenerativeAI)(apiKey);
+            for (const modelName of modelsToTry) {
+                try {
+                    console.log(`[GEMINI] Tentando ${modelName} na chave ...${apiKey.slice(-4)}...`);
+                    const model = localGenAI.getGenerativeModel({ model: modelName });
+                    
+                    let timerId;
+                    const timeoutPromise = new Promise((_, reject) => {
+                        timerId = setTimeout(() => reject(new Error("Timeout de 90s atingido!")), 90000);
+                    });
+                    
+                    const result = await Promise.race([
+                        model.generateContent([prompt, imagePart]),
+                        timeoutPromise
+                    ]);
+                    
+                    clearTimeout(timerId);
+                    responseText = result.response.text();
+                    console.log(`[GEMINI] Resposta recebida do ${modelName}!`);
+                    break;
+                } catch (err) {
+                    if (err.message.includes("429") || err.message.includes("quota")) {
+                        console.error(`[GEMINI] Falha: Quota excedida na chave ...${apiKey.slice(-4)}`);
+                    } else if (err.message.includes("API_KEY_INVALID")) {
+                        console.error(`[GEMINI] Falha: Chave inválida ...${apiKey.slice(-4)}`);
+                    } else {
+                        console.error(`[GEMINI] Falha: ${modelName} / ...${apiKey.slice(-4)} | Erro:`, err.message);
                     }
                 }
-                if (responseText) break;
             }
+            if (responseText) break;
         }
         
-        // 3. Tentar GROQ se Gemini também falhou
-        if (!responseText && process.env.GROQ_API_KEY) {
-            console.log("[GROQ] Todos os modelos OpenAI e Gemini falharam. Tentando GROQ (Backup 2)...");
-            try {
-                const Groq = require('groq-sdk');
-                const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-                
-                const chatCompletion = await groq.chat.completions.create({
-                    messages: [
-                        {
-                            role: "user",
-                            content: [
-                                { type: "text", text: prompt },
-                                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${buffer.toString("base64")}` } }
-                            ]
-                        }
-                    ],
-                    model: "qwen/qwen3.8-27b",
-                    temperature: 0.1,
-                    response_format: { type: "json_object" }
-                });
-                
-                responseText = chatCompletion.choices[0].message.content;
-                console.log(`[GROQ] Resposta recebida!`);
-            } catch (groqErr) {
-                console.log("[GROQ] Falha no fallback:", groqErr.message);
-                throw new Error("Todos os modelos da lista (OpenAI, Gemini e Groq) falharam.");
-            }
+        if (!responseText) {
+            throw new Error("Todos os modelos da lista falharam por timeout ou cota de limite.");
         }
         
         let cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
