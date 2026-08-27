@@ -391,7 +391,7 @@ Extraia os dados em formato JSON estrito, sem formatação markdown.
 Regras:
 1. Identifique TODOS os motoristas listados e suas respectivas entregas. Mesmo que o texto esteja grudado sem espaços (ex: "JonesAssaí" ou "Luiz RemessaJDE"), separe o nome do motorista do nome do cliente/destino!
 2. Extraia o NOME DO MOTORISTA (apenas o primeiro nome ou nome principal).
-3. Na coluna/texto de destino, extraia apenas a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (em maiúsculas). (Ex: se for "JDE Café", extraia "JDE". Se for "WMS Max Atacado", extraia "WMS").
+3. Na coluna/texto de destino, extraia o NOME PRINCIPAL E A LOCALIDADE/FILIAL para diferenciar lojas da mesma rede (Ex: "ASSAI PAU DA LIMA", "ASSAI ROTULA", "WMS MAX"). Se houver filiais, NÃO extraia só a primeira palavra!
 4. Extraia também a quantidade de paletes ou caixas (um número).
 5. Devolva no seguinte formato JSON: {"tipo": "PROGRAMACAO", "entregas": [{"motorista": "NOME DO MOTORISTA", "primeiro_nome_cliente": "PRIMEIRA_PALAVRA_CLIENTE", "paletes": 476}, ...]}
 6. É CRUCIAL que você coloque TODAS as entregas identificadas no array "entregas". Não pule nenhuma!
@@ -565,19 +565,30 @@ async function handleMotorista(json, senderName) {
         
         console.log(`[WPP] Buscando no banco: Cliente '${clienteBusca}' com ${paletes} paletes para o motorista ${motoristaFormatado}...`);
         
-        // Busca flexível: Cliente que contém a palavra E que a data contém amanhã
+        const palavrasBusca = clienteBusca.split(' ').filter(p => p.length > 2);
+        const primeiraPalavra = palavrasBusca.length > 0 ? palavrasBusca[0] : clienteBusca;
+        
+        // Busca flexível no Supabase pela primeira palavra
         let query = supabase
             .from('deliveries')
             .select('*')
             .ilike('data', `%${dataAmanhaCurta}%`)
-            .ilike('cliente', `%${clienteBusca}%`);
+            .ilike('cliente', `%${primeiraPalavra}%`);
             
-        // Só filtra por paletes se a IA conseguiu extrair um número maior que 0
         if (paletes > 0) {
             query = query.eq('paletes', paletes);
         }
         
-        const { data: encontrados, error } = await query;
+        const { data: resultadosBrutos, error } = await query;
+        
+        let encontrados = [];
+        if (resultadosBrutos && resultadosBrutos.length > 0) {
+            // Filtro avançado no Javascript para garantir que TODAS as palavras extraídas pela IA existam no nome do cliente do banco
+            encontrados = resultadosBrutos.filter(linha => {
+                const clienteDB = String(linha.cliente || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                return palavrasBusca.every(palavra => clienteDB.includes(palavra));
+            });
+        }
             
         if (encontrados && encontrados.length > 0) {
              const vazios = encontrados.filter(e => !e.motorista || String(e.motorista).trim() === '' || String(e.motorista).includes('SELECIONE'));
