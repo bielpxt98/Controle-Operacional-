@@ -137,13 +137,21 @@ async function startWhatsApp() {
     // =========================================================
     if (!isFromGroup) {
         if (!isAdmin) return; 
-        if (!msg.message.imageMessage) return; 
         
-        console.log("[WPP-PRIVADO] Nova imagem de programacao de " + senderName);
-        const { downloadMediaMessage } = require('@whiskeysockets/baileys');
-        const pino = require('pino');
-        const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: "silent" }) });
-        const json = await classifyImage(buffer, captionMsg, isFromGroup);
+        let json = null;
+        if (msg.message.imageMessage) {
+            console.log("[WPP-PRIVADO] Nova imagem de programacao de " + senderName);
+            const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+            const pino = require('pino');
+            const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: "silent" }) });
+            json = await classifyImage(buffer, captionMsg, isFromGroup, false);
+        } else if (txtMsg && txtMsg.toUpperCase().includes("PROGRAMA")) {
+            console.log("[WPP-PRIVADO] Novo texto de programacao de " + senderName);
+            json = await classifyImage(null, txtMsg, isFromGroup, true);
+        } else {
+            return;
+        }
+
         if (json && json.tipo === "PROGRAMACAO") {
             await handleMotorista(json, senderName);
         }
@@ -372,9 +380,9 @@ iniciarLoopCHEP();
 // CÉREBRO IA: GEMINI VISION + SUPABASE
 // ==========================================
 
-async function classifyImage(buffer, textCaption, isFromGroup) {
+async function classifyImage(buffer, textCaption, isFromGroup, isTextOnly = false) {
     try {
-        console.log("[GEMINI] Analisando imagem recebida...");
+        console.log("[GEMINI] Analisando dados recebidos...");
         let prompt = "";
         if (isFromGroup) {
             prompt = `Analise a imagem em anexo, que é um documento enviado por um motorista.
@@ -386,7 +394,7 @@ Regras:
 5. Devolva EXATAMENTE no formato JSON: {"tipo": "NF_ASSINADA", "cliente": "PRIMEIRA_PALAVRA_CLIENTE", "delivery": "NUMERO_DE_10_DIGITOS"} (Se não achar o delivery, mande null).
 6. Se a imagem não tiver carimbos/assinaturas de conclusão, devolva: {"tipo": "IRRELEVANTE"}`;
         } else {
-            prompt = `Analise a imagem em anexo. Ela contém uma programação de cargas diárias (que pode estar em formato de tabela ou em formato de texto corrido/grudado, como 'ArgemiroWMS Max').
+            prompt = `Analise a programação de cargas diárias enviada pelo usuário (pode ser uma imagem de tabela ou texto corrido como 'ArgemiroWMS Max').
 Extraia os dados em formato JSON estrito, sem formatação markdown.
 Regras:
 1. Identifique TODOS os motoristas listados e suas respectivas entregas. Mesmo que o texto esteja grudado sem espaços (ex: "JonesAssaí" ou "Luiz RemessaJDE"), separe o nome do motorista do nome do cliente/destino!
@@ -399,12 +407,18 @@ Regras:
 Responda APENAS com o JSON.`;
         }
 
-        const imagePart = {
-            inlineData: {
-                data: buffer.toString("base64"),
-                mimeType: "image/jpeg"
-            }
-        };
+        let payload = [];
+        if (isTextOnly) {
+            payload = [prompt + "\n\nTexto enviado pelo usuário:\n" + textCaption];
+        } else {
+            const imagePart = {
+                inlineData: {
+                    data: buffer.toString("base64"),
+                    mimeType: "image/jpeg"
+                }
+            };
+            payload = [prompt, imagePart];
+        }
         const keysToTry = [
             process.env.GEMINI_API_KEY_NEW || "",
             GEMINI_API_KEY,
@@ -560,7 +574,8 @@ async function handleMotorista(json, senderName) {
         if (!entrega.motorista || !entrega.primeiro_nome_cliente) continue;
         
         const clienteBusca = String(entrega.primeiro_nome_cliente).toUpperCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const motoristaFormatado = String(entrega.motorista).toUpperCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        let motoristaFormatado = String(entrega.motorista).toUpperCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        if (motoristaFormatado.includes("LUIZ")) motoristaFormatado = motoristaFormatado.replace("LUIZ", "LUIS");
         const paletes = Number(entrega.paletes) || 0;
         
         console.log(`[WPP] Buscando no banco: Cliente '${clienteBusca}' com ${paletes} paletes para o motorista ${motoristaFormatado}...`);
