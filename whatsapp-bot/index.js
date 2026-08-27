@@ -390,18 +390,27 @@ Responda APENAS com o JSON.`;
                 mimeType: "image/jpeg"
             }
         };
+        const parts = [
+            prompt,
+            {
+                inlineData: {
+                    data: buffer.toString("base64"),
+                    mimeType: "image/jpeg"
+                }
+            }
+        ];
 
         const keysToTry = [
-            GEMINI_API_KEY,
             process.env.GEMINI_API_KEY_NEW || "",
+            GEMINI_API_KEY,
             process.env.GEMINI_API_KEY_2 || "",
             process.env.GEMINI_API_KEY_3 || ""
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
-            "gemini-3.6-flash",
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite"
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-8b",
+            "gemini-1.5-pro"
         ];
 
         let responseText = null;
@@ -417,12 +426,23 @@ Responda APENAS com o JSON.`;
                         timerId = setTimeout(() => reject(new Error("Timeout de 90s atingido!")), 90000);
                     });
                     
-                    const result = await Promise.race([model.generateContent([prompt, imagePart]), timeoutPromise]).finally(() => clearTimeout(timerId));
+                    const result = await Promise.race([
+                        model.generateContent({ contents: [{ role: "user", parts }] }),
+                        timeoutPromise
+                    ]);
+                    
+                    clearTimeout(timerId);
                     responseText = result.response.text();
                     console.log(`[GEMINI] Resposta recebida do ${modelName}!`);
                     break;
                 } catch (err) {
-                    console.error(`[GEMINI] Falha: ${modelName} / ...${apiKey.slice(-4)} | Erro:`, err.message);
+                    if (err.message.includes("429") || err.message.includes("quota")) {
+                        console.error(`[GEMINI] Falha: Quota excedida na chave ...${apiKey.slice(-4)}`);
+                    } else if (err.message.includes("API_KEY_INVALID")) {
+                        console.error(`[GEMINI] Falha: Chave inválida ...${apiKey.slice(-4)}`);
+                    } else {
+                        console.error(`[GEMINI] Falha: ${modelName} / ...${apiKey.slice(-4)} | Erro:`, err.message);
+                    }
                 }
             }
             if (responseText) break;
