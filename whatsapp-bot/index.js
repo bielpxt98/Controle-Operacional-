@@ -282,7 +282,7 @@ async function startWhatsApp() {
                 if (fallbackData && fallbackData.length > 0) {
                     const fallbackID = fallbackData[0].id;
                     const fallbackDelivery = fallbackData[0].delivery || "N/A";
-                    const fallbackCliente = fallbackData[0].clientes || "Desconhecido";
+                    const fallbackCliente = fallbackData[0].cliente || "Desconhecido";
                     
                     const { error: updErr } = await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO', data_finalizacao: dataHojeCurta }).eq('id', fallbackID);
                     if (updErr) console.log('[ERRO SUPABASE FALLBACK]', updErr);
