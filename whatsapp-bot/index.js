@@ -559,8 +559,32 @@ async function handleMotorista(json, senderName) {
     for (const entrega of json.entregas) {
         if (!entrega.motorista || !entrega.primeiro_nome_cliente) continue;
         
-        const clienteBusca = String(entrega.primeiro_nome_cliente).toUpperCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const motoristaFormatado = String(entrega.motorista).toUpperCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        // Remove acentos para busca mais resiliente no banco
+        const removeAcentos = str => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const clienteBusca = removeAcentos(String(entrega.primeiro_nome_cliente).toUpperCase().trim());
+        
+        let motoristaFormatado = removeAcentos(String(entrega.motorista).toUpperCase().trim());
+        
+        // Garante que o CHEP e o banco tenham o nome COMPLETO mesmo se a IA só mandou o primeiro nome
+        const mapNomes = {
+            "LUIZ": "LUIS CARLOS",
+            "LUIS": "LUIS CARLOS",
+            "VALDEMIR": "VALDEMIR DE JESUS",
+            "JONES": "JONES ROSARIO",
+            "ARGEMIRO": "ARGEMIRO BORGES",
+            "FABIO": "FABIO SOUZA",
+            "GABRIEL": "GABRIEL BORGES",
+            "WILSON": "WILSON REIS",
+            "JEAN": "JEAN CARLOS",
+            "ARIEL": "ARIEL"
+        };
+        for (const key of Object.keys(mapNomes)) {
+            if (motoristaFormatado.includes(key)) {
+                motoristaFormatado = mapNomes[key];
+                break;
+            }
+        }
+
         const paletes = Number(entrega.paletes) || 0;
         
         console.log(`[WPP] Buscando no banco: Cliente '${clienteBusca}' com ${paletes} paletes para o motorista ${motoristaFormatado}...`);
