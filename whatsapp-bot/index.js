@@ -263,7 +263,7 @@ async function startWhatsApp() {
         return;
     }
 
-    if (msg.message.imageMessage && !deliveryMatch && !isAdmin) {
+    if (msg.message.imageMessage && !deliveryMatch) {
         console.log(`[WPP-GRUPO] Foto enviada por ${motoristaPrimeiroNome}. Analisando se é NF Carimbada...`);
         const { downloadMediaMessage } = require('@whiskeysockets/baileys');
         const pino = require('pino');
