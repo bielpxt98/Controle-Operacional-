@@ -900,7 +900,7 @@
             let raw = input.value.trim();
             if (!raw) return;
             if (raw === '-') {
-                input.value = '00:00';
+                input.value = '';
                 return;
             }
 
@@ -1937,15 +1937,18 @@
             let bgColor = "rgba(255, 255, 255, 0.05)";
             let color = "#64748b";
 
-            if (pcVal !== '' && parseInt(pcVal, 10) > 0 && hl && hc && hf) {
+            // hf não pode ser '-' para considerar finalizado
+            const isHfValid = hf && hf !== '-';
+
+            if (pcVal !== '' && parseInt(pcVal, 10) > 0 && hl && hc && isHfValid) {
                 status = "FINALIZADO";
                 bgColor = "rgba(16, 185, 129, 0.15)";
                 color = "#10b981"; // verde
-            } else if ((pcVal === '0' || pcVal === '') && hl && hf && obs.includes("bloqueio")) {
+            } else if ((pcVal === '0' || pcVal === '') && hl && isHfValid && obs.includes("bloqueio")) {
                 status = "BLOQUEIO";
                 bgColor = "rgba(239, 68, 68, 0.15)";
                 color = "#ef4444"; // vermelho
-            } else if ((pcVal === '0' || pcVal === '') && hl && hf && obs.includes("deslocamento")) {
+            } else if ((pcVal === '0' || pcVal === '') && hl && isHfValid && obs.includes("deslocamento")) {
                 status = "DESLOCAMENTO";
                 bgColor = "rgba(245, 158, 11, 0.15)";
                 color = "#f59e0b"; // amarelo
