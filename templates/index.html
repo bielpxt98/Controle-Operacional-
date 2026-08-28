@@ -898,11 +898,18 @@
 
         function formatHoraInput(input) {
             let raw = input.value.trim();
-            if (!raw || raw === '-') return;
+            if (!raw) return;
+            if (raw === '-') {
+                input.value = '00:00';
+                return;
+            }
 
             // Remove tudo que nao for digito ou ponto
             let val = raw.replace(/\D/g, '');
-            if (!val) return;
+            if (!val) {
+                input.value = '';
+                return;
+            }
 
             let hh, mm;
 
