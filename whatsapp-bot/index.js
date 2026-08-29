@@ -130,7 +130,7 @@ async function startWhatsApp() {
     const numD = "5581983493082";
     const numE = "558193792908"; // Gabriel Peixoto antigo
     const numF = "557186888333"; // Gabriel Peixoto atual
-    const isAdmin = remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || remetenteNum.includes(numE) || remetenteNum.includes(numF) || senderName.toLowerCase().includes("luciana") || senderName.toLowerCase().includes("osvaldo") || senderName.toLowerCase().includes("gabriel");
+    const isAdmin = remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || remetenteNum.includes(numE) || remetenteNum.includes(numF) || senderName.toLowerCase().includes("luciana") || senderName.toLowerCase().includes("osvaldo");
 
     // =========================================================
     // 1. MENSAGEM NO PRIVADO
@@ -271,7 +271,7 @@ async function startWhatsApp() {
         return;
     }
 
-    if (msg.message.imageMessage && !deliveryMatch && !isAdmin) {
+    if (msg.message.imageMessage && !deliveryMatch) {
         console.log(`[WPP-GRUPO] Foto enviada por ${motoristaPrimeiroNome}. Analisando se é NF Carimbada...`);
         const { downloadMediaMessage } = require('@whiskeysockets/baileys');
         const pino = require('pino');
@@ -573,9 +573,32 @@ async function handleMotorista(json, senderName) {
     for (const entrega of json.entregas) {
         if (!entrega.motorista || !entrega.primeiro_nome_cliente) continue;
         
-        const clienteBusca = String(entrega.primeiro_nome_cliente).toUpperCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        let motoristaFormatado = String(entrega.motorista).toUpperCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        if (motoristaFormatado.includes("LUIZ")) motoristaFormatado = motoristaFormatado.replace("LUIZ", "LUIS");
+        // Remove acentos para busca mais resiliente no banco
+        const removeAcentos = str => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const clienteBusca = removeAcentos(String(entrega.primeiro_nome_cliente).toUpperCase().trim());
+        
+        let motoristaFormatado = removeAcentos(String(entrega.motorista).toUpperCase().trim());
+        
+        // Garante que o CHEP e o banco tenham o nome COMPLETO mesmo se a IA só mandou o primeiro nome
+        const mapNomes = {
+            "LUIZ": "LUIS CARLOS",
+            "LUIS": "LUIS CARLOS",
+            "VALDEMIR": "VALDEMIR DE JESUS",
+            "JONES": "JONES ROSARIO",
+            "ARGEMIRO": "ARGEMIRO BORGES",
+            "FABIO": "FABIO SOUZA",
+            "GABRIEL": "GABRIEL BORGES",
+            "WILSON": "WILSON REIS",
+            "JEAN": "JEAN CARLOS",
+            "ARIEL": "ARIEL"
+        };
+        for (const key of Object.keys(mapNomes)) {
+            if (motoristaFormatado.includes(key)) {
+                motoristaFormatado = mapNomes[key];
+                break;
+            }
+        }
+
         const paletes = Number(entrega.paletes) || 0;
         
         console.log(`[WPP] Buscando no banco: Cliente '${clienteBusca}' com ${paletes} paletes para o motorista ${motoristaFormatado}...`);
