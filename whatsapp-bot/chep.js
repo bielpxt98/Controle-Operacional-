@@ -123,7 +123,7 @@ async function processarConta(conta, deliveries) {
                     try { await sbLink.click(); } catch(err){}
                 }
 
-                const abasParaBuscar = ["AMANH", "HOJE"];
+                const abasParaBuscar = ["AMANH", "COLETAS HOJE"];
                 for (const abaBusca of abasParaBuscar) {
                     console.log(`[WEB] Aguardando Smartbench para aba ${abaBusca}...`);
                     let progAmanha = null;
