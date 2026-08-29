@@ -123,12 +123,14 @@ async function processarConta(conta, deliveries) {
                     try { await sbLink.click(); } catch(err){}
                 }
 
-                console.log("[WEB] Aguardando Smartbench...");
-                let progAmanha = null;
-                for (let i = 0; i < 15; i++) {
-                    for (const f of targetPage.frames()) {
-                        const loc = f.locator('td:has-text(\"AMANH\")').first();
-                        if (await loc.count() > 0 && await loc.isVisible()) {
+                const abasParaBuscar = ["AMANH", "HOJE"];
+                for (const abaBusca of abasParaBuscar) {
+                    console.log(`[WEB] Aguardando Smartbench para aba ${abaBusca}...`);
+                    let progAmanha = null;
+                    for (let i = 0; i < 15; i++) {
+                        for (const f of targetPage.frames()) {
+                            const loc = f.locator(`td:has-text("${abaBusca}")`).first();
+                            if (await loc.count() > 0 && await loc.isVisible()) {
                             progAmanha = loc;
                             break;
                         }
@@ -140,7 +142,7 @@ async function processarConta(conta, deliveries) {
                 }
 
                 if (progAmanha) {
-                    console.log("[WEB] Clicando PROGRAMAÇÃO AMANHÃ...");
+                    console.log(`[WEB] Clicando na aba ${abaBusca}...`);
                     await progAmanha.click();
                     await targetPage.waitForTimeout(1000);
                     await progAmanha.dblclick();
@@ -450,7 +452,8 @@ async function processarConta(conta, deliveries) {
                             }
                         }
                     }
-                }
+                } // FIM DO LOOP DE ABAS
+            }
             }
         }
     } catch(e) { console.log("Erro Fatal:", e.message); }
