@@ -222,12 +222,17 @@ async function processarConta(conta, deliveries) {
                                     for (const c of campos) {
                                         if (d[c.k]) {
                                             const cell = row.locator(':scope > td').nth(c.col);
-                                            await cell.scrollIntoViewIfNeeded();
-                                            await cell.dblclick();
-                                            await targetPage.waitForTimeout(100);
-                                            await targetPage.keyboard.type(d[c.k]);
-                                            await targetPage.waitForTimeout(50);
-                                            await targetPage.keyboard.press('Enter');
+                                            try {
+                                                const txtAtual = await cell.innerText({ timeout: 1000 });
+                                                if (!txtAtual.trim()) {
+                                                    await cell.scrollIntoViewIfNeeded();
+                                                    await cell.dblclick();
+                                                    await targetPage.waitForTimeout(100);
+                                                    await targetPage.keyboard.type(d[c.k]);
+                                                    await targetPage.waitForTimeout(50);
+                                                    await targetPage.keyboard.press('Enter');
+                                                }
+                                            } catch(e) {}
                                         }
                                     }
                                     console.log(`[WEB] -> Sucesso! Dados preenchidos para ${termoBusca}.`);
@@ -348,12 +353,17 @@ async function processarConta(conta, deliveries) {
                                                             for (const c of campos) {
                                                                 if (pendente[c.k]) {
                                                                     const cell = row.locator(':scope > td').nth(c.col);
-                                                                    await cell.scrollIntoViewIfNeeded();
-                                                                    await cell.dblclick();
-                                                                    await targetPage.waitForTimeout(100);
-                                                                    await targetPage.keyboard.type(pendente[c.k]);
-                                                                    await targetPage.waitForTimeout(50);
-                                                                    await targetPage.keyboard.press('Enter');
+                                                                    try {
+                                                                        const txtAtual = await cell.innerText({ timeout: 1000 });
+                                                                        if (!txtAtual.trim()) {
+                                                                            await cell.scrollIntoViewIfNeeded();
+                                                                            await cell.dblclick();
+                                                                            await targetPage.waitForTimeout(100);
+                                                                            await targetPage.keyboard.type(pendente[c.k]);
+                                                                            await targetPage.waitForTimeout(50);
+                                                                            await targetPage.keyboard.press('Enter');
+                                                                        }
+                                                                    } catch(e) {}
                                                                 }
                                                             }
                                                             houveEdicao = true;
