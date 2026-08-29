@@ -330,14 +330,16 @@ async function iniciarLoopCHEP() {
             console.log("[CHEP-LOOP] Buscando entregas prontas para preencher na CHEP...");
             const hoje = new Date();
             const mesAtual = hoje.getMonth() + 1;
-            const diaAmanha = (hoje.getDate() + 1).toString().padStart(2, '0');
             const mesAmanha = mesAtual.toString().padStart(2, '0');
+            const diaAmanha = (hoje.getDate() + 1).toString().padStart(2, '0');
+            const diaHoje = hoje.getDate().toString().padStart(2, '0');
+            const dataHoje = diaHoje + '/' + mesAmanha;
             const dataAmanha = diaAmanha + '/' + mesAmanha; // Ex: 20/08
             
             const { data, error } = await supabase
                 .from('deliveries')
                 .select('*')
-                .ilike('data', `%${dataAmanha}%`)
+                .or(`data.ilike.%${dataHoje}%,data.ilike.%${dataAmanha}%`)
                 .not('motorista', 'is', null)
                 .is('status_chep', null);
             
@@ -346,7 +348,7 @@ async function iniciarLoopCHEP() {
                 console.log(`[CHEP-LOOP] Achei ${data.length} entregas! Iniciando Robô CHEP...`);
                 await runChepProgramacaoAmanha(data);
             } else {
-                console.log("[CHEP-LOOP] Nada pendente para amanha.");
+                console.log("[CHEP-LOOP] Nada pendente para hoje ou amanha.");
             }
         } catch(e) { console.error("Erro no loop CHEP:", e); }
         chepRodando = false;
@@ -361,9 +363,11 @@ async function iniciarLoopCHEP() {
               const mesAtual = hoje.getMonth() + 1;
               const diaAmanha = (hoje.getDate() + 1).toString().padStart(2, '0');
               const mesAmanha = mesAtual.toString().padStart(2, '0');
+              const diaHoje = hoje.getDate().toString().padStart(2, '0');
+              const dataHoje = diaHoje + '/' + mesAmanha;
               const dataAmanha = diaAmanha + '/' + mesAmanha;
               
-              const { data } = await supabase.from('deliveries').select('*').ilike('data', `%${dataAmanha}%`).not('motorista', 'is', null).is('status_chep', null);
+              const { data } = await supabase.from('deliveries').select('*').or(`data.ilike.%${dataHoje}%,data.ilike.%${dataAmanha}%`).not('motorista', 'is', null).is('status_chep', null);
               if (data && data.length > 0) { await runChepProgramacaoAmanha(data); }
           } catch(e) {}
           chepRodando = false;
