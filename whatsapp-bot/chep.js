@@ -460,8 +460,8 @@ async function runChepProgramacaoAmanha(deliveries) {
     console.log("[WEB] Iniciando Playwright para múltiplas contas (Perfis)...");
     let pendentes = [...deliveries];
     const contas = [
-        { user: '210256_2', pass: '560221' },
-        { user: '210289_3', pass: '890221' }
+        { user: '210256_2', pass: '2100256' },
+        { user: '210289_3', pass: '210289' }
     ];
 
     for (const conta of contas) {
