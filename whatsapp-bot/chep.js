@@ -95,7 +95,7 @@ async function processarConta(conta, deliveries) {
                 await passInput.press('Enter');
             }
 
-            console.log("[WEB] Logou! Aguardando menu...");
+            console.log("[WEB] Dados enviados! Aguardando validação do login e carregamento do menu...");
 
             let sbLink = null;
             for (let i = 0; i < 30; i++) {
@@ -121,6 +121,7 @@ async function processarConta(conta, deliveries) {
 
             let targetPage = page;
             if (sbLink) {
+                console.log("[WEB] Login confirmado com sucesso!");
                 console.log("[WEB] Clicando em Smartbench...");
                 try {
                     const [newPage] = await Promise.all([
@@ -489,7 +490,7 @@ async function runChepProgramacaoAmanha(deliveries) {
     console.log("[WEB] Iniciando Playwright para múltiplas contas (Perfis)...");
     let pendentes = [...deliveries];
     const contas = [
-        { user: '210256_2', pass: '2100256' },
+        { user: '210256_2', pass: '210256' },
         { user: '210289_3', pass: '210289' }
     ];
 
