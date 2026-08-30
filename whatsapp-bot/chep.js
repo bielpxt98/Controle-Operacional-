@@ -110,6 +110,15 @@ async function processarConta(conta, deliveries) {
                 await page.waitForTimeout(2000);
             }
 
+            if (!sbLink) {
+                console.log("[WEB] Smartbench não encontrado. Tirando print para debug...");
+                try {
+                    await page.screenshot({ path: require('path').join(__dirname, '..', 'static', 'debug_login.png') });
+                } catch(e) {
+                    console.log("Erro ao tirar print", e);
+                }
+            }
+
             let targetPage = page;
             if (sbLink) {
                 console.log("[WEB] Clicando em Smartbench...");
