@@ -123,12 +123,12 @@ async function processarConta(conta, deliveries) {
                     try { await sbLink.click(); } catch(err){}
                 }
 
-                let abaBusca = "AMANH";
+                let abaBusca = "PROGRAMAÇÃO AMANHÃ";
                 const dataHojeStr = new Date().getDate().toString().padStart(2, '0') + '/' + (new Date().getMonth() + 1).toString().padStart(2, '0');
                 if (deliveries.length > 0 && deliveries.some(p => p.data && p.data.includes(dataHojeStr))) {
                     abaBusca = "COLETAS HOJE";
                 }
-                    console.log(`[WEB] Aguardando Smartbench para aba ${abaBusca}...`);
+                console.log(`[WEB] Aguardando Smartbench para aba ${abaBusca}...`);
                     let progAmanha = null;
                     for (let i = 0; i < 15; i++) {
                         for (const f of targetPage.frames()) {
