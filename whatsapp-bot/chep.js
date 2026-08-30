@@ -98,7 +98,7 @@ async function processarConta(conta, deliveries) {
             console.log("[WEB] Logou! Aguardando menu...");
 
             let sbLink = null;
-            for (let i = 0; i < 15; i++) {
+            for (let i = 0; i < 30; i++) {
                 for (const f of page.frames()) {
                     const loc = f.locator('a:has-text("Transportation Smartbench")').first();
                     if (await loc.count() > 0 && await loc.isVisible()) {
@@ -130,7 +130,7 @@ async function processarConta(conta, deliveries) {
                 }
                 console.log(`[WEB] Aguardando Smartbench para aba ${abaBusca}...`);
                     let progAmanha = null;
-                    for (let i = 0; i < 15; i++) {
+                    for (let i = 0; i < 30; i++) {
                         for (const f of targetPage.frames()) {
                             const loc = f.locator(`td:has-text("${abaBusca}")`).first();
                             if (await loc.count() > 0 && await loc.isVisible()) {
