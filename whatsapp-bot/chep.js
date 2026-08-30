@@ -257,6 +257,26 @@ async function processarConta(conta, deliveries) {
                         }
 
                         
+                        // SALVAR EDIÇÕES DA TABELA PRINCIPAL ANTES DA CASCATA!
+                        if (sucessos.length > 0) {
+                            console.log("[WEB] Salvando tabela principal antes de abrir cascatas...");
+                            try {
+                                const btnEnviar = resultsFrame.locator('td.otherToolStripButton:has-text("Enviar")').first();
+                                if (await btnEnviar.isVisible({ timeout: 3000 })) {
+                                    await btnEnviar.click();
+                                    console.log("[WEB] Botao ENVIAR clicado (tabela principal)!");
+                                    await targetPage.waitForTimeout(4000);
+                                    // Re-find resultsFrame after reload
+                                    for (const f of targetPage.frames()) {
+                                        if (await f.locator('table.listTable').count() > 0 || await f.locator('text="ID da carga"').count() > 0) {
+                                            resultsFrame = f;
+                                            break;
+                                        }
+                                    }
+                                }
+                            } catch(e) {}
+                        }
+
                         // LOGICA DE CASCATAS
                         let coletasPendentes = dadosExtraidos.filter(d => !sucessos.includes(d.id_banco));
                         if (coletasPendentes.length > 0) {
@@ -321,7 +341,18 @@ async function processarConta(conta, deliveries) {
                                                     try { await row.locator('td').nth(1).locator('a').first().click({ timeout: 2000 }); } catch(e){}
                                                 }
 
-                                                await targetPage.waitForTimeout(3000);
+                                                await targetPage.waitForTimeout(4000);
+                                                
+                                                // RE-FIND resultsFrame APÓS ABRIR CASCATA (POIS O DOM RECARREGA)
+                                                for (const f of targetPage.frames()) {
+                                                    if (await f.locator('table.listTable').count() > 0 || await f.locator('text="ID da carga"').count() > 0) {
+                                                        resultsFrame = f;
+                                                        break;
+                                                    }
+                                                }
+
+                                                // RE-FIND a linha principal (stale)
+                                                let rowAtualizada = resultsFrame.locator(`tr:has-text("${idCarga}")`).first();
 
                                                 let resolvidosCascata = [];
                                                 let houveEdicao = false;
@@ -343,7 +374,7 @@ async function processarConta(conta, deliveries) {
                                                             for (const c of campos) {
                                                                 if (pendente[c.k]) {
                                                                     try {
-                                                                        const txtAtual = await row.locator(':scope > td').nth(c.col).innerText({ timeout: 1000 });
+                                                                        const txtAtual = await rowAtualizada.locator(':scope > td').nth(c.col).innerText({ timeout: 1000 });
                                                                         if (!txtAtual.trim()) {
                                                                             precisaPreencher = true;
                                                                             break;
@@ -364,7 +395,7 @@ async function processarConta(conta, deliveries) {
 
                                                             for (const c of campos) {
                                                                 if (pendente[c.k]) {
-                                                                    const cell = row.locator(':scope > td').nth(c.col);
+                                                                    const cell = rowAtualizada.locator(':scope > td').nth(c.col);
                                                                     try {
                                                                         const txtAtual = await cell.innerText({ timeout: 1000 });
                                                                         if (!txtAtual.trim()) {
@@ -393,8 +424,9 @@ async function processarConta(conta, deliveries) {
                                                     sucessos.push(r.id_banco);
                                                 }
 
-                                                try { await checkbox.uncheck({ timeout: 1000 }); } 
-                                                catch(e) { try { await checkbox.click({ timeout: 1000 }); } catch(err){} }
+                                                const checkboxAtualizado = rowAtualizada.locator(':scope > td').nth(0);
+                                                try { await checkboxAtualizado.uncheck({ timeout: 1000 }); } 
+                                                catch(e) { try { await checkboxAtualizado.click({ timeout: 1000 }); } catch(err){} }
                                                 await targetPage.waitForTimeout(1000);
 
                                                 if (houveEdicao) {
