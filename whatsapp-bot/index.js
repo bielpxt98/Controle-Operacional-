@@ -130,7 +130,7 @@ async function startWhatsApp() {
     const numD = "5581983493082";
     const numE = "558193792908"; // Gabriel Peixoto antigo
     const numF = "557186888333"; // Gabriel Peixoto atual
-    const isAdmin = remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || remetenteNum.includes(numE) || remetenteNum.includes(numF) || senderName.toLowerCase().includes("luciana") || senderName.toLowerCase().includes("osvaldo");
+    const isAdmin = msg.key.fromMe || remetenteNum.includes("557181942525") || remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || remetenteNum.includes(numE) || remetenteNum.includes(numF) || senderName.toLowerCase().includes("luciana") || senderName.toLowerCase().includes("osvaldo");
 
     // =========================================================
     // 1. MENSAGEM NO PRIVADO
@@ -213,7 +213,7 @@ async function startWhatsApp() {
     // ==========================================
     // LÓGICA DE PROGRAMAÇÃO POR TEXTO (ADMIN)
     // ==========================================
-    if (isAdmin && /^programa[cç][aã]o/i.test(txtMsg)) {
+    if (isAdmin && txtMsg.trim().toUpperCase().startsWith("PROGRAMA")) {
         console.log("[WPP-ADMIN] Detectou texto de programação no grupo!");
         const jsonText = await parseProgramacaoText(txtMsg);
         if (jsonText && jsonText.tipo === "PROGRAMACAO") {
@@ -496,12 +496,12 @@ async function parseProgramacaoText(textoCompleto) {
 Texto recebido: """${textoCompleto}"""
 
 Regras:
-1. Extraia o nome do motorista para cada viagem.
-2. Extraia apenas a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (em maiúsculas). Exemplo: se estiver "WMS Max Atacado Valença", extraia "WMS". Se for "JDE Café", extraia "JDE".
-3. Extraia também a quantidade de paletes (se houver no texto, ex: 476). Se não houver, extraia 0.
+1. Extraia o NOME DO MOTORISTA (apenas o primeiro nome) para cada viagem.
+2. Extraia o NOME PRINCIPAL E A LOCALIDADE/FILIAL para diferenciar lojas da mesma rede (Ex: "ASSAI PAU DA LIMA", "ASSAI ROTULA", "WMS MAX CABULA"). Não extraia só a primeira palavra, pegue a filial também!
+3. Extraia também a quantidade de paletes ou caixas (um número). Se não houver, extraia 0.
 4. Devolva EXATAMENTE no seguinte formato JSON (e NADA mais):
-{"tipo": "PROGRAMACAO", "entregas": [{"motorista": "NOME DO MOTORISTA", "primeiro_nome_cliente": "CLIENTE", "paletes": 476}]}
-5. Coloque todas as entregas encontradas no array "entregas". Se não encontrar nenhuma, devolva {"tipo": "IRRELEVANTE"}.`;
+{"tipo": "PROGRAMACAO", "entregas": [{"motorista": "NOME DO MOTORISTA", "primeiro_nome_cliente": "CLIENTE_COM_FILIAL", "paletes": 476}]}
+5. Coloque TODAS as entregas encontradas no array "entregas". Não pule nenhuma! Se não encontrar nenhuma, devolva {"tipo": "IRRELEVANTE"}.`;
 
         const keysToTry = [
             process.env.GEMINI_API_KEY_NEW || "",
