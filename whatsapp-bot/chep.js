@@ -125,7 +125,7 @@ async function processarConta(conta, deliveries) {
 
                 let abaBusca = "AMANH";
                 const dataHojeStr = new Date().getDate().toString().padStart(2, '0') + '/' + (new Date().getMonth() + 1).toString().padStart(2, '0');
-                if (pendentes.length > 0 && pendentes.some(p => p.data && p.data.includes(dataHojeStr))) {
+                if (deliveries.length > 0 && deliveries.some(p => p.data && p.data.includes(dataHojeStr))) {
                     abaBusca = "COLETAS HOJE";
                 }
                     console.log(`[WEB] Aguardando Smartbench para aba ${abaBusca}...`);
