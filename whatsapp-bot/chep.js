@@ -318,7 +318,7 @@ async function processarConta(conta, deliveries) {
 
                                             if (cascatasProcessadas.has(idCarga)) continue;
 
-                                            if (idCarga && !idFornecimento) {
+                                            if (idCarga && idFornecimento.length < 3) {
                                                 cascatasProcessadas.add(idCarga);
                                                 console.log(`[WEB] Analisando Cascata (Carga: ${idCarga})...`);
 
@@ -340,6 +340,10 @@ async function processarConta(conta, deliveries) {
                                                 } catch(e) {
                                                     try { await row.locator('td').nth(1).locator('a').first().click({ timeout: 2000 }); } catch(e){}
                                                 }
+
+                                                // AGUARDAR O SPLIT PANE CARREGAR! (PODE DEMORAR)
+                                                console.log("[WEB] Aguardando painel interno da cascata carregar...");
+                                                await targetPage.waitForTimeout(6000);
 
                                                 await targetPage.waitForTimeout(4000);
                                                 
