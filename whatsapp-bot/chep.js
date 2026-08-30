@@ -123,8 +123,11 @@ async function processarConta(conta, deliveries) {
                     try { await sbLink.click(); } catch(err){}
                 }
 
-                const abasParaBuscar = ["AMANH", "COLETAS HOJE"];
-                for (const abaBusca of abasParaBuscar) {
+                let abaBusca = "AMANH";
+                const dataHojeStr = new Date().getDate().toString().padStart(2, '0') + '/' + (new Date().getMonth() + 1).toString().padStart(2, '0');
+                if (pendentes.length > 0 && pendentes.some(p => p.data && p.data.includes(dataHojeStr))) {
+                    abaBusca = "COLETAS HOJE";
+                }
                     console.log(`[WEB] Aguardando Smartbench para aba ${abaBusca}...`);
                     let progAmanha = null;
                     for (let i = 0; i < 15; i++) {
@@ -452,8 +455,7 @@ async function processarConta(conta, deliveries) {
                             }
                         }
                     }
-                } // FIM DO LOOP DE ABAS
-            }
+                }
             }
         }
     } catch(e) { console.log("Erro Fatal:", e.message); }
