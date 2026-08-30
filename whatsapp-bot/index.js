@@ -607,15 +607,14 @@ async function handleMotorista(json, senderName) {
         
         console.log(`[WPP] Buscando no banco: Cliente '${clienteBusca}' com ${paletes} paletes para o motorista ${motoristaFormatado}...`);
         
-        const palavrasBusca = clienteBusca.split(' ').filter(p => p.length > 2);
-        const primeiraPalavra = palavrasBusca.length > 0 ? palavrasBusca[0] : clienteBusca;
+        const clienteBuscaSanitizado = clienteBusca.replace(/-/g, ' ');
+        const palavrasBusca = clienteBuscaSanitizado.split(' ').filter(p => p.length > 2);
         
-        // Busca flexível no Supabase pela primeira palavra
+        // Busca TODOS do dia (e paletes se houver) para fazer fuzzy match local
         let query = supabase
             .from('deliveries')
             .select('*')
-            .ilike('data', `%${dataAmanhaCurta}%`)
-            .ilike('cliente', `%${primeiraPalavra}%`);
+            .ilike('data', `%${dataAmanhaCurta}%`);
             
         if (paletes > 0) {
             query = query.eq('paletes', paletes);
@@ -625,11 +624,39 @@ async function handleMotorista(json, senderName) {
         
         let encontrados = [];
         if (resultadosBrutos && resultadosBrutos.length > 0) {
-            // Filtro avançado no Javascript para garantir que TODAS as palavras extraídas pela IA existam no nome do cliente do banco
-            encontrados = resultadosBrutos.filter(linha => {
-                const clienteDB = String(linha.cliente || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                return palavrasBusca.every(palavra => clienteDB.includes(palavra));
-            });
+            function levenshtein(a, b) {
+                const matrix = [];
+                for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+                for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+                for (let i = 1; i <= b.length; i++) {
+                    for (let j = 1; j <= a.length; j++) {
+                        if (b.charAt(i - 1) === a.charAt(j - 1)) matrix[i][j] = matrix[i - 1][j - 1];
+                        else matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1));
+                    }
+                }
+                return matrix[b.length][a.length];
+            }
+
+            const resultadosComScore = resultadosBrutos.map(linha => {
+                const clienteDB = String(linha.cliente || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/-/g, ' ');
+                const palavrasDB = clienteDB.split(' ').filter(p => p.length > 2);
+                
+                let score = 0;
+                for (const palavra of palavrasBusca) {
+                    const achou = palavrasDB.some(pdb => {
+                        if (pdb === palavra) return true;
+                        if (pdb.includes(palavra) || palavra.includes(pdb)) return true;
+                        if (palavra.length > 3 && levenshtein(palavra, pdb) <= 1) return true;
+                        return false;
+                    });
+                    if (achou) score++;
+                }
+                return { ...linha, _score: score };
+            }).filter(l => l._score > 0);
+            
+            // Ordena pelo maior score (mais palavras em comum)
+            resultadosComScore.sort((a, b) => b._score - a._score);
+            encontrados = resultadosComScore;
         }
             
         if (encontrados && encontrados.length > 0) {
