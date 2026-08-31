@@ -749,14 +749,15 @@ async function handleMotorista(json, senderName) {
         
         console.log(`[WPP] Buscando no banco: Cliente '${clienteBusca}' com ${paletes} paletes para o motorista ${motoristaFormatado}...`);
         
-        const clienteBuscaSanitizado = clienteBusca.replace(/-/g, ' ');
+        const clienteBuscaSanitizado = clienteBusca.replace(/[-()]/g, ' ');
         const palavrasBusca = clienteBuscaSanitizado.split(' ').filter(p => p.length > 2);
         
-        // Busca TODOS do dia (e paletes se houver) para fazer fuzzy match local
+        // Busca TODAS as entregas sem motorista (ou com '-- SELECIONE --') 
+        // Não filtramos mais por data, para garantir que ache a coleta não importa que dia foi criada
         let query = supabase
             .from('deliveries')
             .select('*')
-            .ilike('data', `%${dataAmanhaCurta}%`);
+            .or("motorista.is.null,motorista.eq.,motorista.ilike.%SELECIONE%");
             
         if (paletes > 0) {
             query = query.eq('paletes', paletes);
@@ -780,7 +781,7 @@ async function handleMotorista(json, senderName) {
             }
 
             const resultadosComScore = resultadosBrutos.map(linha => {
-                const clienteDB = String(linha.cliente || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/-/g, ' ');
+                const clienteDB = String(linha.cliente || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[-()]/g, ' ');
                 const palavrasDB = clienteDB.split(' ').filter(p => p.length > 2);
                 
                 let score = 0;
@@ -802,16 +803,11 @@ async function handleMotorista(json, senderName) {
         }
             
         if (encontrados && encontrados.length > 0) {
-             const vazios = encontrados.filter(e => !e.motorista || String(e.motorista).trim() === '' || String(e.motorista).includes('SELECIONE'));
-             if (vazios.length > 0) {
-                 const alvo = vazios[0];
-                 console.log(`[WPP] MATCH PERFEITO! Atribuindo Delivery ${alvo.delivery} ao motorista ${motoristaFormatado}...`);
-                 await supabase.from('deliveries').update({ motorista: motoristaFormatado }).eq('id', alvo.id);
-             } else {
-                 console.log(`[WPP] AVISO: Encontrei a entrega, mas ela JÁ TEM MOTORISTA ATRIBUÍDO: '${encontrados[0].motorista}'.`);
-             }
+             const alvo = encontrados[0];
+             console.log(`[WPP] MATCH PERFEITO! Atribuindo Delivery ${alvo.delivery} ao motorista ${motoristaFormatado}...`);
+             await supabase.from('deliveries').update({ motorista: motoristaFormatado }).eq('id', alvo.id);
         } else {
-             console.log(`[WPP] AVISO: Nao encontrei entrega vazia para amanha do cliente '${clienteBusca}' com ${paletes} paletes.`);
+             console.log(`[WPP] AVISO: Nao encontrei entrega vazia compativel para o cliente '${clienteBusca}' com ${paletes} paletes.`);
         }
     }
     console.log("[WPP] ===============================================");
