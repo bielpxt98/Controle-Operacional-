@@ -511,21 +511,21 @@ Responda APENAS com o JSON.`;
             ];
         }
         const keysToTry = [
-            process.env.GEMINI_API_KEY_NEW || "",
             GEMINI_API_KEY,
-            process.env.GEMINI_API_KEY_2 || "",
+            process.env.GEMINI_API_KEY_NEW || "",
             process.env.GEMINI_API_KEY_3 || ""
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
+            "gemini-3.5-flash",
             "gemini-3.7-flash",
-            "gemini-3.6-flash",
             "gemini-3.5-flash-lite"
         ];
 
         let responseText = null;
         for (const apiKey of keysToTry) {
             const localGenAI = new (require('@google/generative-ai').GoogleGenerativeAI)(apiKey);
+            let keyInvalid = false;
             for (const modelName of modelsToTry) {
                 try {
                     console.log(`[GEMINI] Tentando ${modelName} na chave ...${apiKey.slice(-4)}...`);
@@ -547,18 +547,25 @@ Responda APENAS com o JSON.`;
                     
                     clearTimeout(timerId);
                     responseText = result.response.text();
-                    console.log(`[GEMINI] Resposta recebida do ${modelName}!`);
+                    console.log(`[GEMINI] ✅ Resposta recebida do ${modelName}!`);
                     break;
                 } catch (err) {
-                    if (err.message.includes("429") || err.message.includes("quota")) {
-                        console.error(`[GEMINI] Falha: Quota excedida na chave ...${apiKey.slice(-4)}`);
-                    } else if (err.message.includes("API_KEY_INVALID")) {
-                        console.error(`[GEMINI] Falha: Chave inválida ...${apiKey.slice(-4)}`);
+                    if (err.message.includes("429") || err.message.includes("RESOURCE_EXHAUSTED") || err.message.includes("quota")) {
+                        console.error(`[GEMINI] ⚠️ COTA EXCEDIDA: ${modelName} / ...${apiKey.slice(-4)}`);
+                    } else if (err.message.includes("API_KEY_INVALID") || err.message.includes("leaked") || err.message.includes("reported")) {
+                        console.error(`[GEMINI] 🔑 CHAVE INVÁLIDA/BLOQUEADA: ...${apiKey.slice(-4)} — pulando esta chave`);
+                        keyInvalid = true;
+                        break;
+                    } else if (err.message.includes("503") || err.message.includes("overloaded") || err.message.includes("UNAVAILABLE")) {
+                        console.error(`[GEMINI] 🔴 SERVIDOR SOBRECARREGADO: ${modelName} / ...${apiKey.slice(-4)}`);
+                    } else if (err.message.includes("Timeout")) {
+                        console.error(`[GEMINI] ⏱️ TIMEOUT: ${modelName} / ...${apiKey.slice(-4)}`);
                     } else {
-                        console.error(`[GEMINI] Falha: ${modelName} / ...${apiKey.slice(-4)} | Erro:`, err.message);
+                        console.error(`[GEMINI] ❌ ERRO: ${modelName} / ...${apiKey.slice(-4)} | ${err.message.slice(0, 120)}`);
                     }
                 }
             }
+            if (keyInvalid) continue;
             if (responseText) break;
         }
         
@@ -591,21 +598,21 @@ Regras:
 5. Coloque TODAS as entregas encontradas no array "entregas". Não pule nenhuma! Se não encontrar nenhuma, devolva {"tipo": "IRRELEVANTE"}.`;
 
         const keysToTry = [
-            process.env.GEMINI_API_KEY_NEW || "",
             GEMINI_API_KEY,
-            process.env.GEMINI_API_KEY_2 || "",
+            process.env.GEMINI_API_KEY_NEW || "",
             process.env.GEMINI_API_KEY_3 || ""
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
+            "gemini-3.5-flash",
             "gemini-3.7-flash",
-            "gemini-3.6-flash",
             "gemini-3.5-flash-lite"
         ];
 
         let responseText = null;
         for (const apiKey of keysToTry) {
             const localGenAI = new (require('@google/generative-ai').GoogleGenerativeAI)(apiKey);
+            let keyInvalid = false;
             for (const modelName of modelsToTry) {
                 try {
                     console.log(`[GEMINI-TEXTO] Tentando ${modelName} na chave ...${apiKey.slice(-4)}...`);
@@ -627,12 +634,23 @@ Regras:
                     
                     clearTimeout(timerId);
                     responseText = result.response.text();
-                    console.log(`[GEMINI-TEXTO] Resposta recebida do ${modelName}!`);
+                    console.log(`[GEMINI-TEXTO] ✅ Resposta recebida do ${modelName}!`);
                     break;
                 } catch (err) {
-                    console.error(`[GEMINI-TEXTO] Falha: ${modelName} / ...${apiKey.slice(-4)} | Erro:`, err.message);
+                    if (err.message.includes("429") || err.message.includes("RESOURCE_EXHAUSTED") || err.message.includes("quota")) {
+                        console.error(`[GEMINI-TEXTO] ⚠️ COTA EXCEDIDA: ${modelName} / ...${apiKey.slice(-4)}`);
+                    } else if (err.message.includes("API_KEY_INVALID") || err.message.includes("leaked") || err.message.includes("reported")) {
+                        console.error(`[GEMINI-TEXTO] 🔑 CHAVE INVÁLIDA/BLOQUEADA: ...${apiKey.slice(-4)} — pulando`);
+                        keyInvalid = true;
+                        break;
+                    } else if (err.message.includes("503") || err.message.includes("UNAVAILABLE")) {
+                        console.error(`[GEMINI-TEXTO] 🔴 SERVIDOR SOBRECARREGADO: ${modelName} / ...${apiKey.slice(-4)}`);
+                    } else {
+                        console.error(`[GEMINI-TEXTO] ❌ ERRO: ${modelName} / ...${apiKey.slice(-4)} | ${err.message.slice(0, 120)}`);
+                    }
                 }
             }
+            if (keyInvalid) continue;
             if (responseText) break;
         }
         
