@@ -425,8 +425,6 @@ async function startWhatsApp() {
                 console.log(`[WPP-GRUPO] FALHA TOTAL: Nenhuma carga encontrada para motorista=${motoristaPrimeiroNome} hoje ou pelo delivery`);
                 await sock.sendMessage('120363408148934220@g.us', { text: `⚠️ Não consegui localizar a coleta de ${motoristaPrimeiroNome} para finalizar.\nDelivery lido: ${deliveryLido}\nPreencha manualmente no painel.` });
             }
-                }
-            }
         }
         return;
     }
