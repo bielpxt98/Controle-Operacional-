@@ -451,12 +451,15 @@ async function iniciarLoopCHEP() {
         try {
             console.log("[CHEP-LOOP] Buscando entregas prontas para preencher na CHEP...");
             const hoje = new Date();
-            const mesAtual = hoje.getMonth() + 1;
-            const mesAmanha = mesAtual.toString().padStart(2, '0');
-            const diaAmanha = (hoje.getDate() + 1).toString().padStart(2, '0');
             const diaHoje = hoje.getDate().toString().padStart(2, '0');
-            const dataHoje = diaHoje + '/' + mesAmanha;
-            const dataAmanha = diaAmanha + '/' + mesAmanha; // Ex: 20/08
+            const mesAtualStr = (hoje.getMonth() + 1).toString().padStart(2, '0');
+            const dataHoje = diaHoje + '/' + mesAtualStr;
+            
+            const amanha = new Date();
+            amanha.setDate(amanha.getDate() + 1);
+            const diaAmanha = amanha.getDate().toString().padStart(2, '0');
+            const mesAmanha = (amanha.getMonth() + 1).toString().padStart(2, '0');
+            const dataAmanha = diaAmanha + '/' + mesAmanha; // Ex: 01/09
             
             const { data, error } = await supabase
                 .from('deliveries')
@@ -482,11 +485,14 @@ async function iniciarLoopCHEP() {
           chepRodando = true;
           try {
               const hoje = new Date();
-              const mesAtual = hoje.getMonth() + 1;
-              const diaAmanha = (hoje.getDate() + 1).toString().padStart(2, '0');
-              const mesAmanha = mesAtual.toString().padStart(2, '0');
               const diaHoje = hoje.getDate().toString().padStart(2, '0');
-              const dataHoje = diaHoje + '/' + mesAmanha;
+              const mesAtualStr = (hoje.getMonth() + 1).toString().padStart(2, '0');
+              const dataHoje = diaHoje + '/' + mesAtualStr;
+
+              const amanha = new Date();
+              amanha.setDate(amanha.getDate() + 1);
+              const diaAmanha = amanha.getDate().toString().padStart(2, '0');
+              const mesAmanha = (amanha.getMonth() + 1).toString().padStart(2, '0');
               const dataAmanha = diaAmanha + '/' + mesAmanha;
               
               const { data } = await supabase.from('deliveries').select('*').or(`data.ilike.%${dataHoje}%,data.ilike.%${dataAmanha}%`).not('motorista', 'is', null).is('status_chep', null);
@@ -711,10 +717,11 @@ async function handleMotorista(json, senderName) {
     console.log(`[WPP] Processando ${json.entregas.length} entregas identificadas pela IA...`);
     
     const hoje = new Date();
-    const mesAtual = hoje.getMonth() + 1;
-    const diaAmanha = (hoje.getDate() + 1).toString().padStart(2, '0');
-    const mesAmanha = mesAtual.toString().padStart(2, '0');
-    const dataAmanhaCurta = diaAmanha + '/' + mesAmanha; // 21/08
+    const amanha = new Date();
+    amanha.setDate(amanha.getDate() + 1);
+    const diaAmanha = amanha.getDate().toString().padStart(2, '0');
+    const mesAmanha = (amanha.getMonth() + 1).toString().padStart(2, '0');
+    const dataAmanhaCurta = diaAmanha + '/' + mesAmanha; // Ex: 01/09
     
     for (const entrega of json.entregas) {
         if (!entrega.motorista || !entrega.primeiro_nome_cliente) continue;
