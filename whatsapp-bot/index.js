@@ -367,37 +367,64 @@ async function startWhatsApp() {
             const deliveryLido = json.delivery || "";
             console.log(`[WPP-GRUPO] NF ASSINADA! Cliente: ${clienteLimpo} | Delivery: ${deliveryLido}`);
             
-            let query = supabase.from('deliveries').select('id').ilike('motorista', `%${motoristaPrimeiroNome}%`).is('f_horario', null);
-            
-            if (deliveryLido && String(deliveryLido).length === 10) {
-                query = query.eq('delivery', String(deliveryLido));
-            } else {
-                query = query.ilike('data', `%${dataHojeCurta}%`).ilike('cliente', `%${clienteLimpo}%`);
+            // Estrategia 1: Buscar SOMENTE pelo numero de delivery (mais confiavel)
+            // Extrai todas as sequencias de 10 digitos do que a IA leu (corrige OCR impreciso)
+            const deliveryStr = String(deliveryLido || "");
+            const candidatos10 = [];
+            if (deliveryStr.length === 10) {
+                candidatos10.push(deliveryStr);
+            } else if (deliveryStr.length > 10) {
+                // Tenta todas as janelas de 10 digitos dentro do numero lido
+                for (let i = 0; i <= deliveryStr.length - 10; i++) {
+                    const sub = deliveryStr.slice(i, i + 10);
+                    if (/^\d{10}$/.test(sub)) candidatos10.push(sub);
+                }
             }
-            const { data: finalizaveis } = await query.limit(1);
-            if (finalizaveis && finalizaveis.length > 0) {
-                const { error: updErr } = await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO', data_finalizacao: dataHojeCurta }).eq('id', finalizaveis[0].id);
-                  if (updErr) console.log('[ERRO SUPABASE]', updErr);
-                await sock.sendMessage('120363408148934220@g.us', { text: `✅ H_FINALIZADO marcado! Cliente: ${clienteLimpo} | Delivery: ${deliveryLido}` });
-                console.log(`[WPP-GRUPO] H_FINALIZADO marcado!`);
-            } else {
-                console.log(`[WPP-GRUPO] FALHA na busca exata. Tentando FALLBACK INTELIGENTE para motorista=${motoristaPrimeiroNome}...`);
-                
-                // Busca a primeira carga do motorista hoje que ainda não foi finalizada, independente do OCR ter errado cliente/delivery
-                const { data: fallbackData } = await supabase.from('deliveries').select('id, delivery, cliente').ilike('motorista', `%${motoristaPrimeiroNome}%`).ilike('data', `%${dataHojeCurta}%`).or('f_horario.is.null,f_horario.eq.,f_horario.eq.-').order('id', { ascending: true }).limit(1);
+            
+            let finalizavelId = null;
+            let finalizavelDelivery = deliveryLido;
+            let finalizavelCliente = clienteLimpo;
+            
+            for (const num of candidatos10) {
+                const { data: exato } = await supabase.from('deliveries').select('id, delivery, cliente').eq('delivery', num).limit(1);
+                if (exato && exato.length > 0) {
+                    finalizavelId = exato[0].id;
+                    finalizavelDelivery = exato[0].delivery;
+                    finalizavelCliente = exato[0].cliente || clienteLimpo;
+                    console.log(`[WPP-GRUPO] ✅ Delivery encontrado pelo numero: ${num} | Cliente: ${finalizavelCliente}`);
+                    break;
+                }
+            }
+            
+            // Estrategia 2 (Fallback): Busca pelo motorista + data de hoje, sem exigir f_horario vazio
+            if (!finalizavelId) {
+                console.log(`[WPP-GRUPO] Delivery não encontrado no banco. Tentando FALLBACK por motorista=${motoristaPrimeiroNome}...`);
+                const { data: fallbackData } = await supabase.from('deliveries').select('id, delivery, cliente')
+                    .ilike('motorista', `%${motoristaPrimeiroNome}%`)
+                    .ilike('data', `%${dataHojeCurta}%`)
+                    .order('id', { ascending: true })
+                    .limit(5);
                 
                 if (fallbackData && fallbackData.length > 0) {
-                    const fallbackID = fallbackData[0].id;
-                    const fallbackDelivery = fallbackData[0].delivery || "N/A";
-                    const fallbackCliente = fallbackData[0].cliente || "Desconhecido";
-                    
-                    const { error: updErr } = await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO', data_finalizacao: dataHojeCurta }).eq('id', fallbackID);
-                    if (updErr) console.log('[ERRO SUPABASE FALLBACK]', updErr);
-                    
-                    await sock.sendMessage('120363408148934220@g.us', { text: `✅ H_FINALIZADO (Pelo Fallback da IA)! Cliente: ${fallbackCliente} | Delivery: ${fallbackDelivery}` });
-                    console.log(`[WPP-GRUPO] H_FINALIZADO marcado por FALLBACK INTELIGENTE!`);
-                } else {
-                    console.log(`[WPP-GRUPO] FALHA TOTAL: Nenhuma carga pendente hoje para motorista=${motoristaPrimeiroNome}`);
+                    // Prefere coletas sem f_horario, mas usa qualquer uma se necessario
+                    const semHorario = fallbackData.filter(r => !r.f_horario || r.f_horario === '' || r.f_horario === '-');
+                    const alvo = semHorario.length > 0 ? semHorario[0] : fallbackData[0];
+                    finalizavelId = alvo.id;
+                    finalizavelDelivery = alvo.delivery || "N/A";
+                    finalizavelCliente = alvo.cliente || "Desconhecido";
+                    console.log(`[WPP-GRUPO] Fallback encontrou: ${finalizavelCliente} | Delivery: ${finalizavelDelivery}`);
+                }
+            }
+            
+            if (finalizavelId) {
+                const { error: updErr } = await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO', data_finalizacao: dataHojeCurta }).eq('id', finalizavelId);
+                if (updErr) console.log('[ERRO SUPABASE]', updErr);
+                await sock.sendMessage('120363408148934220@g.us', { text: `✅ H_FINALIZADO marcado! Cliente: ${finalizavelCliente} | Delivery: ${finalizavelDelivery} | Hora: ${horaAtual}` });
+                console.log(`[WPP-GRUPO] H_FINALIZADO marcado com sucesso! ID: ${finalizavelId}`);
+            } else {
+                console.log(`[WPP-GRUPO] FALHA TOTAL: Nenhuma carga encontrada para motorista=${motoristaPrimeiroNome} hoje ou pelo delivery`);
+                await sock.sendMessage('120363408148934220@g.us', { text: `⚠️ Não consegui localizar a coleta de ${motoristaPrimeiroNome} para finalizar.\nDelivery lido: ${deliveryLido}\nPreencha manualmente no painel.` });
+            }
                 }
             }
         }
