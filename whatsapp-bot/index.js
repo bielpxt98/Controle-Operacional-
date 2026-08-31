@@ -395,27 +395,39 @@ async function startWhatsApp() {
                     break;
                 }
             }
-            
-            // Estrategia 2 (Fallback): Busca pelo motorista + data de hoje, sem exigir f_horario vazio
+            // Estrategia 2 (Fallback Inteligente): Busca pelas cargas do motorista e cruza com o NOME DO CLIENTE lido
             if (!finalizavelId) {
-                console.log(`[WPP-GRUPO] Delivery não encontrado no banco. Tentando FALLBACK por motorista=${motoristaPrimeiroNome}...`);
-                const { data: fallbackData } = await supabase.from('deliveries').select('id, delivery, cliente')
-                    .ilike('motorista', `%${motoristaPrimeiroNome}%`)
-                    .ilike('data', `%${dataHojeCurta}%`)
-                    .order('id', { ascending: true })
-                    .limit(5);
+                console.log(`[WPP-GRUPO] Delivery não encontrado. Tentando FALLBACK INTELIGENTE cruzando cliente para motorista=${motoristaPrimeiroNome}...`);
                 
-                if (fallbackData && fallbackData.length > 0) {
-                    // Prefere coletas sem f_horario, mas usa qualquer uma se necessario
-                    const semHorario = fallbackData.filter(r => !r.f_horario || r.f_horario === '' || r.f_horario === '-');
-                    const alvo = semHorario.length > 0 ? semHorario[0] : fallbackData[0];
-                    finalizavelId = alvo.id;
-                    finalizavelDelivery = alvo.delivery || "N/A";
-                    finalizavelCliente = alvo.cliente || "Desconhecido";
-                    console.log(`[WPP-GRUPO] Fallback encontrou: ${finalizavelCliente} | Delivery: ${finalizavelDelivery}`);
+                // Busca TODAS as coletas do motorista que ainda não foram concluídas (pode ser de dias anteriores)
+                const { data: pendentes } = await supabase.from('deliveries')
+                    .select('id, delivery, cliente, f_horario, data')
+                    .ilike('motorista', `%${motoristaPrimeiroNome}%`)
+                    .neq('status', 'CONCLUIDO')
+                    .order('id', { ascending: true });
+
+                if (pendentes && pendentes.length > 0) {
+                    // Tenta achar uma coleta onde o nome do cliente bata com o que a IA leu
+                    let alvo = null;
+                    const clienteIA = clienteLimpo.split(' ')[0]; // Pega a primeira palavra (ex: "WMS" ou "ASSAI")
+                    
+                    for (const p of pendentes) {
+                        if (p.cliente && p.cliente.toUpperCase().includes(clienteIA)) {
+                            alvo = p;
+                            console.log(`[WPP-GRUPO] Match de cliente encontrado no Fallback! Banco: ${p.cliente} | IA: ${clienteLimpo}`);
+                            break;
+                        }
+                    }
+                    
+                    // Se achou pelo cliente, usa ela. Se não achou, NÃO preenche aleatório.
+                    if (alvo) {
+                        finalizavelId = alvo.id;
+                        finalizavelDelivery = alvo.delivery || "N/A";
+                        finalizavelCliente = alvo.cliente || "Desconhecido";
+                        console.log(`[WPP-GRUPO] Fallback Inteligente definiu: ${finalizavelCliente} | Delivery: ${finalizavelDelivery}`);
+                    }
                 }
             }
-            
             if (finalizavelId) {
                 const { error: updErr } = await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO', data_finalizacao: dataHojeCurta }).eq('id', finalizavelId);
                 if (updErr) console.log('[ERRO SUPABASE]', updErr);
