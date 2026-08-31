@@ -498,15 +498,17 @@ Responda APENAS com o JSON.`;
 
         let payload = [];
         if (isTextOnly) {
-            payload = [prompt + "\n\nTexto enviado pelo usuário:\n" + textCaption];
+            payload = [{ text: prompt + '\n\nTexto enviado pelo usuário:\n' + textCaption }];
         } else {
-            const imagePart = {
-                inlineData: {
-                    data: buffer.toString("base64"),
-                    mimeType: "image/jpeg"
+            payload = [
+                { text: prompt },
+                {
+                    inlineData: {
+                        data: buffer.toString('base64'),
+                        mimeType: 'image/jpeg'
+                    }
                 }
-            };
-            payload = [prompt, imagePart];
+            ];
         }
         const keysToTry = [
             process.env.GEMINI_API_KEY_NEW || "",
@@ -535,7 +537,7 @@ Responda APENAS com o JSON.`;
                     });
                     
                     const request = {
-                        contents: [{ role: 'user', parts: [{ text: prompt }, imagePart] }]
+                        contents: [{ role: 'user', parts: payload }]
                     };
                     
                     const result = await Promise.race([
