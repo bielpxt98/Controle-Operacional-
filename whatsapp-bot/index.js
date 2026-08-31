@@ -211,6 +211,56 @@ async function startWhatsApp() {
     }
 
     // ==========================================
+    // LÓGICA DE MARCAÇÃO MANUAL H_LOCAL (ADMIN)
+    // ==========================================
+    if (isAdmin && txtMsg) {
+        const motoristasConhecidos = ["WILSON", "GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIZ", "LUIS", "FABIO", "JEAN", "ARIEL"];
+        const palavrasMsg = txtMsg.trim().split(/\s+/);
+        const firstWord = palavrasMsg[0].toUpperCase();
+        
+        if (motoristasConhecidos.includes(firstWord) && palavrasMsg.length >= 2 && !/^programa[cç][aã]o/i.test(txtMsg)) {
+            const motoristaAlvo = firstWord;
+            const dicaLocal = palavrasMsg.slice(1).join(" ").toLowerCase();
+            
+            console.log(`[WPP-ADMIN] Tentativa de marcação manual H_LOCAL para ${motoristaAlvo}. Dica: ${dicaLocal}`);
+            
+            const { data: pendentes } = await supabase.from('deliveries').select('id, cliente')
+                .ilike('motorista', `%${motoristaAlvo}%`)
+                .ilike('data', `%${dataHojeCurta}%`)
+                .is('l_horario', null)
+                .not('delivery', 'ilike', '340%');
+                
+            if (pendentes && pendentes.length > 0) {
+                let escolhido = pendentes[0];
+                let palavrasDica = dicaLocal.replace(/[^\w\s]/g, '').split(' ').filter(p => p.length >= 2);
+                if (palavrasDica.length === 0) palavrasDica = [dicaLocal];
+                
+                let melhorPontuacao = -1;
+                for (let p of pendentes) {
+                    let nomeDB = (p.cliente || "").toLowerCase();
+                    let pontuacao = 0;
+                    for (let pd of palavrasDica) {
+                        if (nomeDB.includes(pd)) pontuacao++;
+                    }
+                    if (pontuacao > melhorPontuacao) {
+                        melhorPontuacao = pontuacao;
+                        escolhido = p;
+                    }
+                }
+                
+                if (escolhido) {
+                    await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', escolhido.id);
+                    await sock.sendMessage('120363408148934220@g.us', { text: `📍 H_LOCAL marcado manualmente para ${motoristaAlvo} (${horaAtual})\nCliente: ${escolhido.cliente || "N/A"}` });
+                    console.log(`[WPP-ADMIN] H_LOCAL marcado no banco! (${horaAtual}) Cliente ID: ${escolhido.id}`);
+                }
+            } else {
+                await sock.sendMessage('120363408148934220@g.us', { text: `❌ Não encontrei nenhuma coleta pendente hoje (sem H_LOCAL) para ${motoristaAlvo}.` });
+            }
+            return;
+        }
+    }
+
+    // ==========================================
     // LÓGICA DE PROGRAMAÇÃO POR TEXTO (ADMIN)
     // ==========================================
     if (isAdmin && txtMsg.trim().toUpperCase().startsWith("PROGRAMA")) {
@@ -257,14 +307,49 @@ async function startWhatsApp() {
 
     const isLocation = !!msg.message.locationMessage || !!msg.message.liveLocationMessage;
     
-
     if (isLocation && !isAdmin) {
         console.log(`[WPP-GRUPO] H_LOCAL detectado para o motorista ${motoristaPrimeiroNome}`);
-        const { data: pendentes } = await supabase.from('deliveries').select('id').ilike('motorista', `%${motoristaPrimeiroNome}%`).ilike('data', `%${dataHojeCurta}%`).is('l_horario', null).not('delivery', 'ilike', '340%').order('id', { ascending: true }).limit(1);
-        if (pendentes && pendentes.length > 0) {
+        
+        const locName = (msg.message.locationMessage?.name || msg.message.locationMessage?.address || "").toLowerCase();
+        
+        const { data: pendentes } = await supabase.from('deliveries').select('id, cliente')
+            .ilike('motorista', `%${motoristaPrimeiroNome}%`)
+            .ilike('data', `%${dataHojeCurta}%`)
+            .is('l_horario', null)
+            .not('delivery', 'ilike', '340%')
+            .order('id', { ascending: true });
+            
+        if (pendentes && pendentes.length === 1) {
             await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', pendentes[0].id);
-            await sock.sendMessage('120363408148934220@g.us', { text: `📍 H_LOCAL marcado para ${motoristaPrimeiroNome} (${horaAtual})` });
+            await sock.sendMessage('120363408148934220@g.us', { text: `📍 H_LOCAL marcado para ${motoristaPrimeiroNome} (${horaAtual})\nCliente: ${pendentes[0].cliente || "N/A"}` });
             console.log(`[WPP-GRUPO] H_LOCAL marcado no banco! (${horaAtual})`);
+        } else if (pendentes && pendentes.length > 1) {
+            let escolhido = null;
+            if (locName) {
+                let palavrasDica = locName.replace(/[^\w\s]/g, '').split(' ').filter(p => p.length >= 3);
+                let melhorPontuacao = 0;
+                for (let p of pendentes) {
+                    let nomeDB = (p.cliente || "").toLowerCase();
+                    let pontuacao = 0;
+                    for (let pd of palavrasDica) {
+                        if (nomeDB.includes(pd)) pontuacao++;
+                    }
+                    if (pontuacao > melhorPontuacao && pontuacao > 0) {
+                        melhorPontuacao = pontuacao;
+                        escolhido = p;
+                    }
+                }
+            }
+            
+            if (escolhido) {
+                await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', escolhido.id);
+                await sock.sendMessage('120363408148934220@g.us', { text: `📍 H_LOCAL marcado para ${motoristaPrimeiroNome} (${horaAtual}) via GPS Inteligente!\nCliente: ${escolhido.cliente || "N/A"}` });
+                console.log(`[WPP-GRUPO] H_LOCAL marcado no banco por GPS Inteligente! (${horaAtual})`);
+            } else {
+                let msgOpcoes = pendentes.map(p => `- ${p.cliente}`).join('\n');
+                await sock.sendMessage('120363408148934220@g.us', { text: `⚠️ O motorista ${motoristaPrimeiroNome} enviou a localização, mas possui ${pendentes.length} coletas pendentes:\n\n${msgOpcoes}\n\n👉 Responda com o nome do motorista e o local (ex: "${motoristaPrimeiroNome} Cabula") para registrar a chegada.` });
+                console.log(`[WPP-GRUPO] Aguardando desempate manual para ${motoristaPrimeiroNome}.`);
+            }
         } else {
             console.log(`[WPP-GRUPO] FALHA: Nenhuma carga vazia (l_horario=null) achada para motorista=${motoristaPrimeiroNome} na data=${dataHojeCurta}`);
         }
