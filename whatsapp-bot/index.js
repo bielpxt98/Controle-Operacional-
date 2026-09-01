@@ -192,25 +192,51 @@ async function startWhatsApp() {
             if (motoristaAlvo) {
                 console.log(`[WPP-ADMIN] Identificada SR ${numeroSR} para ${motoristaAlvo}`);
                 
-                // Buscar a coleta pendente desse motorista hoje
-                let query = supabase.from('deliveries').select('id').ilike('motorista', `%${motoristaAlvo}%`).ilike('data', `%${dataHojeCurta}%`).is('f_horario', null).limit(1);
+                let clientNameHint = null;
+                if (txtMsg.toUpperCase().includes('GLID')) {
+                    const parts = txtMsg.split('-');
+                    if (parts.length >= 3) {
+                        clientNameHint = parts[1].trim(); 
+                    } else if (parts.length >= 2) {
+                        clientNameHint = parts[1].trim();
+                    }
+                }
+                
+                let query = supabase.from('deliveries').select('id, cliente').ilike('motorista', `%${motoristaAlvo}%`).ilike('data', `%${dataHojeCurta}%`).is('f_horario', null);
                 const { data: pendentes } = await query;
                 
                 if (pendentes && pendentes.length > 0) {
-                    const dataHojeCompleta = dataHojeCurta + '/' + hojeObj.getFullYear();
+                    let escolhido = null;
+                    if (clientNameHint) {
+                        let palavrasDica = clientNameHint.replace(/[^\w\s]/g, '').toLowerCase().split(' ').filter(p => p.length >= 3);
+                        let melhorPontuacao = 0;
+                        for (let p of pendentes) {
+                            let nomeDB = (p.cliente || "").toLowerCase();
+                            let pontuacao = 0;
+                            for (let pd of palavrasDica) {
+                                if (nomeDB.includes(pd)) pontuacao++;
+                            }
+                            if (pontuacao > melhorPontuacao && pontuacao > 0) {
+                                melhorPontuacao = pontuacao;
+                                escolhido = p;
+                            }
+                        }
+                    }
+                    
+                    if (!escolhido) {
+                        escolhido = pendentes[0];
+                    }
+                    
                     const { error: updErr } = await supabase.from('deliveries').update({
                         sr: numeroSR,
-                        f_horario: horaAtual,
-                        status: 'CONCLUIDO',
-                        data_finalizacao: dataHojeCompleta,
-                        df: dataHojeCompleta
-                    }).eq('id', pendentes[0].id);
+                        c_horario: horaAtual
+                    }).eq('id', escolhido.id);
                     
                     if (updErr) console.log('[ERRO SUPABASE SR]', updErr);
                     
-                    await sock.sendMessage('120363408148934220@g.us', { text: `âœ… SR ${numeroSR} registrada para ${motoristaAlvo}! (H_FINALIZADO: ${horaAtual})` });
-                    console.log(`[WPP-ADMIN] SR salva com sucesso.`);
-                    return; // Interrompe para nao processar como delivery normal
+                    await sock.sendMessage('120363408148934220@g.us', { text: `✅ SR ${numeroSR} e H_COLETADO registrados para ${motoristaAlvo} (${horaAtual})!\nCliente: ${escolhido.cliente || "N/A"}` });
+                    console.log(`[WPP-ADMIN] SR salva no H_COLETADO com sucesso.`);
+                    return; 
                 } else {
                     console.log(`[WPP-ADMIN] Nao achei coleta pendente para ${motoristaAlvo} hoje.`);
                 }
@@ -403,34 +429,49 @@ async function startWhatsApp() {
         if (json && json.tipo === "NF_ASSINADA") {
             const clienteLimpo = (json.cliente || "").toUpperCase().trim();
             const deliveryLido = json.delivery || "";
-            console.log(`[WPP-GRUPO] NF ASSINADA! Cliente: ${clienteLimpo} | Delivery: ${deliveryLido}`);
-            
-            // Estrategia 1: Buscar SOMENTE pelo numero de delivery (mais confiavel)
-            // Extrai todas as sequencias de 10 digitos do que a IA leu (corrige OCR impreciso)
-            const deliveryStr = String(deliveryLido || "");
-            const candidatos10 = [];
-            if (deliveryStr.length === 10) {
-                candidatos10.push(deliveryStr);
-            } else if (deliveryStr.length > 10) {
-                // Tenta todas as janelas de 10 digitos dentro do numero lido
-                for (let i = 0; i <= deliveryStr.length - 10; i++) {
-                    const sub = deliveryStr.slice(i, i + 10);
-                    if (/^\d{10}$/.test(sub)) candidatos10.push(sub);
-                }
-            }
+            const srLido = json.sr || "";
+            console.log(`[WPP-GRUPO] NF ASSINADA! Cliente: ${clienteLimpo} | Delivery: ${deliveryLido} | SR: ${srLido}`);
             
             let finalizavelId = null;
             let finalizavelDelivery = deliveryLido;
             let finalizavelCliente = clienteLimpo;
-            
-            for (const num of candidatos10) {
-                const { data: exato } = await supabase.from('deliveries').select('id, delivery, cliente').eq('delivery', num).limit(1);
-                if (exato && exato.length > 0) {
-                    finalizavelId = exato[0].id;
-                    finalizavelDelivery = exato[0].delivery;
-                    finalizavelCliente = exato[0].cliente || clienteLimpo;
-                    console.log(`[WPP-GRUPO] ✅ Delivery encontrado pelo numero: ${num} | Cliente: ${finalizavelCliente}`);
-                    break;
+
+            if (srLido) {
+                const matchSR = String(srLido).match(/\d{8}/);
+                if (matchSR) {
+                    const srNum = matchSR[0];
+                    const { data: exatoSR } = await supabase.from('deliveries').select('id, delivery, cliente').eq('sr', srNum).limit(1);
+                    if (exatoSR && exatoSR.length > 0) {
+                        finalizavelId = exatoSR[0].id;
+                        finalizavelDelivery = exatoSR[0].delivery || `SR-${srNum}`;
+                        finalizavelCliente = exatoSR[0].cliente || clienteLimpo;
+                        console.log(`[WPP-GRUPO] ✅ Carga encontrada pela SR: ${srNum} | Cliente: ${finalizavelCliente}`);
+                    }
+                }
+            }
+
+            if (!finalizavelId) {
+                // Estrategia 1: Buscar SOMENTE pelo numero de delivery (mais confiavel)
+                const deliveryStr = String(deliveryLido || "");
+                const candidatos10 = [];
+                if (deliveryStr.length === 10) {
+                    candidatos10.push(deliveryStr);
+                } else if (deliveryStr.length > 10) {
+                    for (let i = 0; i <= deliveryStr.length - 10; i++) {
+                        const sub = deliveryStr.slice(i, i + 10);
+                        if (/^\d{10}$/.test(sub)) candidatos10.push(sub);
+                    }
+                }
+                
+                for (const num of candidatos10) {
+                    const { data: exato } = await supabase.from('deliveries').select('id, delivery, cliente').eq('delivery', num).limit(1);
+                    if (exato && exato.length > 0) {
+                        finalizavelId = exato[0].id;
+                        finalizavelDelivery = exato[0].delivery;
+                        finalizavelCliente = exato[0].cliente || clienteLimpo;
+                        console.log(`[WPP-GRUPO] ✅ Delivery encontrado pelo numero: ${num} | Cliente: ${finalizavelCliente}`);
+                        break;
+                    }
                 }
             }
             // Estrategia 2 (Fallback Inteligente): Busca pelas cargas do motorista e cruza com o NOME DO CLIENTE lido
@@ -560,11 +601,11 @@ async function classifyImage(buffer, textCaption, isFromGroup, isTextOnly = fals
             prompt = `Analise a imagem em anexo, que é um documento enviado por um motorista.
 Regras:
 1. Verifique se a imagem contém carimbos de recebimento, assinaturas grandes confirmando a entrega, ou textos manuscritos como 'recebido'. Se SIM, isso indica que a carga foi FINALIZADA.
-2. Neste caso, extraia a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (ex: "ASSAI", "ATACADAO", "WMS"). ATENÇÃO ÀS REMESSAS: Se a nota tiver carimbo da "JACOBS", "DOUWE EGBERTS" ou "JDE", preencha o cliente como "JDE". Se tiver "JSL", preencha "JSL". Se tiver "BOOMIX", preencha "BOOMIX". E também PROCURE POR UM NÚMERO DE DELIVERY manuscrito.
-3. O número do Delivery é frequentemente escrito à mão (manuscrito) na nota e contém EXATAMENTE 10 dígitos (geralmente começando com 37 ou 34). Exemplo: 3788446193.
-4. Se encontrar o número do Delivery na imagem, inclua-o no JSON.
-5. Devolva EXATAMENTE no formato JSON: {"tipo": "NF_ASSINADA", "cliente": "PRIMEIRA_PALAVRA_CLIENTE", "delivery": "NUMERO_DE_10_DIGITOS"} (Se não achar o delivery, mande null).
-6. Se a imagem não tiver carimbos/assinaturas de conclusão, devolva: {"tipo": "IRRELEVANTE"}`;
+2. Neste caso, extraia a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (ex: "ASSAI", "ATACADAO", "WMS"). ATENÇÃO ÀS REMESSAS: Se a nota tiver carimbo da "JACOBS", "DOUWE EGBERTS" ou "JDE", preencha o cliente como "JDE". Se tiver "JSL", preencha "JSL". Se tiver "BOOMIX", preencha "BOOMIX".
+3. O número do Delivery é frequentemente escrito à mão (manuscrito) na nota e contém EXATAMENTE 10 dígitos (geralmente começando com 37 ou 34).
+4. O número de SR (Service Request) também pode estar escrito à mão ou impresso na declaração, e contém EXATAMENTE 8 dígitos (ex: 43314606).
+5. Devolva EXATAMENTE no formato JSON: {"tipo": "NF_ASSINADA", "cliente": "PRIMEIRA_PALAVRA_CLIENTE", "delivery": "NUM_10_DIGITOS", "sr": "NUM_8_DIGITOS"} (Se não achar o delivery ou a SR, mande null nos respectivos campos).
+6. Se a imagem não tiver carimbos/assinaturas de conclusão nem texto de recebido, devolva: {"tipo": "IRRELEVANTE"}`;
         } else {
             prompt = `Analise a programação de cargas diárias enviada pelo usuário (pode ser uma imagem de tabela ou texto corrido como 'ArgemiroWMS Max').
 Extraia os dados em formato JSON estrito, sem formatação markdown.
@@ -600,9 +641,9 @@ Responda APENAS com o JSON.`;
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-8b",
-            "gemini-1.5-pro"
+            "gemini-3.5-flash",
+            "gemini-3.7-flash",
+            "gemini-3.5-flash-lite"
         ];
 
         let responseText = null;
@@ -687,9 +728,9 @@ Regras:
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-8b",
-            "gemini-1.5-pro"
+            "gemini-3.5-flash",
+            "gemini-3.7-flash",
+            "gemini-3.5-flash-lite"
         ];
 
         let responseText = null;
