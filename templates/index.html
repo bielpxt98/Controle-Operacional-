@@ -1211,6 +1211,7 @@
             strip.innerHTML = '';
 
             const monthsToRender = [
+                { y: monthIdx === 0 ? year - 1 : year, m: monthIdx === 0 ? 11 : monthIdx - 1 },
                 { y: year, m: monthIdx },
                 { y: monthIdx === 11 ? year + 1 : year, m: monthIdx === 11 ? 0 : monthIdx + 1 }
             ];
@@ -1892,10 +1893,14 @@
             const displayEl = document.getElementById('currentMonthDisplay');
             if (displayEl) displayEl.innerText = `${mName} ${currentSelectedYear}`;
             
+            const prevMonthIdx = currentSelectedMonthIndex === 0 ? 11 : currentSelectedMonthIndex - 1;
+            const mPrev = monthNamesFull[prevMonthIdx];
+            
             const nextMonthIdx = (currentSelectedMonthIndex + 1) % 12;
             const mNext = monthNamesFull[nextMonthIdx];
+            
             const rollEl = document.getElementById('continuousMonthText');
-            if (rollEl) rollEl.innerText = `${mName}/${mNext} ${currentSelectedYear}`;
+            if (rollEl) rollEl.innerText = `${mPrev}/${mName}/${mNext} ${currentSelectedYear}`;
             
             document.querySelectorAll('.month-btn').forEach((b, idx) => {
                 if (idx === currentSelectedMonthIndex) b.classList.add('active');
