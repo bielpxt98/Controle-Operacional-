@@ -202,8 +202,13 @@ async function startWhatsApp() {
                     }
                 }
                 
-                let query = supabase.from('deliveries').select('id, cliente').ilike('motorista', `%${motoristaAlvo}%`).is('f_horario', null);
-                const { data: pendentes } = await query;
+                let query = supabase.from('deliveries').select('id, cliente, f_horario').ilike('motorista', `%${motoristaAlvo}%`);
+                let { data: allMotoristaLoads } = await query;
+                
+                let pendentes = [];
+                if (allMotoristaLoads) {
+                    pendentes = allMotoristaLoads.filter(p => !p.f_horario || p.f_horario.trim() === '' || p.f_horario === '-');
+                }
                 
                 if (pendentes && pendentes.length > 0) {
                     let escolhido = null;
@@ -239,7 +244,7 @@ async function startWhatsApp() {
                     return; 
                 } else {
                     console.log(`[WPP-ADMIN] Nao achei coleta pendente para ${motoristaAlvo} hoje.`);
-                    await sock.sendMessage('120363408148934220@g.us', { text: `❌ Não consegui achar carga pendente para ${motoristaAlvo} (sem H_FINALIZADO).` });
+                    await sock.sendMessage('120363408148934220@g.us', { text: `❌ Não consegui achar carga pendente para ${motoristaAlvo} (SR: ${numeroSR}).\nResponda esta mensagem digitando apenas a delivery.` });
                     return;
                 }
             }
@@ -251,23 +256,44 @@ async function startWhatsApp() {
     // ==========================================
     if (isAdmin && txtMsg.match(/^\s*\d{10}\s*$/) && quotedMsg && !quotedMsg.imageMessage) {
         const quotedText = quotedMsg.conversation || quotedMsg.extendedTextMessage?.text || "";
-        if (quotedText.includes("para finalizar") || quotedText.includes("Não consegui localizar")) {
+        if (quotedText.includes("para finalizar") || quotedText.includes("Não consegui localizar") || quotedText.includes("Não consegui achar carga pendente para") || quotedText.includes("SR:")) {
             const numeroDeliveryStr = txtMsg.match(/\d{10}/)[0];
             const dataHojeCompleta = dataHojeCurta + '/' + hojeObj.getFullYear();
+            
+            const isSrFallback = quotedText.includes("SR:");
+            let srFallbackNum = null;
+            if (isSrFallback) {
+                const srMatch = quotedText.match(/SR:\s*(\d{8})/);
+                if (srMatch) srFallbackNum = srMatch[1];
+            }
             
             // Verifica se a entrega existe
             const { data: verif } = await supabase.from('deliveries').select('id, cliente, status').eq('delivery', numeroDeliveryStr).limit(1);
             if (verif && verif.length > 0) {
-                const { error: updErr } = await supabase.from('deliveries').update({
-                    f_horario: horaAtual,
-                    status: 'CONCLUIDO',
-                    data_finalizacao: dataHojeCompleta,
-                    df: dataHojeCompleta
-                }).eq('id', verif[0].id);
+                let updateObj = {};
+                let msgSucesso = "";
+                
+                if (isSrFallback && srFallbackNum) {
+                    updateObj = {
+                        sr: srFallbackNum,
+                        c_horario: horaAtual
+                    };
+                    msgSucesso = `✅ SR ${srFallbackNum} e H_COLETADO corrigidos manualmente! Cliente: ${verif[0].cliente} | Delivery: ${numeroDeliveryStr} | Hora: ${horaAtual}`;
+                } else {
+                    updateObj = {
+                        f_horario: horaAtual,
+                        status: 'CONCLUIDO',
+                        data_finalizacao: dataHojeCompleta,
+                        df: dataHojeCompleta
+                    };
+                    msgSucesso = `✅ H_FINALIZADO corrigido manualmente! Cliente: ${verif[0].cliente} | Delivery: ${numeroDeliveryStr} | Hora: ${horaAtual} | DF: ${dataHojeCompleta}`;
+                }
+                
+                const { error: updErr } = await supabase.from('deliveries').update(updateObj).eq('id', verif[0].id);
                 
                 if (!updErr) {
-                    await sock.sendMessage('120363408148934220@g.us', { text: `✅ H_FINALIZADO corrigido manualmente! Cliente: ${verif[0].cliente} | Delivery: ${numeroDeliveryStr} | Hora: ${horaAtual} | DF: ${dataHojeCompleta}` });
-                    console.log(`[WPP-GRUPO] Finalização corrigida manualmente via WhatsApp para delivery ${numeroDeliveryStr}`);
+                    await sock.sendMessage('120363408148934220@g.us', { text: msgSucesso });
+                    console.log(`[WPP-GRUPO] Correção manual via WhatsApp para delivery ${numeroDeliveryStr} processada.`);
                 }
             } else {
                 await sock.sendMessage('120363408148934220@g.us', { text: `❌ Não encontrei nenhuma entrega no banco com o delivery ${numeroDeliveryStr}.` });
