@@ -585,6 +585,31 @@
             padding: 0.8rem;
         }
 
+        .top-scrollbar-wrapper {
+            width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            height: 12px;
+            margin-bottom: 2px;
+        }
+        
+        .top-scrollbar-wrapper::-webkit-scrollbar {
+            height: 10px;
+        }
+        
+        .top-scrollbar-wrapper::-webkit-scrollbar-thumb {
+            background-color: #475569;
+            border-radius: 10px;
+        }
+        
+        .top-scrollbar-wrapper::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+
+        .top-scrollbar-content {
+            height: 1px;
+        }
+
         .table-responsive {
             width: 100%;
             overflow-x: auto;
@@ -876,6 +901,9 @@
                 </div>
             </div>
             <div class="report-body">
+                <div class="top-scrollbar-wrapper" id="topScrollWrapper">
+                    <div class="top-scrollbar-content" id="topScrollContent"></div>
+                </div>
                 <div class="table-responsive">
                     <table id="resizableTable">
                         <thead>
@@ -1976,7 +2004,45 @@
             renderDaysStrip(currentSelectedYear, currentSelectedMonthIndex);
             fetchDayDataFromSupabase(activeDateStr);
 
+            // Sincronização do scrollbar superior com a tabela
+            const topScroll = document.getElementById('topScrollWrapper');
+            const topContent = document.getElementById('topScrollContent');
+            const tableResp = document.querySelector('.table-responsive');
             const table = document.getElementById('resizableTable');
+
+            if (topScroll && tableResp && table) {
+                const syncWidths = () => {
+                    topContent.style.width = table.offsetWidth + 'px';
+                };
+                
+                if (window.ResizeObserver) {
+                    const observer = new ResizeObserver(syncWidths);
+                    observer.observe(table);
+                } else {
+                    setInterval(syncWidths, 1000);
+                }
+                setTimeout(syncWidths, 100);
+
+                let isSyncingTop = false;
+                let isSyncingBottom = false;
+
+                topScroll.addEventListener('scroll', () => {
+                    if (!isSyncingTop) {
+                        isSyncingBottom = true;
+                        tableResp.scrollLeft = topScroll.scrollLeft;
+                    }
+                    isSyncingTop = false;
+                });
+
+                tableResp.addEventListener('scroll', () => {
+                    if (!isSyncingBottom) {
+                        isSyncingTop = true;
+                        topScroll.scrollLeft = tableResp.scrollLeft;
+                    }
+                    isSyncingBottom = false;
+                });
+            }
+
             const cols = table.querySelectorAll('th');
 
             cols.forEach((col) => {
