@@ -213,6 +213,36 @@ async function startWhatsApp() {
     }
 
     // ==========================================
+    // LÓGICA DE REVISÃO DE FINALIZAÇÃO (ADMIN MANUALLY REPLIES WITH DELIVERY NUMBER)
+    // ==========================================
+    if (isAdmin && txtMsg.match(/^\s*\d{10}\s*$/) && quotedMsg && !quotedMsg.imageMessage) {
+        const quotedText = quotedMsg.conversation || quotedMsg.extendedTextMessage?.text || "";
+        if (quotedText.includes("para finalizar") || quotedText.includes("Não consegui localizar")) {
+            const numeroDeliveryStr = txtMsg.match(/\d{10}/)[0];
+            const dataHojeCompleta = dataHojeCurta + '/' + hojeObj.getFullYear();
+            
+            // Verifica se a entrega existe
+            const { data: verif } = await supabase.from('deliveries').select('id, cliente, status').eq('delivery', numeroDeliveryStr).limit(1);
+            if (verif && verif.length > 0) {
+                const { error: updErr } = await supabase.from('deliveries').update({
+                    f_horario: horaAtual,
+                    status: 'CONCLUIDO',
+                    data_finalizacao: dataHojeCompleta,
+                    df: dataHojeCompleta
+                }).eq('id', verif[0].id);
+                
+                if (!updErr) {
+                    await sock.sendMessage('120363408148934220@g.us', { text: `✅ H_FINALIZADO corrigido manualmente! Cliente: ${verif[0].cliente} | Delivery: ${numeroDeliveryStr} | Hora: ${horaAtual} | DF: ${dataHojeCompleta}` });
+                    console.log(`[WPP-GRUPO] Finalização corrigida manualmente via WhatsApp para delivery ${numeroDeliveryStr}`);
+                }
+            } else {
+                await sock.sendMessage('120363408148934220@g.us', { text: `❌ Não encontrei nenhuma entrega no banco com o delivery ${numeroDeliveryStr}.` });
+            }
+            return;
+        }
+    }
+
+    // ==========================================
     // LÓGICA DE MARCAÇÃO MANUAL H_LOCAL (ADMIN)
     // ==========================================
     if (isAdmin && txtMsg) {
