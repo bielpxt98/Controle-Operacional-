@@ -267,15 +267,132 @@
             font-size: 0.8rem;
         }
 
-        .months-nav {
+        .calendar-nav-container {
             background-color: rgba(15, 23, 42, 0.85);
             backdrop-filter: blur(8px);
-            padding: 0.5rem 1.5rem;
+            padding: 10px 1.5rem;
             display: flex;
-            gap: 6px;
-            align-items: center;
-            overflow-x: auto;
+            flex-direction: column;
+            gap: 12px;
             border-bottom: 1px solid var(--card-border);
+        }
+
+        .calendar-top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-date-btn {
+            background: #0f172a;
+            color: var(--text-secondary);
+            border: 1px solid var(--card-border);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .nav-date-btn:hover {
+            background: #334155;
+            color: #fff;
+            border-color: #475569;
+        }
+
+        .month-selector {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .month-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .month-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 4px;
+            border: 1px solid var(--card-border);
+        }
+
+        .nav-month-btn {
+            background: transparent;
+            color: var(--text-secondary);
+            border: none;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .nav-month-btn:hover {
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+        }
+
+        .current-month-display {
+            background: var(--accent-blue);
+            color: #fff;
+            padding: 6px 20px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            min-width: 160px;
+            text-align: center;
+        }
+
+        .calendar-bottom-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .continuous-roll-text {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .calendar-right-actions {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .view-monthly-btn {
+            background: #0f172a;
+            color: var(--text-secondary);
+            border: 1px solid var(--card-border);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+
+        .view-monthly-btn:hover {
+            background: #334155;
+            color: #fff;
+        }
+
+        .months-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 8px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255,255,255,0.05);
         }
 
         .month-btn {
@@ -289,6 +406,7 @@
             cursor: pointer;
             transition: all 0.2s ease;
             white-space: nowrap;
+            text-align: center;
         }
 
         .month-btn:hover {
@@ -304,7 +422,6 @@
         }
 
         .search-container {
-            margin-left: auto;
             position: relative;
             min-width: 280px;
         }
@@ -690,23 +807,48 @@
         </div>
     </header>
 
-    <nav class="months-nav">
-        <button class="month-btn" onclick="selectMonth(this, 0)">JANEIRO</button>
-        <button class="month-btn" onclick="selectMonth(this, 1)">FEVEREIRO</button>
-        <button class="month-btn" onclick="selectMonth(this, 2)">MARÇO</button>
-        <button class="month-btn" onclick="selectMonth(this, 3)">ABRIL</button>
-        <button class="month-btn" onclick="selectMonth(this, 4)">MAIO</button>
-        <button class="month-btn" onclick="selectMonth(this, 5)">JUNHO</button>
-        <button class="month-btn" onclick="selectMonth(this, 6)">JULHO</button>
-        <button class="month-btn active" onclick="selectMonth(this, 7)">AGOSTO 2026</button>
-        <button class="month-btn" onclick="selectMonth(this, 8)">SETEMBRO</button>
-        <button class="month-btn" onclick="selectMonth(this, 9)">OUTUBRO</button>
-        <button class="month-btn" onclick="selectMonth(this, 10)">NOVEMBRO</button>
-        <button class="month-btn" onclick="selectMonth(this, 11)">DEZEMBRO</button>
+    <nav class="calendar-nav-container">
+        <div class="calendar-top-bar">
+            <button class="nav-date-btn" onclick="prevDay()"><i class="fa-solid fa-angles-left"></i> Dia Anterior</button>
+            
+            <div class="month-selector">
+                <span class="month-label">Visualizar Data</span>
+                <div class="month-controls">
+                    <button class="nav-month-btn" onclick="prevMonth()"><i class="fa-solid fa-chevron-left"></i> Mês Ant.</button>
+                    <div class="current-month-display" id="currentMonthDisplay">AGOSTO 2026</div>
+                    <button class="nav-month-btn" onclick="nextMonth()">Próx. Mês <i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+            </div>
+            
+            <button class="nav-date-btn" onclick="nextDay()">Dia Seguinte <i class="fa-solid fa-angles-right"></i></button>
+        </div>
 
-        <div class="search-container">
-            <i class="fa-solid fa-magnifying-glass search-icon"></i>
-            <input type="text" id="searchInput" class="search-input" placeholder="Pesquisar por Nome, Delivery ou Cliente..." autocomplete="off" oninput="filterTable()" onkeyup="filterTable()">
+        <div class="calendar-bottom-bar">
+            <div class="continuous-roll-text">
+                Rolagem Contínua de Dias - Mês: <span id="continuousMonthText">AGOSTO 2026</span>
+            </div>
+            <div class="calendar-right-actions">
+                <div class="search-container">
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="text" id="searchInput" class="search-input" placeholder="Pesquisar por Nome, Delivery ou Cliente..." autocomplete="off" oninput="filterTable()" onkeyup="filterTable()">
+                </div>
+                <button class="view-monthly-btn" onclick="toggleMonthlyView()">Ver Calendário Mensal <i class="fa-solid fa-calendar-days"></i></button>
+            </div>
+        </div>
+        
+        <div class="months-grid" id="monthsGrid" style="display: none;">
+            <button class="month-btn" onclick="selectMonth(this, 0)">JANEIRO</button>
+            <button class="month-btn" onclick="selectMonth(this, 1)">FEVEREIRO</button>
+            <button class="month-btn" onclick="selectMonth(this, 2)">MARÇO</button>
+            <button class="month-btn" onclick="selectMonth(this, 3)">ABRIL</button>
+            <button class="month-btn" onclick="selectMonth(this, 4)">MAIO</button>
+            <button class="month-btn" onclick="selectMonth(this, 5)">JUNHO</button>
+            <button class="month-btn" onclick="selectMonth(this, 6)">JULHO</button>
+            <button class="month-btn active" onclick="selectMonth(this, 7)">AGOSTO 2026</button>
+            <button class="month-btn" onclick="selectMonth(this, 8)">SETEMBRO</button>
+            <button class="month-btn" onclick="selectMonth(this, 9)">OUTUBRO</button>
+            <button class="month-btn" onclick="selectMonth(this, 10)">NOVEMBRO</button>
+            <button class="month-btn" onclick="selectMonth(this, 11)">DEZEMBRO</button>
         </div>
     </nav>
 
@@ -1039,28 +1181,35 @@
             const strip = document.getElementById('daysStrip');
             strip.innerHTML = '';
 
-            const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+            const monthsToRender = [
+                { y: year, m: monthIdx },
+                { y: monthIdx === 11 ? year + 1 : year, m: monthIdx === 11 ? 0 : monthIdx + 1 }
+            ];
 
-            for (let day = 1; day <= daysInMonth; day++) {
-                const dateObj = new Date(year, monthIdx, day);
-                const dayOfWeek = dayNamesShort[dateObj.getDay()];
-                const dayFormatted = String(day).padStart(2, '0');
-                const monthFormatted = String(monthIdx + 1).padStart(2, '0');
-                const fullDateStr = `${dayFormatted}/${monthFormatted}/${year}`;
+            monthsToRender.forEach(({ y, m }) => {
+                const daysInMonth = new Date(y, m + 1, 0).getDate();
+                
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dateObj = new Date(y, m, day);
+                    const dayOfWeek = dayNamesShort[dateObj.getDay()];
+                    const dayFormatted = String(day).padStart(2, '0');
+                    const monthFormatted = String(m + 1).padStart(2, '0');
+                    const fullDateStr = `${dayFormatted}/${monthFormatted}/${y}`;
 
-                const pill = document.createElement('div');
-                pill.className = 'day-pill';
-                if (fullDateStr === activeDateStr) {
-                    pill.classList.add('active');
-                }
+                    const pill = document.createElement('div');
+                    pill.className = 'day-pill';
+                    if (fullDateStr === activeDateStr) {
+                        pill.classList.add('active');
+                    }
 
-                const isToday = (day === _today.getDate() && monthIdx === _today.getMonth() && year === _today.getFullYear());
-                pill.innerHTML = `
-                    <span class="num">${day} ${dayOfWeek} ${isToday ? '(HOJE)' : ''}</span>
-                    <span class="count">coletas</span>
-                `;
+                    const isToday = (day === _today.getDate() && m === _today.getMonth() && y === _today.getFullYear());
+                    const shortMonthName = monthNamesFull[m].substring(0, 3).toUpperCase();
+                    pill.innerHTML = `
+                        <span class="num">${dayFormatted} ${dayOfWeek} (${shortMonthName}) ${isToday ? '★' : ''}</span>
+                        <span class="count">coletas</span>
+                    `;
 
-                // TROCA INSTANTÂNEA DE DIA SEM NENHUM DELAY (SALVA EM SEGUNDO PLANO)
+                    // TROCA INSTANTÂNEA DE DIA SEM NENHUM DELAY (SALVA EM SEGUNDO PLANO)
                 pill.onclick = () => {
                     const prevDate = activeDateStr;
                     saveCurrentDayColetasDirectAsync(prevDate); // Aborta sozinho se isSearchActive() for true
@@ -1080,7 +1229,8 @@
                 };
 
                 strip.appendChild(pill);
-            }
+                }
+            });
             
             // Faz a rolagem acompanhar o dia atual
             setTimeout(() => {
@@ -1701,10 +1851,82 @@
             }
         }
 
-        function selectMonth(btn, monthIdx) {
+        const monthNamesFull = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
+
+        function updateMonthLabels() {
+            const mName = monthNamesFull[currentSelectedMonthIndex];
+            const displayEl = document.getElementById('currentMonthDisplay');
+            if (displayEl) displayEl.innerText = `${mName} ${currentSelectedYear}`;
+            
+            const nextMonthIdx = (currentSelectedMonthIndex + 1) % 12;
+            const mNext = monthNamesFull[nextMonthIdx];
+            const rollEl = document.getElementById('continuousMonthText');
+            if (rollEl) rollEl.innerText = `${mName}/${mNext} ${currentSelectedYear}`;
+            
+            document.querySelectorAll('.month-btn').forEach((b, idx) => {
+                if (idx === currentSelectedMonthIndex) b.classList.add('active');
+                else b.classList.remove('active');
+            });
+        }
+
+        function prevMonth() {
+            currentSelectedMonthIndex--;
+            if (currentSelectedMonthIndex < 0) {
+                currentSelectedMonthIndex = 11;
+                currentSelectedYear--;
+            }
+            selectMonthByIndex(currentSelectedMonthIndex);
+        }
+
+        function nextMonth() {
+            currentSelectedMonthIndex++;
+            if (currentSelectedMonthIndex > 11) {
+                currentSelectedMonthIndex = 0;
+                currentSelectedYear++;
+            }
+            selectMonthByIndex(currentSelectedMonthIndex);
+        }
+
+        function prevDay() {
             saveCurrentDayColetasDirectAsync(activeDateStr);
-            document.querySelectorAll('.month-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
+            const parts = activeDateStr.split('/');
+            const dateObj = new Date(parts[2], parseInt(parts[1]) - 1, parts[0]);
+            dateObj.setDate(dateObj.getDate() - 1);
+            changeToDate(dateObj);
+        }
+
+        function nextDay() {
+            saveCurrentDayColetasDirectAsync(activeDateStr);
+            const parts = activeDateStr.split('/');
+            const dateObj = new Date(parts[2], parseInt(parts[1]) - 1, parts[0]);
+            dateObj.setDate(dateObj.getDate() + 1);
+            changeToDate(dateObj);
+        }
+
+        function changeToDate(dateObj) {
+            currentSelectedYear = dateObj.getFullYear();
+            currentSelectedMonthIndex = dateObj.getMonth();
+            const dStr = String(dateObj.getDate()).padStart(2, '0') + '/' + String(dateObj.getMonth() + 1).padStart(2, '0') + '/' + currentSelectedYear;
+            activeDateStr = dStr;
+            persistActiveDate(dStr);
+            document.getElementById('currentDateText').innerText = dStr;
+            const cBtn = document.getElementById('copySheetBtn'); if(cBtn) cBtn.style.display = 'none';
+            updateMonthLabels();
+            renderDaysStrip(currentSelectedYear, currentSelectedMonthIndex);
+            fetchDayDataFromSupabase(dStr);
+        }
+
+        function toggleMonthlyView() {
+            const grid = document.getElementById('monthsGrid');
+            grid.style.display = grid.style.display === 'none' ? 'grid' : 'none';
+        }
+        
+        function selectMonth(btn, monthIdx) {
+            selectMonthByIndex(monthIdx);
+        }
+
+        function selectMonthByIndex(monthIdx) {
+            saveCurrentDayColetasDirectAsync(activeDateStr);
             currentSelectedMonthIndex = monthIdx;
             
             const firstDateStr = `01/${String(monthIdx+1).padStart(2,'0')}/${currentSelectedYear}`;
@@ -1712,8 +1934,13 @@
             persistActiveDate(firstDateStr);
             document.getElementById('currentDateText').innerText = firstDateStr;
             const cBtn3 = document.getElementById('copySheetBtn'); if(cBtn3) cBtn3.style.display = 'none';
+            
+            updateMonthLabels();
             renderDaysStrip(currentSelectedYear, monthIdx);
             fetchDayDataFromSupabase(firstDateStr);
+            
+            const grid = document.getElementById('monthsGrid');
+            if (grid) grid.style.display = 'none';
         }
 
 
@@ -1743,10 +1970,7 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             loadColumnWidths();
-            // Marca o botão do mês atual como ativo
-            document.querySelectorAll('.month-btn').forEach((btn, idx) => {
-                btn.classList.toggle('active', idx === currentSelectedMonthIndex);
-            });
+            updateMonthLabels();
             document.getElementById('currentDateText').innerText = activeDateStr;
                 const cBtn2 = document.getElementById('copySheetBtn'); if(cBtn2) cBtn2.style.display = 'none';
             renderDaysStrip(currentSelectedYear, currentSelectedMonthIndex);
