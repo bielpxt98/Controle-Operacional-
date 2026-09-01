@@ -135,27 +135,32 @@ async function startWhatsApp() {
     // =========================================================
     // 1. MENSAGEM NO PRIVADO
     // =========================================================
+    const senderNameUpper = senderName.toUpperCase();
+    const isTerceiro = senderNameUpper.includes("ARIEL") || senderNameUpper.includes("LEANDRO");
+
     if (!isFromGroup) {
-        if (!isAdmin) return; 
+        if (!isAdmin && !isTerceiro) return; 
         
-        let json = null;
-        if (msg.message.imageMessage) {
-            console.log("[WPP-PRIVADO] Nova imagem de programacao de " + senderName);
-            const { downloadMediaMessage } = require('@whiskeysockets/baileys');
-            const pino = require('pino');
-            const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: "silent" }) });
-            json = await classifyImage(buffer, captionMsg, isFromGroup, false);
-        } else if (txtMsg && txtMsg.toUpperCase().includes("PROGRAMA")) {
-            console.log("[WPP-PRIVADO] Novo texto de programacao de " + senderName);
-            json = await classifyImage(null, txtMsg, isFromGroup, true);
-        } else {
+        if (isAdmin) {
+            let json = null;
+            if (msg.message.imageMessage) {
+                console.log("[WPP-PRIVADO] Nova imagem de programacao de " + senderName);
+                const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+                const pino = require('pino');
+                const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: "silent" }) });
+                json = await classifyImage(buffer, captionMsg, isFromGroup, false);
+            } else if (txtMsg && txtMsg.toUpperCase().includes("PROGRAMA")) {
+                console.log("[WPP-PRIVADO] Novo texto de programacao de " + senderName);
+                json = await classifyImage(null, txtMsg, isFromGroup, true);
+            } else {
+                return;
+            }
+
+            if (json && json.tipo === "PROGRAMACAO") {
+                await handleMotorista(json, senderName);
+            }
             return;
         }
-
-        if (json && json.tipo === "PROGRAMACAO") {
-            await handleMotorista(json, senderName);
-        }
-        return;
     }
 
     // =========================================================
@@ -180,7 +185,7 @@ async function startWhatsApp() {
         const srMatch = txtMsg.match(/\b\d{8}\b/);
         if (srMatch) {
             const numeroSR = srMatch[0];
-            const motoristasConhecidos = ["WILSON", "GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIS", "FABIO", "JEAN", "ARIEL"];
+            const motoristasConhecidos = ["WILSON", "GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIS", "FABIO", "JEAN", "ARIEL", "LEANDRO"];
             let motoristaAlvo = motoristasConhecidos.find(m => txtMsg.toUpperCase().includes(m));
             
             if (motoristaAlvo) {
@@ -246,7 +251,7 @@ async function startWhatsApp() {
     // LÓGICA DE MARCAÇÃO MANUAL H_LOCAL (ADMIN)
     // ==========================================
     if (isAdmin && txtMsg) {
-        const motoristasConhecidos = ["WILSON", "GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIZ", "LUIS", "FABIO", "JEAN", "ARIEL"];
+        const motoristasConhecidos = ["WILSON", "GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIZ", "LUIS", "FABIO", "JEAN", "ARIEL", "LEANDRO"];
         const palavrasMsg = txtMsg.trim().split(/\s+/);
         const firstWord = palavrasMsg[0].toUpperCase();
         
@@ -393,7 +398,7 @@ async function startWhatsApp() {
         const { downloadMediaMessage } = require('@whiskeysockets/baileys');
         const pino = require('pino');
         const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: "silent" }) });
-        const json = await classifyImage(buffer, captionMsg, isFromGroup);
+        const json = await classifyImage(buffer, captionMsg, true);
         if (json && json.tipo === "NF_ASSINADA") {
             const clienteLimpo = (json.cliente || "").toUpperCase().trim();
             const deliveryLido = json.delivery || "";
