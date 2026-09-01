@@ -1249,6 +1249,10 @@
 
                     document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active'));
                     pill.classList.add('active');
+                    
+                    const scrollPos = pill.offsetLeft - (strip.clientWidth / 2) + (pill.clientWidth / 2);
+                    strip.scrollTo({ left: scrollPos, behavior: 'smooth' });
+
                     activeDateStr = fullDateStr;
                     persistActiveDate(fullDateStr);
                     document.getElementById('currentDateText').innerText = fullDateStr;
@@ -1264,7 +1268,8 @@
             setTimeout(() => {
                 const activePill = strip.querySelector('.day-pill.active');
                 if (activePill) {
-                    activePill.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                    const scrollPos = activePill.offsetLeft - (strip.clientWidth / 2) + (activePill.clientWidth / 2);
+                    strip.scrollTo({ left: scrollPos, behavior: 'smooth' });
                 }
             }, 50);
         }
