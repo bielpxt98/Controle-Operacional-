@@ -857,6 +857,7 @@
                     <i class="fa-solid fa-magnifying-glass search-icon"></i>
                     <input type="text" id="searchInput" class="search-input" placeholder="Pesquisar por Nome, Delivery ou Cliente..." autocomplete="off" oninput="filterTable()" onkeyup="filterTable()">
                 </div>
+                <button class="view-monthly-btn" onclick="goToToday()" style="background: var(--accent-blue); color: white; border-color: var(--accent-blue);">Hoje <i class="fa-solid fa-calendar-day"></i></button>
                 <button class="view-monthly-btn" onclick="toggleMonthlyView()">Ver Calendário Mensal <i class="fa-solid fa-calendar-days"></i></button>
             </div>
         </div>
@@ -1947,6 +1948,18 @@
             updateMonthLabels();
             renderDaysStrip(currentSelectedYear, currentSelectedMonthIndex);
             fetchDayDataFromSupabase(dStr);
+        }
+
+        function goToToday() {
+            saveCurrentDayColetasDirectAsync(activeDateStr);
+            const dateObj = new Date();
+            changeToDate(dateObj);
+            
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput && searchInput.value.trim() !== '') {
+                searchInput.value = '';
+                filterTable();
+            }
         }
 
         function toggleMonthlyView() {
