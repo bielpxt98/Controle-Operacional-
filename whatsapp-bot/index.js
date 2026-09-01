@@ -466,6 +466,7 @@ async function iniciarLoopCHEP() {
                 .select('*')
                 .or(`data.ilike.%${dataHoje}%,data.ilike.%${dataAmanha}%`)
                 .not('motorista', 'is', null)
+                .not('motorista', 'ilike', '%SELECIONE%')
                 .is('status_chep', null);
             
             if (error) { console.error("Erro banco:", error); }
@@ -495,7 +496,7 @@ async function iniciarLoopCHEP() {
               const mesAmanha = (amanha.getMonth() + 1).toString().padStart(2, '0');
               const dataAmanha = diaAmanha + '/' + mesAmanha;
               
-              const { data } = await supabase.from('deliveries').select('*').or(`data.ilike.%${dataHoje}%,data.ilike.%${dataAmanha}%`).not('motorista', 'is', null).is('status_chep', null);
+              const { data } = await supabase.from('deliveries').select('*').or(`data.ilike.%${dataHoje}%,data.ilike.%${dataAmanha}%`).not('motorista', 'is', null).not('motorista', 'ilike', '%SELECIONE%').is('status_chep', null);
               if (data && data.length > 0) { await runChepProgramacaoAmanha(data); }
           } catch(e) {}
           chepRodando = false;
