@@ -202,7 +202,7 @@ async function startWhatsApp() {
                     }
                 }
                 
-                let query = supabase.from('deliveries').select('id, cliente').ilike('motorista', `%${motoristaAlvo}%`).ilike('data', `%${dataHojeCurta}%`).is('f_horario', null);
+                let query = supabase.from('deliveries').select('id, cliente').ilike('motorista', `%${motoristaAlvo}%`).is('f_horario', null);
                 const { data: pendentes } = await query;
                 
                 if (pendentes && pendentes.length > 0) {
@@ -239,6 +239,8 @@ async function startWhatsApp() {
                     return; 
                 } else {
                     console.log(`[WPP-ADMIN] Nao achei coleta pendente para ${motoristaAlvo} hoje.`);
+                    await sock.sendMessage('120363408148934220@g.us', { text: `❌ Não consegui achar carga pendente para ${motoristaAlvo} (sem H_FINALIZADO).` });
+                    return;
                 }
             }
         }
