@@ -191,11 +191,13 @@ async function startWhatsApp() {
                 const { data: pendentes } = await query;
                 
                 if (pendentes && pendentes.length > 0) {
+                    const dataHojeCompleta = dataHojeCurta + '/' + hojeObj.getFullYear();
                     const { error: updErr } = await supabase.from('deliveries').update({
                         sr: numeroSR,
                         f_horario: horaAtual,
                         status: 'CONCLUIDO',
-                        data_finalizacao: dataHojeCurta
+                        data_finalizacao: dataHojeCompleta,
+                        df: dataHojeCompleta
                     }).eq('id', pendentes[0].id);
                     
                     if (updErr) console.log('[ERRO SUPABASE SR]', updErr);
@@ -429,9 +431,10 @@ async function startWhatsApp() {
                 }
             }
             if (finalizavelId) {
-                const { error: updErr } = await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO', data_finalizacao: dataHojeCurta }).eq('id', finalizavelId);
+                const dataHojeCompleta = dataHojeCurta + '/' + hojeObj.getFullYear();
+                const { error: updErr } = await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO', data_finalizacao: dataHojeCompleta, df: dataHojeCompleta }).eq('id', finalizavelId);
                 if (updErr) console.log('[ERRO SUPABASE]', updErr);
-                await sock.sendMessage('120363408148934220@g.us', { text: `✅ H_FINALIZADO marcado! Cliente: ${finalizavelCliente} | Delivery: ${finalizavelDelivery} | Hora: ${horaAtual}` });
+                await sock.sendMessage('120363408148934220@g.us', { text: `✅ H_FINALIZADO marcado! Cliente: ${finalizavelCliente} | Delivery: ${finalizavelDelivery} | Hora: ${horaAtual} | DF: ${dataHojeCompleta}` });
                 console.log(`[WPP-GRUPO] H_FINALIZADO marcado com sucesso! ID: ${finalizavelId}`);
             } else {
                 console.log(`[WPP-GRUPO] FALHA TOTAL: Nenhuma carga encontrada para motorista=${motoristaPrimeiroNome} hoje ou pelo delivery`);
