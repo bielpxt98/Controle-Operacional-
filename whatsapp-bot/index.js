@@ -281,7 +281,7 @@ async function startWhatsApp() {
                 }
                 
                 if (escolhido) {
-                    await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', escolhido.id);
+                    await supabase.from('deliveries').update({ l_horario: horaAtual, f_horario: '-' }).eq('id', escolhido.id);
                     await sock.sendMessage('120363408148934220@g.us', { text: `📍 H_LOCAL marcado manualmente para ${motoristaAlvo} (${horaAtual})\nCliente: ${escolhido.cliente || "N/A"}` });
                     console.log(`[WPP-ADMIN] H_LOCAL marcado no banco! (${horaAtual}) Cliente ID: ${escolhido.id}`);
                 }
@@ -352,7 +352,7 @@ async function startWhatsApp() {
             .order('id', { ascending: true });
             
         if (pendentes && pendentes.length === 1) {
-            await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', pendentes[0].id);
+            await supabase.from('deliveries').update({ l_horario: horaAtual, f_horario: '-' }).eq('id', pendentes[0].id);
             await sock.sendMessage('120363408148934220@g.us', { text: `📍 H_LOCAL marcado para ${motoristaPrimeiroNome} (${horaAtual})\nCliente: ${pendentes[0].cliente || "N/A"}` });
             console.log(`[WPP-GRUPO] H_LOCAL marcado no banco! (${horaAtual})`);
         } else if (pendentes && pendentes.length > 1) {
@@ -374,7 +374,7 @@ async function startWhatsApp() {
             }
             
             if (escolhido) {
-                await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', escolhido.id);
+                await supabase.from('deliveries').update({ l_horario: horaAtual, f_horario: '-' }).eq('id', escolhido.id);
                 await sock.sendMessage('120363408148934220@g.us', { text: `📍 H_LOCAL marcado para ${motoristaPrimeiroNome} (${horaAtual}) via GPS Inteligente!\nCliente: ${escolhido.cliente || "N/A"}` });
                 console.log(`[WPP-GRUPO] H_LOCAL marcado no banco por GPS Inteligente! (${horaAtual})`);
             } else {
