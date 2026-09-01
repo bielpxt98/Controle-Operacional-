@@ -136,7 +136,7 @@ async function startWhatsApp() {
     // 1. MENSAGEM NO PRIVADO
     // =========================================================
     const senderNameUpper = senderName.toUpperCase();
-    const isTerceiro = senderNameUpper.includes("ARIEL") || senderNameUpper.includes("LEANDRO");
+    const isTerceiro = senderNameUpper.includes("ARIEL") || senderNameUpper.includes("LEANDRO") || senderNameUpper.includes("LEO");
 
     if (!isFromGroup) {
         if (!isAdmin && !isTerceiro) return; 
@@ -171,6 +171,7 @@ async function startWhatsApp() {
     motoristaPrimeiroNome = motoristaPrimeiroNome.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     if (motoristaPrimeiroNome.includes("GABRIEL")) motoristaPrimeiroNome = "GABRIEL";
     if (motoristaPrimeiroNome === "BORGES") motoristaPrimeiroNome = "ARGEMIRO"; // "borges filho" -> ARGEMIRO
+    if (motoristaPrimeiroNome === "LEO") motoristaPrimeiroNome = "LEANDRO"; // "Leo carreta" -> LEANDRO
     
     const hojeObj = new Date();
     const dataHojeCurta = hojeObj.getDate().toString().padStart(2, '0') + '/' + (hojeObj.getMonth() + 1).toString().padStart(2, '0');
@@ -599,9 +600,9 @@ Responda APENAS com o JSON.`;
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
-            "gemini-3.5-flash",
-            "gemini-3.7-flash",
-            "gemini-3.5-flash-lite"
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-8b",
+            "gemini-1.5-pro"
         ];
 
         let responseText = null;
@@ -686,9 +687,9 @@ Regras:
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
-            "gemini-3.5-flash",
-            "gemini-3.7-flash",
-            "gemini-3.5-flash-lite"
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-8b",
+            "gemini-1.5-pro"
         ];
 
         let responseText = null;
