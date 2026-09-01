@@ -642,6 +642,7 @@ Responda APENAS com o JSON.`;
         
         const modelsToTry = [
             "gemini-3.5-flash",
+            "gemini-3.6-flash",
             "gemini-3.7-flash",
             "gemini-3.5-flash-lite"
         ];
@@ -729,6 +730,7 @@ Regras:
         
         const modelsToTry = [
             "gemini-3.5-flash",
+            "gemini-3.6-flash",
             "gemini-3.7-flash",
             "gemini-3.5-flash-lite"
         ];
