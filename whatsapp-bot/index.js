@@ -44,6 +44,26 @@ console.log("==========================================");
 console.log("🚀 ROBÔ REINICIADO / CÓDIGO ATUALIZADO 🚀");
 console.log("==========================================");
 
+// ==========================================
+// FILA SEQUENCIAL DE PROCESSAMENTO DE MÍDIA
+// Processa 1 imagem/áudio por vez para evitar sobrecarga de CPU/RAM e limites da API
+// ==========================================
+let mediaQueue = Promise.resolve();
+function enqueueMediaTask(taskFn) {
+    mediaQueue = mediaQueue
+        .then(async () => {
+            try {
+                await taskFn();
+            } catch (err) {
+                console.error('[FILA-MÍDIA] Erro na execução da tarefa:', err.message || err);
+            }
+        })
+        .catch(err => {
+            console.error('[FILA-MÍDIA] Erro crítico na fila:', err);
+        });
+    return mediaQueue;
+}
+
 const ws = require('ws');
 global.WebSocket = ws;
 require('dotenv').config({ path: '../.env' });
@@ -448,103 +468,106 @@ async function startWhatsApp() {
     }
 
     if (msg.message.imageMessage && !deliveryMatch) {
-        console.log(`[WPP-GRUPO] Foto enviada por ${motoristaPrimeiroNome}. Analisando se é NF Carimbada...`);
-        const { downloadMediaMessage } = require('@whiskeysockets/baileys');
-        const pino = require('pino');
-        const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: "silent" }) });
-        const json = await classifyImage(buffer, captionMsg, true);
-        if (json && json.tipo === "NF_ASSINADA") {
-            const clienteLimpo = (json.cliente || "").toUpperCase().trim();
-            const deliveryLido = json.delivery || "";
-            const srLido = json.sr || "";
-            console.log(`[WPP-GRUPO] NF ASSINADA! Cliente: ${clienteLimpo} | Delivery: ${deliveryLido} | SR: ${srLido}`);
-            
-            let finalizavelId = null;
-            let finalizavelDelivery = deliveryLido;
-            let finalizavelCliente = clienteLimpo;
-
-            if (srLido) {
-                const matchSR = String(srLido).match(/\d{8}/);
-                if (matchSR) {
-                    const srNum = matchSR[0];
-                    const { data: exatoSR } = await supabase.from('deliveries').select('id, delivery, cliente').eq('sr', srNum).limit(1);
-                    if (exatoSR && exatoSR.length > 0) {
-                        finalizavelId = exatoSR[0].id;
-                        finalizavelDelivery = exatoSR[0].delivery || `SR-${srNum}`;
-                        finalizavelCliente = exatoSR[0].cliente || clienteLimpo;
-                        console.log(`[WPP-GRUPO] ✅ Carga encontrada pela SR: ${srNum} | Cliente: ${finalizavelCliente}`);
-                    }
-                }
-            }
-
-            if (!finalizavelId) {
-                // Estrategia 1: Buscar SOMENTE pelo numero de delivery (mais confiavel)
-                const deliveryStr = String(deliveryLido || "");
-                const candidatos10 = [];
-                if (deliveryStr.length === 10) {
-                    candidatos10.push(deliveryStr);
-                } else if (deliveryStr.length > 10) {
-                    for (let i = 0; i <= deliveryStr.length - 10; i++) {
-                        const sub = deliveryStr.slice(i, i + 10);
-                        if (/^\d{10}$/.test(sub)) candidatos10.push(sub);
-                    }
-                }
+        console.log(`[WPP-GRUPO] Foto enviada por ${motoristaPrimeiroNome}. Enfileirando na fila sequencial...`);
+        enqueueMediaTask(async () => {
+            console.log(`[WPP-GRUPO] Processando foto de ${motoristaPrimeiroNome}...`);
+            const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+            const pino = require('pino');
+            const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: "silent" }) });
+            const json = await classifyImage(buffer, captionMsg, true);
+            if (json && json.tipo === "NF_ASSINADA") {
+                const clienteLimpo = (json.cliente || "").toUpperCase().trim();
+                const deliveryLido = json.delivery || "";
+                const srLido = json.sr || "";
+                console.log(`[WPP-GRUPO] NF ASSINADA! Cliente: ${clienteLimpo} | Delivery: ${deliveryLido} | SR: ${srLido}`);
                 
-                for (const num of candidatos10) {
-                    const { data: exato } = await supabase.from('deliveries').select('id, delivery, cliente').eq('delivery', num).limit(1);
-                    if (exato && exato.length > 0) {
-                        finalizavelId = exato[0].id;
-                        finalizavelDelivery = exato[0].delivery;
-                        finalizavelCliente = exato[0].cliente || clienteLimpo;
-                        console.log(`[WPP-GRUPO] ✅ Delivery encontrado pelo numero: ${num} | Cliente: ${finalizavelCliente}`);
-                        break;
+                let finalizavelId = null;
+                let finalizavelDelivery = deliveryLido;
+                let finalizavelCliente = clienteLimpo;
+
+                if (srLido) {
+                    const matchSR = String(srLido).match(/\d{8}/);
+                    if (matchSR) {
+                        const srNum = matchSR[0];
+                        const { data: exatoSR } = await supabase.from('deliveries').select('id, delivery, cliente').eq('sr', srNum).limit(1);
+                        if (exatoSR && exatoSR.length > 0) {
+                            finalizavelId = exatoSR[0].id;
+                            finalizavelDelivery = exatoSR[0].delivery || `SR-${srNum}`;
+                            finalizavelCliente = exatoSR[0].cliente || clienteLimpo;
+                            console.log(`[WPP-GRUPO] ✅ Carga encontrada pela SR: ${srNum} | Cliente: ${finalizavelCliente}`);
+                        }
                     }
                 }
-            }
-            // Estrategia 2 (Fallback Inteligente): Busca pelas cargas do motorista e cruza com o NOME DO CLIENTE lido
-            if (!finalizavelId) {
-                console.log(`[WPP-GRUPO] Delivery não encontrado. Tentando FALLBACK INTELIGENTE cruzando cliente para motorista=${motoristaPrimeiroNome}...`);
-                
-                // Busca TODAS as coletas do motorista que ainda não foram concluídas (pode ser de dias anteriores)
-                const { data: pendentes } = await supabase.from('deliveries')
-                    .select('id, delivery, cliente, f_horario, data')
-                    .ilike('motorista', `%${motoristaPrimeiroNome}%`)
-                    .neq('status', 'CONCLUIDO')
-                    .order('id', { ascending: true });
 
-                if (pendentes && pendentes.length > 0) {
-                    // Tenta achar uma coleta onde o nome do cliente bata com o que a IA leu
-                    let alvo = null;
-                    const clienteIA = clienteLimpo.split(' ')[0]; // Pega a primeira palavra (ex: "WMS" ou "ASSAI")
-                    
-                    for (const p of pendentes) {
-                        if (p.cliente && p.cliente.toUpperCase().includes(clienteIA)) {
-                            alvo = p;
-                            console.log(`[WPP-GRUPO] Match de cliente encontrado no Fallback! Banco: ${p.cliente} | IA: ${clienteLimpo}`);
-                            break;
+                if (!finalizavelId) {
+                    // Estrategia 1: Buscar SOMENTE pelo numero de delivery (mais confiavel)
+                    const deliveryStr = String(deliveryLido || "");
+                    const candidatos10 = [];
+                    if (deliveryStr.length === 10) {
+                        candidatos10.push(deliveryStr);
+                    } else if (deliveryStr.length > 10) {
+                        for (let i = 0; i <= deliveryStr.length - 10; i++) {
+                            const sub = deliveryStr.slice(i, i + 10);
+                            if (/^\d{10}$/.test(sub)) candidatos10.push(sub);
                         }
                     }
                     
-                    // Se achou pelo cliente, usa ela. Se não achou, NÃO preenche aleatório.
-                    if (alvo) {
-                        finalizavelId = alvo.id;
-                        finalizavelDelivery = alvo.delivery || "N/A";
-                        finalizavelCliente = alvo.cliente || "Desconhecido";
-                        console.log(`[WPP-GRUPO] Fallback Inteligente definiu: ${finalizavelCliente} | Delivery: ${finalizavelDelivery}`);
+                    for (const num of candidatos10) {
+                        const { data: exato } = await supabase.from('deliveries').select('id, delivery, cliente').eq('delivery', num).limit(1);
+                        if (exato && exato.length > 0) {
+                            finalizavelId = exato[0].id;
+                            finalizavelDelivery = exato[0].delivery;
+                            finalizavelCliente = exato[0].cliente || clienteLimpo;
+                            console.log(`[WPP-GRUPO] ✅ Delivery encontrado pelo numero: ${num} | Cliente: ${finalizavelCliente}`);
+                            break;
+                        }
                     }
                 }
+                // Estrategia 2 (Fallback Inteligente): Busca pelas cargas do motorista e cruza com o NOME DO CLIENTE lido
+                if (!finalizavelId) {
+                    console.log(`[WPP-GRUPO] Delivery não encontrado. Tentando FALLBACK INTELIGENTE cruzando cliente para motorista=${motoristaPrimeiroNome}...`);
+                    
+                    // Busca TODAS as coletas do motorista que ainda não foram concluídas (pode ser de dias anteriores)
+                    const { data: pendentes } = await supabase.from('deliveries')
+                        .select('id, delivery, cliente, f_horario, data')
+                        .ilike('motorista', `%${motoristaPrimeiroNome}%`)
+                        .neq('status', 'CONCLUIDO')
+                        .order('id', { ascending: true });
+
+                    if (pendentes && pendentes.length > 0) {
+                        // Tenta achar uma coleta onde o nome do cliente bata com o que a IA leu
+                        let alvo = null;
+                        const clienteIA = clienteLimpo.split(' ')[0]; // Pega a primeira palavra (ex: "WMS" ou "ASSAI")
+                        
+                        for (const p of pendentes) {
+                            if (p.cliente && p.cliente.toUpperCase().includes(clienteIA)) {
+                                alvo = p;
+                                console.log(`[WPP-GRUPO] Match de cliente encontrado no Fallback! Banco: ${p.cliente} | IA: ${clienteLimpo}`);
+                                break;
+                            }
+                        }
+                        
+                        // Se achou pelo cliente, usa ela. Se não achou, NÃO preenche aleatório.
+                        if (alvo) {
+                            finalizavelId = alvo.id;
+                            finalizavelDelivery = alvo.delivery || "N/A";
+                            finalizavelCliente = alvo.cliente || "Desconhecido";
+                            console.log(`[WPP-GRUPO] Fallback Inteligente definiu: ${finalizavelCliente} | Delivery: ${finalizavelDelivery}`);
+                        }
+                    }
+                }
+                if (finalizavelId) {
+                    const dataHojeCompleta = dataHojeCurta + '/' + hojeObj.getFullYear();
+                    const { error: updErr } = await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO', data_finalizacao: dataHojeCompleta }).eq('id', finalizavelId);
+                    if (updErr) console.log('[ERRO SUPABASE]', updErr);
+                    await sock.sendMessage('120363408148934220@g.us', { text: `✅ H_FINALIZADO marcado! Cliente: ${finalizavelCliente} | Delivery: ${finalizavelDelivery} | Hora: ${horaAtual} | DF: ${dataHojeCompleta}` });
+                    console.log(`[WPP-GRUPO] H_FINALIZADO marcado com sucesso! ID: ${finalizavelId}`);
+                } else {
+                    console.log(`[WPP-GRUPO] FALHA TOTAL: Nenhuma carga encontrada para motorista=${motoristaPrimeiroNome} hoje ou pelo delivery`);
+                    await sock.sendMessage('120363408148934220@g.us', { text: `⚠️ Não consegui localizar a coleta de ${motoristaPrimeiroNome} para finalizar.\nDelivery lido: ${deliveryLido}\nPreencha manualmente no painel.` });
+                }
             }
-            if (finalizavelId) {
-                const dataHojeCompleta = dataHojeCurta + '/' + hojeObj.getFullYear();
-                const { error: updErr } = await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO', data_finalizacao: dataHojeCompleta }).eq('id', finalizavelId);
-                if (updErr) console.log('[ERRO SUPABASE]', updErr);
-                await sock.sendMessage('120363408148934220@g.us', { text: `✅ H_FINALIZADO marcado! Cliente: ${finalizavelCliente} | Delivery: ${finalizavelDelivery} | Hora: ${horaAtual} | DF: ${dataHojeCompleta}` });
-                console.log(`[WPP-GRUPO] H_FINALIZADO marcado com sucesso! ID: ${finalizavelId}`);
-            } else {
-                console.log(`[WPP-GRUPO] FALHA TOTAL: Nenhuma carga encontrada para motorista=${motoristaPrimeiroNome} hoje ou pelo delivery`);
-                await sock.sendMessage('120363408148934220@g.us', { text: `⚠️ Não consegui localizar a coleta de ${motoristaPrimeiroNome} para finalizar.\nDelivery lido: ${deliveryLido}\nPreencha manualmente no painel.` });
-            }
-        }
+        });
         return;
     }
 });
@@ -627,11 +650,17 @@ async function classifyImage(buffer, textCaption, isFromGroup, isTextOnly = fals
         if (isFromGroup) {
             prompt = `Analise a imagem em anexo, que é um documento enviado por um motorista.
 Regras:
-1. Verifique se a imagem contém carimbos de recebimento, assinaturas grandes confirmando a entrega, ou textos manuscritos como 'recebido'. Se SIM, isso indica que a carga foi FINALIZADA.
+1. Verifique se a imagem contém carimbos de recebimento, assinaturas confirmando a entrega, ou textos manuscritos como 'recebido'. Se SIM, isso indica que a carga foi FINALIZADA.
 2. Neste caso, extraia a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (ex: "ASSAI", "ATACADAO", "WMS"). ATENÇÃO ÀS REMESSAS: Se a nota tiver carimbo da "JACOBS", "DOUWE EGBERTS" ou "JDE", preencha o cliente como "JDE". Se tiver "JSL", preencha "JSL". Se tiver "BOOMIX", preencha "BOOMIX".
-3. O número do Delivery é frequentemente escrito à mão (manuscrito) na nota e contém EXATAMENTE 10 dígitos (geralmente começando com 37 ou 34).
-4. O número de SR (Service Request) também pode estar escrito à mão ou impresso na declaração, e contém EXATAMENTE 8 dígitos (ex: 43314606).
-5. Devolva EXATAMENTE no formato JSON: {"tipo": "NF_ASSINADA", "cliente": "PRIMEIRA_PALAVRA_CLIENTE", "delivery": "NUM_10_DIGITOS", "sr": "NUM_8_DIGITOS"} (Se não achar o delivery ou a SR, mande null nos respectivos campos).
+3. Identifique o TIPO DE DOCUMENTO com máxima atenção:
+   a) NOTA FISCAL (DANFE / NF-e / canhoto):
+      - O número do Delivery é frequentemente escrito à mão (manuscrito) e contém EXATAMENTE 10 dígitos (começando com 37 ou 34).
+      - Em NOTA FISCAL, NÃO existe número de SR! O campo "sr" DEVE ser obrigatoriamente null.
+   b) DECLARAÇÃO DE DEVOLUÇÃO OU RECUSA (papel ofício / declaração avulsa / timbrado):
+      - O número de SR (Service Request) contém EXATAMENTE 8 dígitos (ex: 43469815, 43314606). Retorne este número no campo "sr".
+      - Só preencha "delivery" se houver um número explícito de 10 dígitos iniciando com 37 ou 34. Caso contrário, retorne "delivery": null.
+4. REGRA CRÍTICA ANTI-GLID: Códigos de identificação de cliente conhecidos como GLID (que geralmente contêm 10 dígitos iniciando com 1000... ou 5500...) NUNCA são número de delivery! Jamais coloque um GLID no campo delivery. Se o único número de 10 dígitos for um GLID de cliente, coloque "delivery": null.
+5. Devolva EXATAMENTE no formato JSON: {"tipo": "NF_ASSINADA", "cliente": "PRIMEIRA_PALAVRA_CLIENTE", "delivery": "NUM_10_DIGITOS", "sr": "NUM_8_DIGITOS"} (Se não achar o delivery ou a SR legítimos, mande null nos respectivos campos).
 6. Se a imagem não tiver carimbos/assinaturas de conclusão nem texto de recebido, devolva: {"tipo": "IRRELEVANTE"}`;
         } else {
             prompt = `Analise a programação de cargas diárias enviada pelo usuário (pode ser uma imagem de tabela ou texto corrido como 'ArgemiroWMS Max').
@@ -668,11 +697,11 @@ Responda APENAS com o JSON.`;
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
-            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite",
             "gemini-2.5-flash",
+            "gemini-3.5-flash",
             "gemini-3.6-flash",
-            "gemini-3.7-flash",
-            "gemini-3.5-flash-lite"
+            "gemini-3.7-flash"
         ];
 
         let responseText = null;
@@ -757,11 +786,11 @@ Regras:
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
-            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite",
             "gemini-2.5-flash",
+            "gemini-3.5-flash",
             "gemini-3.6-flash",
-            "gemini-3.7-flash",
-            "gemini-3.5-flash-lite"
+            "gemini-3.7-flash"
         ];
 
         let responseText = null;
