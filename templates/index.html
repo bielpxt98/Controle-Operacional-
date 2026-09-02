@@ -1749,7 +1749,7 @@
                 if (id) seenIds.add(id);
 
                 let driverName = driverSelect.selectedOptions[0].text.replace(' ▼', '');
-                if (driverName === '-- SELECIONE --' || driverName === '-- SELECIONE MOTORISTA --') driverName = '';
+                if (driverName === '-- SELECIONE --' || driverName === '-- SELECIONE MOTORISTA --') driverName = '-';
                 const delivery = tr.querySelector('.input-delivery')?.value || '';
                 const cliente = tr.querySelector('.input-cliente')?.value || '';
                 const paletes = tr.querySelector('.input-paletes')?.value || '';
@@ -1757,7 +1757,7 @@
                 const valor = tr.querySelector('.input-valor')?.value || '';
                 const obs = tr.querySelector('.input-observacao')?.value || '';
                 
-                if (!delivery && !cliente && !driverName && !paletes && !pc && !valor && !obs) return;
+                if (!delivery && !cliente && (!driverName || driverName === "-") && !paletes && !pc && !valor && !obs) return;
 
                 const originalDate = tr.getAttribute('data-original-date');
                 const item = {
@@ -1792,7 +1792,7 @@
                 if (id) seenIds.add(id);
 
                 let driverName = driverSelect.selectedOptions[0].text.replace(' ▼', '');
-                if (driverName === '-- SELECIONE --' || driverName === '-- SELECIONE MOTORISTA --') driverName = '';
+                if (driverName === '-- SELECIONE --' || driverName === '-- SELECIONE MOTORISTA --') driverName = '-';
                 const delivery = card.querySelector('.input-delivery')?.value || '';
                 const cliente = card.querySelector('.input-cliente')?.value || '';
                 const paletes = card.querySelector('.input-paletes')?.value || '';
@@ -1800,7 +1800,7 @@
                 const valor = card.querySelector('.input-valor')?.value || '';
                 const obs = card.querySelector('.input-observacao')?.value || '';
                 
-                if (!delivery && !cliente && !driverName && !paletes && !pc && !valor && !obs) return;
+                if (!delivery && !cliente && (!driverName || driverName === "-") && !paletes && !pc && !valor && !obs) return;
 
                 const item = {
                     data: activeDateStr,
