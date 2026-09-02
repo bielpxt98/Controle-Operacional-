@@ -283,8 +283,7 @@ async function startWhatsApp() {
                     updateObj = {
                         f_horario: horaAtual,
                         status: 'CONCLUIDO',
-                        data_finalizacao: dataHojeCompleta,
-                        df: dataHojeCompleta
+                        data_finalizacao: dataHojeCompleta
                     };
                     msgSucesso = `✅ H_FINALIZADO corrigido manualmente! Cliente: ${verif[0].cliente} | Delivery: ${numeroDeliveryStr} | Hora: ${horaAtual} | DF: ${dataHojeCompleta}`;
                 }
@@ -537,7 +536,7 @@ async function startWhatsApp() {
             }
             if (finalizavelId) {
                 const dataHojeCompleta = dataHojeCurta + '/' + hojeObj.getFullYear();
-                const { error: updErr } = await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO', data_finalizacao: dataHojeCompleta, df: dataHojeCompleta }).eq('id', finalizavelId);
+                const { error: updErr } = await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO', data_finalizacao: dataHojeCompleta }).eq('id', finalizavelId);
                 if (updErr) console.log('[ERRO SUPABASE]', updErr);
                 await sock.sendMessage('120363408148934220@g.us', { text: `✅ H_FINALIZADO marcado! Cliente: ${finalizavelCliente} | Delivery: ${finalizavelDelivery} | Hora: ${horaAtual} | DF: ${dataHojeCompleta}` });
                 console.log(`[WPP-GRUPO] H_FINALIZADO marcado com sucesso! ID: ${finalizavelId}`);
