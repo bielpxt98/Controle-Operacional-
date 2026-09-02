@@ -505,7 +505,7 @@ def whatsapp_qr():
 def view_logs():
     import subprocess
     try:
-        log_out = subprocess.check_output(["pm2", "logs", "RoboWPP", "--lines", "100", "--nostream"], text=True, stderr=subprocess.STDOUT)
+        log_out = subprocess.check_output(["pm2", "logs", "RoboWPP", "--lines", "120", "--nostream", "--out"], text=True, stderr=subprocess.STDOUT)
     except Exception as e:
         log_out = f"Erro ao ler logs via PM2: {str(e)}"
 

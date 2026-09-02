@@ -733,17 +733,17 @@ Responda APENAS com o JSON.`;
                     break;
                 } catch (err) {
                     if (err.message.includes("429") || err.message.includes("RESOURCE_EXHAUSTED") || err.message.includes("quota")) {
-                        console.error(`[GEMINI] ⚠️ COTA EXCEDIDA: ${modelName} / ...${apiKey.slice(-4)}`);
+                        console.log(`[GEMINI] ⚠️ COTA EXCEDIDA: ${modelName} / ...${apiKey.slice(-4)}`);
                     } else if (err.message.includes("API_KEY_INVALID") || err.message.includes("leaked") || err.message.includes("reported")) {
-                        console.error(`[GEMINI] 🔑 CHAVE INVÁLIDA/BLOQUEADA: ...${apiKey.slice(-4)} — pulando esta chave`);
+                        console.log(`[GEMINI] 🔑 CHAVE INVÁLIDA/BLOQUEADA: ...${apiKey.slice(-4)} — pulando esta chave`);
                         keyInvalid = true;
                         break;
                     } else if (err.message.includes("503") || err.message.includes("overloaded") || err.message.includes("UNAVAILABLE")) {
-                        console.error(`[GEMINI] 🔴 SERVIDOR SOBRECARREGADO: ${modelName} / ...${apiKey.slice(-4)}`);
+                        console.log(`[GEMINI] 🔴 SERVIDOR SOBRECARREGADO: ${modelName} / ...${apiKey.slice(-4)}`);
                     } else if (err.message.includes("Timeout")) {
-                        console.error(`[GEMINI] ⏱️ TIMEOUT: ${modelName} / ...${apiKey.slice(-4)}`);
+                        console.log(`[GEMINI] ⏱️ TIMEOUT: ${modelName} / ...${apiKey.slice(-4)}`);
                     } else {
-                        console.error(`[GEMINI] ❌ ERRO: ${modelName} / ...${apiKey.slice(-4)} | ${err.message.slice(0, 120)}`);
+                        console.log(`[GEMINI] ❌ ERRO: ${modelName} / ...${apiKey.slice(-4)} | ${err.message.slice(0, 120)}`);
                     }
                 }
             }
@@ -822,15 +822,15 @@ Regras:
                     break;
                 } catch (err) {
                     if (err.message.includes("429") || err.message.includes("RESOURCE_EXHAUSTED") || err.message.includes("quota")) {
-                        console.error(`[GEMINI-TEXTO] ⚠️ COTA EXCEDIDA: ${modelName} / ...${apiKey.slice(-4)}`);
+                        console.log(`[GEMINI-TEXTO] ⚠️ COTA EXCEDIDA: ${modelName} / ...${apiKey.slice(-4)}`);
                     } else if (err.message.includes("API_KEY_INVALID") || err.message.includes("leaked") || err.message.includes("reported")) {
-                        console.error(`[GEMINI-TEXTO] 🔑 CHAVE INVÁLIDA/BLOQUEADA: ...${apiKey.slice(-4)} — pulando`);
+                        console.log(`[GEMINI-TEXTO] 🔑 CHAVE INVÁLIDA/BLOQUEADA: ...${apiKey.slice(-4)} — pulando`);
                         keyInvalid = true;
                         break;
                     } else if (err.message.includes("503") || err.message.includes("UNAVAILABLE")) {
-                        console.error(`[GEMINI-TEXTO] 🔴 SERVIDOR SOBRECARREGADO: ${modelName} / ...${apiKey.slice(-4)}`);
+                        console.log(`[GEMINI-TEXTO] 🔴 SERVIDOR SOBRECARREGADO: ${modelName} / ...${apiKey.slice(-4)}`);
                     } else {
-                        console.error(`[GEMINI-TEXTO] ❌ ERRO: ${modelName} / ...${apiKey.slice(-4)} | ${err.message.slice(0, 120)}`);
+                        console.log(`[GEMINI-TEXTO] ❌ ERRO: ${modelName} / ...${apiKey.slice(-4)} | ${err.message.slice(0, 120)}`);
                     }
                 }
             }
