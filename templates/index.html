@@ -942,15 +942,16 @@
     <script>
         const driverDatabase = {
             "wilson_reis": { name: "WILSON REIS", cpf: "806.984.765-49", cavalo: "JJF1856", carreta: "NVQ8447" },
-            "gabriel_borges": { name: "GABRIEL BORGES", cpf: "809.066.155-87", cavalo: "KJY3204", carreta: "KGG1152" },
+            "gabriel_borges": { name: "GABRIEL BORGES", cpf: "095.312.255-75", cavalo: "JJF1856", carreta: "NVQ8447" },
             "argemiro_borges": { name: "ARGEMIRO BORGES", cpf: "041.604.865-09", cavalo: "PEG7666", carreta: "DTD8506" },
             "valdemir_de_jesus": { name: "VALDEMIR DE JESUS", cpf: "044.327.095-37", cavalo: "HWB9F22", carreta: "-" },
-            "jones_rosario": { name: "JONES ROSARIO", cpf: "533.594.654.00", cavalo: "JHX3C33", carreta: "KKT9007" },
-            "luis_carlos": { name: "LUIS CARLOS", cpf: "934.560.345-04", cavalo: "KLB5018", carreta: "NKZ6545" },
-            "fabio_souza": { name: "FABIO SOUZA", cpf: "007.714.335-30", cavalo: "PEJ4695", carreta: "NLB7814" },
+            "jones_rosario": { name: "JONES ROSARIO", cpf: "053.359.465-04", cavalo: "JHX3C33", carreta: "KKT9007" },
+            "luis_carlos": { name: "LUIS CARLOS", cpf: "830.317.905-53", cavalo: "KLB5018", carreta: "NKZ6545" },
+            "fabio_souza": { name: "FABIO SOUZA", cpf: "890.066.155-87", cavalo: "PEJ4695", carreta: "NLB7814" },
             "jean_robson": { name: "JEAN ROBSON", cpf: "032.795.865-00", cavalo: "HWB9F22", carreta: "-" },
             "ariel_nascimento": { name: "ARIEL NASCIMENTO", cpf: "050.153.565-95", cavalo: "JVL8A44", carreta: "-" },
-            "leandro_de_andrade": { name: "LEANDRO DE ANDRADE", cpf: "017.793.835.84", cavalo: "NZP7012", carreta: "-" }
+            "leandro_de_andrade": { name: "LEANDRO DE ANDRADE", cpf: "017.793.835.84", cavalo: "NZP7012", carreta: "-" },
+            "romilson_damasceno": { name: "ROMILSON DAMASCENO", cpf: "615.715.635-04", cavalo: "KJY3204", carreta: "KGG1152" }
         };
 
         const dayNamesShort = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
@@ -1500,6 +1501,7 @@
                         <option value="jean_robson" ${driverKey.includes('jean')?'selected':''}>JEAN ROBSON ▼</option>
                         <option value="ariel_nascimento" ${driverKey.includes('ariel')?'selected':''}>ARIEL NASCIMENTO ▼</option>
                         <option value="leandro_de_andrade" ${driverKey.includes('leandro')?'selected':''}>LEANDRO DE ANDRADE ▼</option>
+                        <option value="romilson_damasceno" ${driverKey.includes('romilson')?'selected':''}>ROMILSON DAMASCENO ▼</option>
                     </select>
                 </td>
                 <td><input type="text" class="input-delivery" value="${deliveryVal}" style="font-weight: 700; color: #60a5fa;" oninput="updateWppMessage(this.closest('tr'))" onblur="checkDuplicateDelivery(this); saveCurrentDayColetasSilent()"></td>
@@ -1576,6 +1578,7 @@
                         <option value="jean_robson" ${driverKey.includes('jean')?'selected':''}>JEAN ROBSON</option>
                         <option value="ariel_nascimento" ${driverKey.includes('ariel')?'selected':''}>ARIEL NASCIMENTO</option>
                         <option value="leandro_de_andrade" ${driverKey.includes('leandro')?'selected':''}>LEANDRO DE ANDRADE</option>
+                        <option value="romilson_damasceno" ${driverKey.includes('romilson')?'selected':''}>ROMILSON DAMASCENO</option>
                     </select>
                     <div class="status-badge" style="font-weight: 700; font-size: 0.65rem; border-radius: 4px; padding: 4px 8px; display: inline-block; margin-right: 8px;">PENDENTE</div>
                     <button class="card-delete-btn" onclick="deleteCard(this)"><i class="fa-solid fa-trash"></i></button>

@@ -206,7 +206,7 @@ async function startWhatsApp() {
         const srMatch = txtMsg.match(/\b\d{8}\b/);
         if (srMatch) {
             const numeroSR = srMatch[0];
-            const motoristasConhecidos = ["WILSON", "GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIS", "FABIO", "JEAN", "ARIEL", "LEANDRO"];
+            const motoristasConhecidos = ["WILSON", "GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIS", "FABIO", "JEAN", "ARIEL", "LEANDRO", "ROMILSON"];
             let motoristaAlvo = motoristasConhecidos.find(m => txtMsg.toUpperCase().includes(m));
             
             if (motoristaAlvo) {
@@ -325,11 +325,14 @@ async function startWhatsApp() {
     // LÓGICA DE MARCAÇÃO MANUAL H_LOCAL (ADMIN)
     // ==========================================
     if (isAdmin && txtMsg) {
-        const motoristasConhecidos = ["WILSON", "GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIZ", "LUIS", "FABIO", "JEAN", "ARIEL", "LEANDRO"];
+        const motoristasConhecidos = ["WILSON", "GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIZ", "LUIS", "FABIO", "JEAN", "ARIEL", "LEANDRO", "ROMILSON"];
         const palavrasMsg = txtMsg.trim().split(/\s+/);
         const firstWord = palavrasMsg[0].toUpperCase();
         
-        if (motoristasConhecidos.includes(firstWord) && palavrasMsg.length >= 2 && !/^programa[cç][aã]o/i.test(txtMsg)) {
+        // Evitar que mensagens casuais como "Jones pode sair" ativem o comando
+        const casualRegex = /\b(pode|sair|chegou|vai|ok|aguardando|bom|dia|tarde)\b/i;
+        
+        if (motoristasConhecidos.includes(firstWord) && palavrasMsg.length >= 2 && !/^programa[cç][aã]o/i.test(txtMsg) && !casualRegex.test(txtMsg)) {
             const motoristaAlvo = firstWord;
             const dicaLocal = palavrasMsg.slice(1).join(" ").toLowerCase();
             
@@ -883,8 +886,10 @@ async function handleMotorista(json, senderName) {
             "FABIO": "FABIO SOUZA",
             "GABRIEL": "GABRIEL BORGES",
             "WILSON": "WILSON REIS",
-            "JEAN": "JEAN CARLOS",
-            "ARIEL": "ARIEL"
+            "JEAN": "JEAN ROBSON",
+            "ARIEL": "ARIEL NASCIMENTO",
+            "LEANDRO": "LEANDRO DE ANDRADE",
+            "ROMILSON": "ROMILSON DAMASCENO"
         };
         for (const key of Object.keys(mapNomes)) {
             if (motoristaFormatado.includes(key)) {
