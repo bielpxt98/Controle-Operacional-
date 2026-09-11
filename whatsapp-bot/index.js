@@ -206,7 +206,7 @@ async function startWhatsApp() {
         const srMatch = txtMsg.match(/\b\d{8}\b/);
         if (srMatch) {
             const numeroSR = srMatch[0];
-            const motoristasConhecidos = ["WILSON", "GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIS", "FABIO", "JEAN", "ARIEL", "LEANDRO", "ROMILSON"];
+            const motoristasConhecidos = ["GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIS", "FABIO", "ARIEL", "LEANDRO", "ROMILSON"];
             let motoristaAlvo = motoristasConhecidos.find(m => txtMsg.toUpperCase().includes(m));
             
             if (motoristaAlvo) {
@@ -325,7 +325,7 @@ async function startWhatsApp() {
     // LÓGICA DE MARCAÇÃO MANUAL H_LOCAL (ADMIN)
     // ==========================================
     if (isAdmin && txtMsg) {
-        const motoristasConhecidos = ["WILSON", "GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIZ", "LUIS", "FABIO", "JEAN", "ARIEL", "LEANDRO", "ROMILSON"];
+        const motoristasConhecidos = ["GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIZ", "LUIS", "FABIO", "ARIEL", "LEANDRO", "ROMILSON"];
         const palavrasMsg = txtMsg.trim().split(/\s+/);
         const firstWord = palavrasMsg[0].toUpperCase();
         
@@ -885,8 +885,6 @@ async function handleMotorista(json, senderName) {
             "ARGEMIRO": "ARGEMIRO BORGES",
             "FABIO": "FABIO SOUZA",
             "GABRIEL": "GABRIEL BORGES",
-            "WILSON": "WILSON REIS",
-            "JEAN": "JEAN ROBSON",
             "ARIEL": "ARIEL NASCIMENTO",
             "LEANDRO": "LEANDRO DE ANDRADE",
             "ROMILSON": "ROMILSON DAMASCENO"
