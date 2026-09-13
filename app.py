@@ -505,7 +505,7 @@ def whatsapp_qr():
 def view_logs():
     import subprocess
     try:
-        log_out = subprocess.check_output(["pm2", "logs", "RoboWPP", "--lines", "120", "--nostream", "--out"], text=True, stderr=subprocess.STDOUT)
+        log_out = subprocess.check_output(["pm2", "logs", "RoboWPP", "--lines", "120", "--nostream", "--out"], text=True, stderr=subprocess.STDOUT, timeout=8)
     except Exception as e:
         log_out = f"Erro ao ler logs via PM2: {str(e)}"
 
@@ -519,17 +519,42 @@ def view_logs():
             body {{ background: #0d1117; color: #c9d1d9; font-family: monospace; padding: 20px; }}
             h2 {{ color: #58a6ff; margin-bottom: 5px; }}
             p {{ color: #8b949e; margin-top: 0; font-size: 14px; }}
+            .btn-clean {{ display: inline-block; background: #238636; color: #fff; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-bottom: 15px; border: 1px solid rgba(240,246,252,0.1); }}
+            .btn-clean:hover {{ background: #2ea043; }}
             pre {{ background: #161b22; padding: 15px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; font-size: 13px; line-height: 1.5; border: 1px solid #30363d; }}
         </style>
     </head>
     <body>
         <h2>📋 Logs do Robo (WhatsApp + CHEP)</h2>
         <p>Atualizando automaticamente a cada 5 segundos...</p>
+        <a href="/api/limpar-logs" class="btn-clean" onclick="return confirm('Deseja limpar todos os logs e reiniciar os robôs?')">🧹 Limpar Logs e Reiniciar PM2</a>
         <pre>{log_out}</pre>
     </body>
     </html>
     """
     return html
+
+@app.route("/api/limpar-logs", methods=["GET", "POST"])
+def limpar_logs():
+    import subprocess
+    msg = []
+    try:
+        subprocess.run("pm2 flush", shell=True, timeout=5)
+        msg.append("Logs do PM2 limpos.")
+    except Exception as e:
+        msg.append(f"Erro no flush: {e}")
+    try:
+        subprocess.run("pkill -f chrome || true; pkill -f chromium || true", shell=True, timeout=5)
+        msg.append("Processos de navegador encerrados.")
+    except Exception as e:
+        msg.append(f"Erro no pkill: {e}")
+    try:
+        subprocess.run("pm2 restart all", shell=True, timeout=10)
+        msg.append("PM2 reiniciado com sucesso.")
+    except Exception as e:
+        msg.append(f"Erro no restart: {e}")
+    
+    return jsonify({"status": "success", "details": msg}), 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

@@ -1,4 +1,4 @@
-﻿import os
+import os
 import time
 import subprocess
 
@@ -16,9 +16,23 @@ def check_for_updates():
         if local != remote:
             print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Novas mudancas detectadas no GitHub! Atualizando o servidor...")
             subprocess.check_call(['git', 'pull'], cwd=REPO_DIR)
-            print("Codigo atualizado! Reiniciando o sistema...")
+            print("Codigo atualizado! Limpando logs e processos travados...")
+            try:
+                subprocess.call('pm2 flush', shell=True)
+            except Exception:
+                pass
+            try:
+                subprocess.call('pkill -f chrome || true', shell=True)
+                subprocess.call('pkill -f chromium || true', shell=True)
+            except Exception:
+                pass
+            print("Reiniciando o sistema com PM2...")
             # Usa shell=True para o PM2 ser reconhecido facilmente no PATH
             subprocess.check_call('pm2 restart all', shell=True)
+            try:
+                subprocess.call('sudo systemctl restart nginx || sudo service nginx restart || true', shell=True)
+            except Exception:
+                pass
     except Exception as e:
         pass
 
