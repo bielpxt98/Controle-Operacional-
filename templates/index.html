@@ -1142,6 +1142,14 @@
                     dfInput.value = _todayDateStr;
                 }
             }
+
+            // Ao preencher H_COLETADO, retira o horário agendado de H_FINALIZADO e coloca '-'
+            if (tr && input.classList.contains('input-chorario')) {
+                const fInput = tr.querySelector('.input-fhorario');
+                if (fInput && fInput.value !== '-') {
+                    fInput.value = '-';
+                }
+            }
             if(tr) updateRowStatus(tr);
             saveCurrentDayColetasSilent();
         }

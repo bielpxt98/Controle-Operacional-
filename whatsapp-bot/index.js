@@ -378,7 +378,8 @@ async function startWhatsApp() {
                     
                     const { error: updErr } = await supabase.from('deliveries').update({
                         sr: numeroSR,
-                        c_horario: horaAtual
+                        c_horario: horaAtual,
+                        f_horario: '-'
                     }).eq('id', escolhido.id);
                     
                     if (updErr) console.log('[ERRO SUPABASE SR]', updErr);
@@ -420,7 +421,8 @@ async function startWhatsApp() {
                 if (isSrFallback && srFallbackNum) {
                     updateObj = {
                         sr: srFallbackNum,
-                        c_horario: horaAtual
+                        c_horario: horaAtual,
+                        f_horario: '-'
                     };
                     msgSucesso = `✅ SR ${srFallbackNum} e H_COLETADO corrigidos manualmente! Cliente: ${verif[0].cliente} | Delivery: ${numeroDeliveryStr} | Hora: ${horaAtual}`;
                 } else {
@@ -487,7 +489,7 @@ async function startWhatsApp() {
                 }
                 
                 if (escolhido) {
-                    await supabase.from('deliveries').update({ l_horario: horaAtual, f_horario: '-' }).eq('id', escolhido.id);
+                    await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', escolhido.id);
                     await sock.sendMessage('120363408148934220@g.us', { text: `📍 H_LOCAL marcado manualmente para ${motoristaAlvo} (${horaAtual})\nCliente: ${escolhido.cliente || "N/A"}` });
                     console.log(`[WPP-ADMIN] H_LOCAL marcado no banco! (${horaAtual}) Cliente ID: ${escolhido.id}`);
                 }
@@ -516,7 +518,7 @@ async function startWhatsApp() {
         const numeroDelivery = deliveryMatch[0];
         const legendaOriginal = quotedMsg.imageMessage.caption || "";
         let paletesNumStr = "N/A";
-        const updatePayload = { c_horario: horaAtual };
+        const updatePayload = { c_horario: horaAtual, f_horario: '-' };
         let extractedNum = null;
         
         let matchSufixo = legendaOriginal.match(/(\d+)\s*(?:palet|un|und|p\b|cx|peca|peça)/i);
@@ -558,7 +560,7 @@ async function startWhatsApp() {
             .order('id', { ascending: true });
             
         if (pendentes && pendentes.length === 1) {
-            await supabase.from('deliveries').update({ l_horario: horaAtual, f_horario: '-' }).eq('id', pendentes[0].id);
+            await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', pendentes[0].id);
             await sock.sendMessage('120363408148934220@g.us', { text: `📍 H_LOCAL marcado para ${motoristaPrimeiroNome} (${horaAtual})\nCliente: ${pendentes[0].cliente || "N/A"}` });
             console.log(`[WPP-GRUPO] H_LOCAL marcado no banco! (${horaAtual})`);
         } else if (pendentes && pendentes.length > 1) {
@@ -580,7 +582,7 @@ async function startWhatsApp() {
             }
             
             if (escolhido) {
-                await supabase.from('deliveries').update({ l_horario: horaAtual, f_horario: '-' }).eq('id', escolhido.id);
+                await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', escolhido.id);
                 await sock.sendMessage('120363408148934220@g.us', { text: `📍 H_LOCAL marcado para ${motoristaPrimeiroNome} (${horaAtual}) via GPS Inteligente!\nCliente: ${escolhido.cliente || "N/A"}` });
                 console.log(`[WPP-GRUPO] H_LOCAL marcado no banco por GPS Inteligente! (${horaAtual})`);
             } else {
