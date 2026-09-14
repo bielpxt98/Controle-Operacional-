@@ -390,20 +390,12 @@ async function startWhatsApp() {
                     
                     if (updErr) console.log('[ERRO SUPABASE SR]', updErr);
                     
-                    const msgConfirmSR = `✅ SR ${numeroSR} e H_COLETADO registrados para ${motoristaAlvo} (${horaAtual})!\nCliente: ${escolhido.cliente || "N/A"}`;
-                    await sock.sendMessage('120363408148934220@g.us', { text: msgConfirmSR });
-                    if (!isFromGroup) {
-                        await sock.sendMessage(msg.key.remoteJid, { text: msgConfirmSR });
-                    }
+                    await sock.sendMessage('120363408148934220@g.us', { text: `✅ SR ${numeroSR} e H_COLETADO registrados para ${motoristaAlvo} (${horaAtual})!\nCliente: ${escolhido.cliente || "N/A"}` });
                     console.log(`[WPP-ADMIN] SR salva no H_COLETADO com sucesso.`);
                     return; 
                 } else {
                     console.log(`[WPP-ADMIN] Nao achei coleta pendente para ${motoristaAlvo} hoje.`);
-                    const msgErrSR = `❌ Não consegui achar carga pendente para ${motoristaAlvo} (SR: ${numeroSR}).\nResponda esta mensagem digitando apenas a delivery.`;
-                    await sock.sendMessage('120363408148934220@g.us', { text: msgErrSR });
-                    if (!isFromGroup) {
-                        await sock.sendMessage(msg.key.remoteJid, { text: msgErrSR });
-                    }
+                    await sock.sendMessage('120363408148934220@g.us', { text: `❌ Não consegui achar carga pendente para ${motoristaAlvo} (SR: ${numeroSR}).\nResponda esta mensagem digitando apenas a delivery.` });
                     return;
                 }
             }
@@ -452,17 +444,10 @@ async function startWhatsApp() {
                 
                 if (!updErr) {
                     await sock.sendMessage('120363408148934220@g.us', { text: msgSucesso });
-                    if (!isFromGroup) {
-                        await sock.sendMessage(msg.key.remoteJid, { text: msgSucesso });
-                    }
                     console.log(`[WPP] Correção manual via WhatsApp para delivery ${numeroDeliveryStr} processada.`);
                 }
             } else {
-                const msgNaoEncontrado = `❌ Não encontrei nenhuma entrega no banco com o delivery ${numeroDeliveryStr}.`;
-                await sock.sendMessage('120363408148934220@g.us', { text: msgNaoEncontrado });
-                if (!isFromGroup) {
-                    await sock.sendMessage(msg.key.remoteJid, { text: msgNaoEncontrado });
-                }
+                await sock.sendMessage('120363408148934220@g.us', { text: `❌ Não encontrei nenhuma entrega no banco com o delivery ${numeroDeliveryStr}.` });
             }
             return;
         }
@@ -563,11 +548,7 @@ async function startWhatsApp() {
         console.log(`[WPP] H_COLETADO detectado. Delivery: ${numeroDelivery}, Paletes: ${paletesNumStr}`);
         const { error } = await supabase.from('deliveries').update(updatePayload).eq('delivery', numeroDelivery);
         if (!error) {
-            const msgConfirm = `📦 H_COLETADO marcado! Delivery: ${numeroDelivery} | Paletes: ${paletesNumStr}`;
-            await sock.sendMessage('120363408148934220@g.us', { text: msgConfirm });
-            if (!isFromGroup) {
-                await sock.sendMessage(msg.key.remoteJid, { text: msgConfirm });
-            }
+            await sock.sendMessage('120363408148934220@g.us', { text: `📦 H_COLETADO marcado! Delivery: ${numeroDelivery} | Paletes: ${paletesNumStr}` });
         }
         return;
     }
