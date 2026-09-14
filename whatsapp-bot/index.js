@@ -91,6 +91,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const qrPath = path.join(__dirname, '..', 'static', 'qr.png');
 let lastCSCommandTimestamp = 0;
+const processedMsgIds = new Set();
+const botStartTime = Math.floor(Date.now() / 1000);
 
 // ============================================================
 // ============================================================
@@ -127,8 +129,28 @@ async function startWhatsApp() {
     });
     sock.ev.on('creds.update', saveCreds);
     sock.ev.on('messages.upsert', async (m) => {
-    const msg = m.messages[0];
-    if (!msg.message) return; // Removida a trava fromMe para permitir que o próprio dono ative os gatilhos
+        if (m.type !== 'notify') return; // Apenas notificações em tempo real, descarta append/histórico
+        const msg = m.messages?.[0];
+        if (!msg || !msg.message) return; // Removida a trava fromMe para permitir que o próprio dono ative os gatilhos
+
+        // Ignora eventos de exclusão/revogação de mensagem
+        if (msg.message.protocolMessage) return;
+
+        // Desduplicação por ID único da mensagem
+        if (msg.key?.id) {
+            if (processedMsgIds.has(msg.key.id)) return;
+            processedMsgIds.add(msg.key.id);
+            if (processedMsgIds.size > 2000) {
+                const first = processedMsgIds.values().next().value;
+                processedMsgIds.delete(first);
+            }
+        }
+
+        // Filtro de mensagens antigas (evita reexecução ao reiniciar/reconectar)
+        const msgTime = typeof msg.messageTimestamp === 'number' ? msg.messageTimestamp : (msg.messageTimestamp?.low || 0);
+        if (msgTime && msgTime < botStartTime - 15) {
+            return;
+        }
     
     
     const isFromGroup = msg.key.remoteJid?.endsWith('@g.us');
@@ -545,6 +567,17 @@ async function startWhatsApp() {
             paletesNumStr = extractedNum.toString();
         }
         
+        const { data: verifJaColetado } = await supabase
+            .from('deliveries')
+            .select('id, c_horario')
+            .eq('delivery', numeroDelivery)
+            .limit(1);
+
+        if (verifJaColetado && verifJaColetado.length > 0 && verifJaColetado[0].c_horario && verifJaColetado[0].c_horario !== '-') {
+            console.log(`[WPP] Delivery ${numeroDelivery} já possui c_horario (${verifJaColetado[0].c_horario}). Ignorando disparo duplicado.`);
+            return;
+        }
+
         console.log(`[WPP] H_COLETADO detectado. Delivery: ${numeroDelivery}, Paletes: ${paletesNumStr}`);
         const { error } = await supabase.from('deliveries').update(updatePayload).eq('delivery', numeroDelivery);
         if (!error) {
