@@ -1277,30 +1277,51 @@
                 const json = await res.json();
                 if (json && json.data) {
                     const currentDt = parseDateBR(currentDateStr);
+                    if (!currentDt) return;
+
+                    // Encontra a data operacional imediatamente anterior de coletas no banco
+                    const datasAnteriores = [];
+                    json.data.forEach(item => {
+                        if (!item.data) return;
+                        const dt = parseDateBR(item.data);
+                        if (dt && dt < currentDt) {
+                            const dStr = item.data.trim();
+                            if (!datasAnteriores.some(d => d.str === dStr)) {
+                                datasAnteriores.push({ str: dStr, dt: dt });
+                            }
+                        }
+                    });
+
+                    datasAnteriores.sort((a, b) => b.dt - a.dt);
+
+                    if (datasAnteriores.length === 0) {
+                        window.pendingCSDriversMap = {};
+                        applyCSHighlights();
+                        return;
+                    }
+
+                    const dataAnteriorMaisRecente = datasAnteriores[0].str; // Ex: '11/09/2026'
+
                     const map = {};
                     json.data.forEach(item => {
-                        if (!item.data || !item.motorista) return;
-                        const itemDt = parseDateBR(item.data);
-                        if (currentDt && itemDt) {
-                            const diffDays = Math.round((currentDt - itemDt) / (1000 * 60 * 60 * 24));
-                            if (diffDays >= 1 && diffDays <= 10) {
-                                const fHorario = (item.f_horario || item.h_finalizado || '').trim();
-                                const isFinalizado = fHorario !== '' && fHorario !== '-';
-                                const hasColeta = (item.l_horario && item.l_horario.trim() !== '' && item.l_horario.trim() !== '-') || 
-                                                  (item.c_horario && item.c_horario.trim() !== '' && item.c_horario.trim() !== '-') ||
-                                                  (item.pc != null && Number(item.pc) > 0);
-                                if (!isFinalizado && hasColeta) {
-                                    const dKey = getDriverKeyFromName(item.motorista);
-                                    if (dKey) {
-                                        if (!map[dKey]) map[dKey] = [];
-                                        map[dKey].push({
-                                            data: item.data,
-                                            cliente: item.cliente || 'Cliente',
-                                            delivery: item.delivery || '',
-                                            pc: item.pc
-                                        });
-                                    }
-                                }
+                        // Filtra ESTRITAMENTE a data anterior de operação, NUNCA hoje e NUNCA dias velhos
+                        if (item.data !== dataAnteriorMaisRecente || !item.motorista) return;
+
+                        const fHorario = (item.f_horario || item.h_finalizado || '').trim();
+                        const isFinalizado = fHorario !== '' && fHorario !== '-';
+                        const hasColeta = (item.l_horario && item.l_horario.trim() !== '' && item.l_horario.trim() !== '-') || 
+                                          (item.c_horario && item.c_horario.trim() !== '' && item.c_horario.trim() !== '-') ||
+                                          (item.pc != null && Number(item.pc) > 0);
+                        if (!isFinalizado && hasColeta) {
+                            const dKey = getDriverKeyFromName(item.motorista);
+                            if (dKey) {
+                                if (!map[dKey]) map[dKey] = [];
+                                map[dKey].push({
+                                    data: item.data,
+                                    cliente: item.cliente || 'Cliente',
+                                    delivery: item.delivery || '',
+                                    pc: item.pc
+                                });
                             }
                         }
                     });
