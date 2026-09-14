@@ -1208,6 +1208,7 @@
             }
 
             select.classList.remove('driver-in-cs');
+            select.title = '';
             if (deliveryInput) {
                 deliveryInput.classList.remove('delivery-in-cs');
                 deliveryInput.title = '';
@@ -1220,17 +1221,10 @@
             const csInfo = checkDriverInCS(driverVal);
             if (csInfo && csInfo.length > 0) {
                 select.classList.add('driver-in-cs');
+                select.title = `⚠️ Motorista no CS descarregando coleta anterior:\nData: ${csInfo[0].data}\nCliente: ${csInfo[0].cliente}\nDelivery: ${csInfo[0].delivery}`;
                 if (deliveryInput) {
                     deliveryInput.classList.add('delivery-in-cs');
                     deliveryInput.title = `⚠️ No CS descarregando: ${csInfo[0].data} - ${csInfo[0].cliente} (Delivery: ${csInfo[0].delivery})`;
-                }
-                const tdDriver = select.closest('td');
-                if (tdDriver) {
-                    const badge = document.createElement('div');
-                    badge.className = 'badge-no-cs';
-                    badge.title = `⚠️ Motorista no CS descarregando coleta anterior:\nData: ${csInfo[0].data}\nCliente: ${csInfo[0].cliente}\nDelivery: ${csInfo[0].delivery}`;
-                    badge.innerHTML = `<i class="fa-solid fa-truck-ramp-box"></i> NO CS (${csInfo[0].data.slice(0, 5)})`;
-                    tdDriver.insertBefore(badge, select);
                 }
             }
         }
@@ -1247,6 +1241,7 @@
             }
 
             select.classList.remove('driver-in-cs');
+            select.title = '';
             if (deliveryInput) {
                 deliveryInput.classList.remove('delivery-in-cs');
                 deliveryInput.title = '';
@@ -1259,17 +1254,10 @@
             const csInfo = checkDriverInCS(driverVal);
             if (csInfo && csInfo.length > 0) {
                 select.classList.add('driver-in-cs');
+                select.title = `⚠️ Motorista no CS descarregando coleta anterior:\nData: ${csInfo[0].data}\nCliente: ${csInfo[0].cliente}\nDelivery: ${csInfo[0].delivery}`;
                 if (deliveryInput) {
                     deliveryInput.classList.add('delivery-in-cs');
                     deliveryInput.title = `⚠️ No CS descarregando: ${csInfo[0].data} - ${csInfo[0].cliente} (Delivery: ${csInfo[0].delivery})`;
-                }
-                const header = card.querySelector('.coleta-card-header');
-                if (header) {
-                    const badge = document.createElement('div');
-                    badge.className = 'badge-no-cs';
-                    badge.title = `⚠️ Motorista no CS descarregando coleta anterior:\nData: ${csInfo[0].data}\nCliente: ${csInfo[0].cliente}\nDelivery: ${csInfo[0].delivery}`;
-                    badge.innerHTML = `<i class="fa-solid fa-truck-ramp-box"></i> NO CS (${csInfo[0].data.slice(0, 5)})`;
-                    header.insertBefore(badge, select);
                 }
             }
         }

@@ -1054,7 +1054,8 @@ async function handleMotorista(json, senderName) {
             "GABRIEL": "GABRIEL BORGES",
             "ARIEL": "ARIEL NASCIMENTO",
             "LEANDRO": "LEANDRO DE ANDRADE",
-            "ROMILSON": "ROMILSON DAMASCENO"
+            "ROMILSON": "ROMILSON DAMASCENO",
+            "ROMILDO": "ROMILSON DAMASCENO"
         };
         for (const key of Object.keys(mapNomes)) {
             if (motoristaFormatado.includes(key)) {

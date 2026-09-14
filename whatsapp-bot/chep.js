@@ -34,7 +34,7 @@ async function processarConta(conta, deliveries) {
     const dadosExtraidos = [];
     let sucessos = [];
     for (const d of deliveries) {
-        let nomeLimpo = (d.motorista || "").replace('▼', '').trim().toUpperCase();
+        let nomeLimpo = (d.motorista || "").replace('▼', '').replace(/\s+/g, ' ').trim().toUpperCase();
         const primNome = nomeLimpo.split(' ')[0];
         let dMotorista = bdMotoristas[nomeLimpo] || bdMotoristas[primNome] || {};
         
@@ -42,9 +42,9 @@ async function processarConta(conta, deliveries) {
             id_banco: d.id, // para podermos atualizar no supabase depois
             id_delivery: String(d.delivery).trim(),
             nome: nomeLimpo,
-            cpf: dMotorista.cpf || "",
-            placa_cavalo: (dMotorista.placa || "").includes('/') ? dMotorista.placa.split('/')[0].trim() : (dMotorista.placa || dMotorista.placa_cavalo || ""),
-            placa_reboque: (dMotorista.placa || "").includes('/') ? dMotorista.placa.split('/')[1].trim() : (dMotorista.placa_reboque || "")
+            cpf: dMotorista.cpf || d.cpf || "",
+            placa_cavalo: (dMotorista.placa || "").includes('/') ? dMotorista.placa.split('/')[0].trim() : (dMotorista.placa || dMotorista.placa_cavalo || d.cavalo || ""),
+            placa_reboque: (dMotorista.placa || "").includes('/') ? dMotorista.placa.split('/')[1].trim() : (dMotorista.placa_reboque || d.carreta || "")
         });
     }
 
@@ -218,12 +218,24 @@ async function processarConta(conta, deliveries) {
                                 for (const c of campos) {
                                     if (d[c.k]) {
                                         try {
-                                            const txtAtual = await row.locator(':scope > td').nth(c.col).innerText({ timeout: 1000 });
-                                            if (!txtAtual.trim()) {
+                                            const cell = row.locator(':scope > td').nth(c.col);
+                                            const txtAtual = (await cell.innerText({ timeout: 1500 }) || '').trim();
+                                            let inputVal = '';
+                                            try {
+                                                const inp = cell.locator('input');
+                                                if (await inp.count() > 0) inputVal = (await inp.inputValue({ timeout: 500 }) || '').trim();
+                                            } catch(err){}
+                                            const valEfetivo = inputVal || txtAtual;
+                                            console.log(`[WEB] Verificando campo ${c.k} (col ${c.col}) para ${termoBusca}: valor atual = "${valEfetivo}"`);
+                                            if (!valEfetivo) {
                                                 precisaPreencher = true;
                                                 break;
                                             }
-                                        } catch(e) {}
+                                        } catch(e) {
+                                            console.log(`[WEB] Erro ao ler celula ${c.k}:`, e.message);
+                                            precisaPreencher = true;
+                                            break;
+                                        }
                                     }
                                 }
 
@@ -235,8 +247,14 @@ async function processarConta(conta, deliveries) {
                                         if (d[c.k]) {
                                             const cell = row.locator(':scope > td').nth(c.col);
                                             try {
-                                                const txtAtual = await cell.innerText({ timeout: 1000 });
-                                                if (!txtAtual.trim()) {
+                                                const txtAtual = (await cell.innerText({ timeout: 1000 }) || '').trim();
+                                                let inputVal = '';
+                                                try {
+                                                    const inp = cell.locator('input');
+                                                    if (await inp.count() > 0) inputVal = (await inp.inputValue({ timeout: 500 }) || '').trim();
+                                                } catch(err){}
+                                                const valEfetivo = inputVal || txtAtual;
+                                                if (!valEfetivo) {
                                                     await cell.scrollIntoViewIfNeeded();
                                                     await cell.dblclick();
                                                     await targetPage.waitForTimeout(100);
