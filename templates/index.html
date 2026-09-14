@@ -724,6 +724,42 @@
             color: #fff;
         }
 
+        /* Destaque Laranja para Motoristas e Deliveries com descarga pendente no CS */
+        .driver-in-cs {
+            background-color: #d97706 !important;
+            color: #ffffff !important;
+            border-color: #f59e0b !important;
+            font-weight: 800 !important;
+            box-shadow: 0 0 10px rgba(245, 158, 11, 0.45) !important;
+        }
+        .driver-in-cs option {
+            background: #1e293b;
+            color: #ffffff;
+        }
+        .delivery-in-cs {
+            background-color: rgba(245, 158, 11, 0.22) !important;
+            border: 1.5px solid #f59e0b !important;
+            color: #fbbf24 !important;
+            font-weight: 800 !important;
+            box-shadow: 0 0 8px rgba(245, 158, 11, 0.35) !important;
+        }
+        .badge-no-cs {
+            background: #ea580c;
+            color: #ffffff;
+            font-size: 0.65rem;
+            font-weight: 800;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-bottom: 4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            width: fit-content;
+            cursor: help;
+        }
+
         .auto-tag {
             background: rgba(59, 130, 246, 0.15);
             color: #60a5fa;
@@ -1110,6 +1146,172 @@
             saveCurrentDayColetasSilent();
         }
 
+        // ==========================================
+        // SISTEMA DE ALERTA: MOTORISTA NO CS (DESCARGA PENDENTE)
+        // ==========================================
+        window.pendingCSDriversMap = {};
+
+        function parseDateBR(dStr) {
+            if (!dStr) return null;
+            const parts = dStr.split(/[\/\-]/);
+            if (parts.length >= 3) {
+                let d = parseInt(parts[0], 10);
+                let m = parseInt(parts[1], 10) - 1;
+                let y = parseInt(parts[2], 10);
+                if (y < 100) y += 2000;
+                return new Date(y, m, d);
+            }
+            return null;
+        }
+
+        function getDriverKeyFromName(name) {
+            if (!name) return '';
+            const n = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            if (n.includes('gabriel')) return 'gabriel_borges';
+            if (n.includes('argemiro') || n.includes('borges')) return 'argemiro_borges';
+            if (n.includes('valdemir')) return 'valdemir_de_jesus';
+            if (n.includes('jones')) return 'jones_rosario';
+            if (n.includes('luis') || n.includes('luiz')) return 'luis_carlos';
+            if (n.includes('fabio')) return 'fabio_souza';
+            if (n.includes('ariel')) return 'ariel_nascimento';
+            if (n.includes('leandro') || n.includes('leo')) return 'leandro_de_andrade';
+            if (n.includes('romilson')) return 'romilson_damasceno';
+            return '';
+        }
+
+        function checkDriverInCS(driverName) {
+            if (!driverName || !window.pendingCSDriversMap) return null;
+            const dKey = getDriverKeyFromName(driverName);
+            if (dKey && window.pendingCSDriversMap[dKey] && window.pendingCSDriversMap[dKey].length > 0) {
+                return window.pendingCSDriversMap[dKey];
+            }
+            return null;
+        }
+
+        function applyCSHighlightToRow(tr) {
+            if (!tr) return;
+            const select = tr.querySelector('.driver-select');
+            const deliveryInput = tr.querySelector('.input-delivery');
+            if (!select) return;
+
+            let driverVal = select.value || '';
+            if (!driverVal && select.selectedOptions && select.selectedOptions[0]) {
+                driverVal = select.selectedOptions[0].text;
+            }
+
+            select.classList.remove('driver-in-cs');
+            if (deliveryInput) {
+                deliveryInput.classList.remove('delivery-in-cs');
+                deliveryInput.title = '';
+            }
+            const oldBadge = tr.querySelector('.badge-no-cs');
+            if (oldBadge) oldBadge.remove();
+
+            if (!driverVal || driverVal.includes('--')) return;
+
+            const csInfo = checkDriverInCS(driverVal);
+            if (csInfo && csInfo.length > 0) {
+                select.classList.add('driver-in-cs');
+                if (deliveryInput) {
+                    deliveryInput.classList.add('delivery-in-cs');
+                    deliveryInput.title = `⚠️ No CS descarregando: ${csInfo[0].data} - ${csInfo[0].cliente} (Delivery: ${csInfo[0].delivery})`;
+                }
+                const tdDriver = select.closest('td');
+                if (tdDriver) {
+                    const badge = document.createElement('div');
+                    badge.className = 'badge-no-cs';
+                    badge.title = `⚠️ Motorista no CS descarregando coleta anterior:\nData: ${csInfo[0].data}\nCliente: ${csInfo[0].cliente}\nDelivery: ${csInfo[0].delivery}`;
+                    badge.innerHTML = `<i class="fa-solid fa-truck-ramp-box"></i> NO CS (${csInfo[0].data.slice(0, 5)})`;
+                    tdDriver.insertBefore(badge, select);
+                }
+            }
+        }
+
+        function applyCSHighlightToCard(card) {
+            if (!card) return;
+            const select = card.querySelector('.driver-select');
+            const deliveryInput = card.querySelector('.input-delivery');
+            if (!select) return;
+
+            let driverVal = select.value || '';
+            if (!driverVal && select.selectedOptions && select.selectedOptions[0]) {
+                driverVal = select.selectedOptions[0].text;
+            }
+
+            select.classList.remove('driver-in-cs');
+            if (deliveryInput) {
+                deliveryInput.classList.remove('delivery-in-cs');
+                deliveryInput.title = '';
+            }
+            const oldBadge = card.querySelector('.badge-no-cs');
+            if (oldBadge) oldBadge.remove();
+
+            if (!driverVal || driverVal.includes('--')) return;
+
+            const csInfo = checkDriverInCS(driverVal);
+            if (csInfo && csInfo.length > 0) {
+                select.classList.add('driver-in-cs');
+                if (deliveryInput) {
+                    deliveryInput.classList.add('delivery-in-cs');
+                    deliveryInput.title = `⚠️ No CS descarregando: ${csInfo[0].data} - ${csInfo[0].cliente} (Delivery: ${csInfo[0].delivery})`;
+                }
+                const header = card.querySelector('.coleta-card-header');
+                if (header) {
+                    const badge = document.createElement('div');
+                    badge.className = 'badge-no-cs';
+                    badge.title = `⚠️ Motorista no CS descarregando coleta anterior:\nData: ${csInfo[0].data}\nCliente: ${csInfo[0].cliente}\nDelivery: ${csInfo[0].delivery}`;
+                    badge.innerHTML = `<i class="fa-solid fa-truck-ramp-box"></i> NO CS (${csInfo[0].data.slice(0, 5)})`;
+                    header.insertBefore(badge, select);
+                }
+            }
+        }
+
+        function applyCSHighlights() {
+            document.querySelectorAll('#tableBody tr').forEach(tr => applyCSHighlightToRow(tr));
+            document.querySelectorAll('#mobileCards .coleta-card').forEach(card => applyCSHighlightToCard(card));
+        }
+
+        async function checkAndHighlightCSDrivers(currentDateStr) {
+            try {
+                const res = await fetch('/api/coletas');
+                const json = await res.json();
+                if (json && json.data) {
+                    const currentDt = parseDateBR(currentDateStr);
+                    const map = {};
+                    json.data.forEach(item => {
+                        if (!item.data || !item.motorista) return;
+                        const itemDt = parseDateBR(item.data);
+                        if (currentDt && itemDt) {
+                            const diffDays = Math.round((currentDt - itemDt) / (1000 * 60 * 60 * 24));
+                            if (diffDays >= 1 && diffDays <= 10) {
+                                const fHorario = (item.f_horario || item.h_finalizado || '').trim();
+                                const isFinalizado = fHorario !== '' && fHorario !== '-';
+                                const hasColeta = (item.l_horario && item.l_horario.trim() !== '' && item.l_horario.trim() !== '-') || 
+                                                  (item.c_horario && item.c_horario.trim() !== '' && item.c_horario.trim() !== '-') ||
+                                                  (item.pc != null && Number(item.pc) > 0);
+                                if (!isFinalizado && hasColeta) {
+                                    const dKey = getDriverKeyFromName(item.motorista);
+                                    if (dKey) {
+                                        if (!map[dKey]) map[dKey] = [];
+                                        map[dKey].push({
+                                            data: item.data,
+                                            cliente: item.cliente || 'Cliente',
+                                            delivery: item.delivery || '',
+                                            pc: item.pc
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    window.pendingCSDriversMap = map;
+                    applyCSHighlights();
+                }
+            } catch (e) {
+                console.warn("Aviso ao buscar pendências do CS:", e);
+            }
+        }
+
         function formatValorForDisplay(val) {
             if (val === null || val === undefined || val === '') return '';
             if (typeof val === 'string' && val.includes('R$')) return val;
@@ -1367,6 +1569,7 @@
                 document.getElementById('mobileCards').innerHTML = '';
                 stableSortRecords(backup);
                 backup.forEach(rec => appendRowFromData(rec));
+                checkAndHighlightCSDrivers(dateStr);
             } else {
                 tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2rem;">Carregando coletas do Supabase...</td></tr>`;
                 document.getElementById('mobileCards').innerHTML = `<div style="text-align:center;padding:2rem;color:#64748b">Carregando...</div>`;
@@ -1428,6 +1631,7 @@
                     }
                     stableSortRecords(records);
                     records.forEach(rec => appendRowFromData(rec));
+                    checkAndHighlightCSDrivers(dateStr);
                 }
             } catch (err) {
                 console.error("Erro em background no Supabase:", err);
@@ -1530,6 +1734,7 @@
             appendCardFromData(rec, isSearchMode);
             
             updateRowStatus(tr);
+            if (!isSearchMode) applyCSHighlightToRow(tr);
         }
 
         function appendCardFromData(rec, isSearchMode = false) {
@@ -1639,6 +1844,7 @@
             `;
             mobileCards.appendChild(card);
             updateRowStatus(card);
+            if (!isSearchMode) applyCSHighlightToCard(card);
         }
 
         function updateCardDriverData(sel) {
@@ -1649,6 +1855,7 @@
                 card.querySelector('.cavalo-val').innerText = data.cavalo;
                 card.querySelector('.carreta-val').innerText = data.carreta;
             }
+            if (card) applyCSHighlightToCard(card);
         }
 
         function updateCardWpp(card) {
@@ -1731,6 +1938,7 @@
                 tr.querySelector('.cavalo-val').innerText = data.cavalo;
                 tr.querySelector('.carreta-val').innerText = data.carreta;
             }
+            if (tr) applyCSHighlightToRow(tr);
         }
 
         function collectRowsFromUI() {

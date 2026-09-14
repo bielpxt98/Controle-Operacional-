@@ -97,6 +97,18 @@ const qrPath = path.join(__dirname, '..', 'static', 'qr.png');
 // ============================================================
 const { useMultiFileAuthState } = require('@whiskeysockets/baileys');
 
+function parseDateBR(dStr) {
+    if (!dStr) return null;
+    const parts = dStr.split(/[\/\-]/);
+    if (parts.length >= 3) {
+        let d = parseInt(parts[0], 10);
+        let m = parseInt(parts[1], 10) - 1;
+        let y = parseInt(parts[2], 10);
+        if (y < 100) y += 2000;
+        return new Date(y, m, d);
+    }
+    return null;
+}
 
 async function startWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
@@ -198,6 +210,82 @@ async function startWhatsApp() {
     const formatterHora = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false });
     const horaAtual = formatterHora.format(new Date());
 
+    // ==========================================
+    // CONSULTA: MOTORISTAS NO CS / PENDENTES DE DESCARGA
+    // ==========================================
+    const isConsultaCS = (isAdmin || isFromGroup) && (
+        /\bno\s+cs\b/i.test(textoCompleto) || 
+        /\b(quem|qual)\s+(est[aá]|t[aá]|motorista)\s+no\s+cs\b/i.test(textoCompleto) ||
+        textoCompleto.trim() === 'no cs' ||
+        textoCompleto.trim() === 'no cs?' ||
+        textoCompleto.trim() === 'cs' ||
+        textoCompleto.trim() === 'cs?'
+    );
+
+    if (isConsultaCS) {
+        console.log(`[WPP-BOT] Consulta 'NO CS' recebida de ${senderName}`);
+        try {
+            const { data: allDeliveries, error: errCS } = await supabase
+                .from('deliveries')
+                .select('id, data, delivery, cliente, motorista, l_horario, c_horario, f_horario, pc')
+                .not('motorista', 'is', null)
+                .order('id', { ascending: false });
+
+            const targetJid = isFromGroup ? msg.key.remoteJid : '120363408148934220@g.us';
+
+            if (errCS || !allDeliveries) {
+                await sock.sendMessage(targetJid, { text: `❌ Não foi possível consultar as pendências do CS no banco de dados.` });
+                return;
+            }
+
+            const pendentesPorMotorista = {};
+
+            allDeliveries.forEach(item => {
+                if (!item.data || !item.motorista) return;
+                const itemDt = parseDateBR(item.data);
+                if (!itemDt) return;
+                const diffDays = Math.round((hojeObj - itemDt) / (1000 * 60 * 60 * 24));
+                if (diffDays >= 1 && diffDays <= 10) {
+                    const fHorario = (item.f_horario || '').trim();
+                    const isFinalizado = fHorario !== '' && fHorario !== '-';
+                    const hasColeta = (item.l_horario && item.l_horario.trim() !== '' && item.l_horario.trim() !== '-') || 
+                                      (item.c_horario && item.c_horario.trim() !== '' && item.c_horario.trim() !== '-') ||
+                                      (item.pc != null && Number(item.pc) > 0);
+                    if (!isFinalizado && hasColeta) {
+                        const motNome = item.motorista.trim().toUpperCase();
+                        if (!pendentesPorMotorista[motNome]) pendentesPorMotorista[motNome] = [];
+                        pendentesPorMotorista[motNome].push({
+                            data: item.data,
+                            delivery: item.delivery || 'S/D',
+                            cliente: item.cliente || 'N/A',
+                            pc: item.pc
+                        });
+                    }
+                }
+            });
+
+            const motoristasKeys = Object.keys(pendentesPorMotorista);
+            if (motoristasKeys.length === 0) {
+                await sock.sendMessage(targetJid, { text: `✅ *Nenhum motorista pendente de descarga no CS no momento!* Todas as coletas anteriores foram finalizadas.` });
+            } else {
+                let msgTexto = `🚚 *MOTORISTAS NO CS (DESCARGA PENDENTE):*\n\n`;
+                motoristasKeys.forEach(mot => {
+                    msgTexto += `🔸 *${mot}*\n`;
+                    pendentesPorMotorista[mot].forEach(c => {
+                        msgTexto += `  • ${c.data} | Delivery: *${c.delivery}* | ${c.cliente}${c.pc ? ` (${c.pc} paletes)` : ''}\n`;
+                    });
+                    msgTexto += `\n`;
+                });
+                msgTexto += `ℹ️ _Estes motoristas precisam descarregar no CS antes de seguir para a próxima coleta._`;
+                await sock.sendMessage(targetJid, { text: msgTexto.trim() });
+            }
+        } catch (e) {
+            console.error('[WPP-BOT] Erro ao processar comando NO CS:', e);
+            const targetJid = isFromGroup ? msg.key.remoteJid : '120363408148934220@g.us';
+            await sock.sendMessage(targetJid, { text: `❌ Erro ao consultar motoristas no CS: ${e.message}` });
+        }
+        return;
+    }
 
     // ==========================================
     // LOGICA DE SR ENVIADA PELO ADMIN
