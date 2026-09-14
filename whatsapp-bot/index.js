@@ -182,17 +182,23 @@ async function startWhatsApp() {
                 const pino = require('pino');
                 const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: "silent" }) });
                 json = await classifyImage(buffer, captionMsg, isFromGroup, false);
+                if (json && json.tipo === "PROGRAMACAO") {
+                    await handleMotorista(json, senderName);
+                }
+                return;
             } else if (txtMsg && txtMsg.toUpperCase().includes("PROGRAMA")) {
                 console.log("[WPP-PRIVADO] Novo texto de programacao de " + senderName);
                 json = await classifyImage(null, txtMsg, isFromGroup, true);
+                if (json && json.tipo === "PROGRAMACAO") {
+                    await handleMotorista(json, senderName);
+                }
+                return;
+            } else if (quotedMsg) {
+                // Admin respondendo a uma mensagem/foto no privado (ex: respondendo foto de canhoto de terceiro com número da delivery ou SR)
+                console.log(`[WPP-PRIVADO] Admin respondeu com citação no privado para ${msg.key.remoteJid}. Verificando delivery/SR...`);
             } else {
                 return;
             }
-
-            if (json && json.tipo === "PROGRAMACAO") {
-                await handleMotorista(json, senderName);
-            }
-            return;
         }
     }
 
@@ -384,12 +390,20 @@ async function startWhatsApp() {
                     
                     if (updErr) console.log('[ERRO SUPABASE SR]', updErr);
                     
-                    await sock.sendMessage('120363408148934220@g.us', { text: `✅ SR ${numeroSR} e H_COLETADO registrados para ${motoristaAlvo} (${horaAtual})!\nCliente: ${escolhido.cliente || "N/A"}` });
+                    const msgConfirmSR = `✅ SR ${numeroSR} e H_COLETADO registrados para ${motoristaAlvo} (${horaAtual})!\nCliente: ${escolhido.cliente || "N/A"}`;
+                    await sock.sendMessage('120363408148934220@g.us', { text: msgConfirmSR });
+                    if (!isFromGroup) {
+                        await sock.sendMessage(msg.key.remoteJid, { text: msgConfirmSR });
+                    }
                     console.log(`[WPP-ADMIN] SR salva no H_COLETADO com sucesso.`);
                     return; 
                 } else {
                     console.log(`[WPP-ADMIN] Nao achei coleta pendente para ${motoristaAlvo} hoje.`);
-                    await sock.sendMessage('120363408148934220@g.us', { text: `❌ Não consegui achar carga pendente para ${motoristaAlvo} (SR: ${numeroSR}).\nResponda esta mensagem digitando apenas a delivery.` });
+                    const msgErrSR = `❌ Não consegui achar carga pendente para ${motoristaAlvo} (SR: ${numeroSR}).\nResponda esta mensagem digitando apenas a delivery.`;
+                    await sock.sendMessage('120363408148934220@g.us', { text: msgErrSR });
+                    if (!isFromGroup) {
+                        await sock.sendMessage(msg.key.remoteJid, { text: msgErrSR });
+                    }
                     return;
                 }
             }
@@ -438,10 +452,17 @@ async function startWhatsApp() {
                 
                 if (!updErr) {
                     await sock.sendMessage('120363408148934220@g.us', { text: msgSucesso });
-                    console.log(`[WPP-GRUPO] Correção manual via WhatsApp para delivery ${numeroDeliveryStr} processada.`);
+                    if (!isFromGroup) {
+                        await sock.sendMessage(msg.key.remoteJid, { text: msgSucesso });
+                    }
+                    console.log(`[WPP] Correção manual via WhatsApp para delivery ${numeroDeliveryStr} processada.`);
                 }
             } else {
-                await sock.sendMessage('120363408148934220@g.us', { text: `❌ Não encontrei nenhuma entrega no banco com o delivery ${numeroDeliveryStr}.` });
+                const msgNaoEncontrado = `❌ Não encontrei nenhuma entrega no banco com o delivery ${numeroDeliveryStr}.`;
+                await sock.sendMessage('120363408148934220@g.us', { text: msgNaoEncontrado });
+                if (!isFromGroup) {
+                    await sock.sendMessage(msg.key.remoteJid, { text: msgNaoEncontrado });
+                }
             }
             return;
         }
@@ -539,9 +560,15 @@ async function startWhatsApp() {
             paletesNumStr = extractedNum.toString();
         }
         
-        console.log(`[WPP-GRUPO] H_COLETADO detectado. Delivery: ${numeroDelivery}, Paletes: ${paletesNumStr}`);
+        console.log(`[WPP] H_COLETADO detectado. Delivery: ${numeroDelivery}, Paletes: ${paletesNumStr}`);
         const { error } = await supabase.from('deliveries').update(updatePayload).eq('delivery', numeroDelivery);
-        if (!error) await sock.sendMessage('120363408148934220@g.us', { text: `📦 H_COLETADO marcado! Delivery: ${numeroDelivery} | Paletes: ${paletesNumStr}` });
+        if (!error) {
+            const msgConfirm = `📦 H_COLETADO marcado! Delivery: ${numeroDelivery} | Paletes: ${paletesNumStr}`;
+            await sock.sendMessage('120363408148934220@g.us', { text: msgConfirm });
+            if (!isFromGroup) {
+                await sock.sendMessage(msg.key.remoteJid, { text: msgConfirm });
+            }
+        }
         return;
     }
 
