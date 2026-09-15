@@ -313,6 +313,7 @@ async function startWhatsApp() {
                         if (!pendenciasPorData[dStr]) pendenciasPorData[dStr] = {};
                         if (!pendenciasPorData[dStr][motNome]) pendenciasPorData[dStr][motNome] = [];
                         pendenciasPorData[dStr][motNome].push({
+                            data: dStr,
                             delivery: item.delivery || 'S/D',
                             cliente: item.cliente || 'N/A',
                             pc: item.pc
@@ -320,6 +321,7 @@ async function startWhatsApp() {
                     } else if (isAbertoGeral) {
                         if (!pendenciasHoje[motNome]) pendenciasHoje[motNome] = [];
                         pendenciasHoje[motNome].push({
+                            data: item.data ? item.data.trim() : '',
                             delivery: item.delivery || 'S/D',
                             cliente: item.cliente || 'N/A',
                             pc: item.pc
@@ -349,7 +351,7 @@ async function startWhatsApp() {
                             Object.keys(motMap).forEach(mot => {
                                 msgTexto += `  🔸 *${mot}*\n`;
                                 motMap[mot].forEach(c => {
-                                    msgTexto += `    • Delivery: *${c.delivery}* | ${c.cliente}${c.pc ? ` (${c.pc} paletes)` : ''}\n`;
+                                    msgTexto += `    • 📅 *${dStr}* | Delivery: *${c.delivery}* | ${c.cliente}${c.pc ? ` (${c.pc} paletes)` : ''}\n`;
                                 });
                             });
                         });
@@ -360,7 +362,8 @@ async function startWhatsApp() {
                         motHojeKeys.forEach(mot => {
                             msgTexto += `  🔸 *${mot}*\n`;
                             pendenciasHoje[mot].forEach(c => {
-                                msgTexto += `    • Delivery: *${c.delivery}* | ${c.cliente}${c.pc ? ` (${c.pc} paletes)` : ''}\n`;
+                                const dtExibir = c.data || hojeDataObj.toLocaleDateString('pt-BR');
+                                msgTexto += `    • 📅 *${dtExibir}* | Delivery: *${c.delivery}* | ${c.cliente}${c.pc ? ` (${c.pc} paletes)` : ''}\n`;
                             });
                         });
                     }
@@ -378,7 +381,7 @@ async function startWhatsApp() {
                         Object.keys(motMap).forEach(mot => {
                             msgTexto += `  🔸 *${mot}*\n`;
                             motMap[mot].forEach(c => {
-                                msgTexto += `    • Delivery: *${c.delivery}* | ${c.cliente}${c.pc ? ` (${c.pc} paletes)` : ''}\n`;
+                                msgTexto += `    • 📅 *${dStr}* | Delivery: *${c.delivery}* | ${c.cliente}${c.pc ? ` (${c.pc} paletes)` : ''}\n`;
                             });
                         });
                         msgTexto += `\n`;

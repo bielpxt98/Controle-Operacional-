@@ -1,0 +1,110 @@
+{
+  "filial_ativa": "salvador",
+  "filiais": {
+    "salvador": {
+      "id": "salvador",
+      "nome": "Salvador (PURM)",
+      "perfis_chep": [
+        {
+          "user": "210256_2",
+          "pass": "210256"
+        },
+        {
+          "user": "210289_3",
+          "pass": "210289"
+        }
+      ],
+      "email_backup": "gabrielpxt98@gmail.com",
+      "motoristas": {
+        "ARGEMIRO": {
+          "cpf": "041.604.865-09",
+          "placa": "PEG7666 / DTD8506"
+        },
+        "ARGEMIRO BORGES": {
+          "cpf": "041.604.865-09",
+          "placa": "PEG7666 / DTD8506"
+        },
+        "VALDEMIR": {
+          "cpf": "044.327.095-37",
+          "placa": "HWB9F22"
+        },
+        "VALDEMIR DE JESUS": {
+          "cpf": "044.327.095-37",
+          "placa": "HWB9F22"
+        },
+        "JONES": {
+          "cpf": "053.359.465-04",
+          "placa": "JHX3C33 / KKT9007"
+        },
+        "JONES ROSARIO": {
+          "cpf": "053.359.465-04",
+          "placa": "JHX3C33 / KKT9007"
+        },
+        "GABRIEL": {
+          "cpf": "095.312.255-75",
+          "placa": "JJF1856 / NVQ8447"
+        },
+        "GABRIEL BORGES": {
+          "cpf": "095.312.255-75",
+          "placa": "JJF1856 / NVQ8447"
+        },
+        "LUIS": {
+          "cpf": "830.317.905-53",
+          "placa": "KLB5018 / NKZ6545"
+        },
+        "LUIS CARLOS": {
+          "cpf": "830.317.905-53",
+          "placa": "KLB5018 / NKZ6545"
+        },
+        "FABIO": {
+          "cpf": "890.066.155-87",
+          "placa": "PEJ4695 / NLB7814"
+        },
+        "FABIO SOUZA": {
+          "cpf": "890.066.155-87",
+          "placa": "PEJ4695 / NLB7814"
+        },
+        "ARIEL": {
+          "cpf": "050.153.565-95",
+          "placa": "JVL8A44"
+        },
+        "ARIEL NASCIMENTO": {
+          "cpf": "050.153.565-95",
+          "placa": "JVL8A44"
+        },
+        "LEANDRO": {
+          "cpf": "017.793.835.84",
+          "placa": "NZP7012"
+        },
+        "LEANDRO DE ANDRADE": {
+          "cpf": "017.793.835.84",
+          "placa": "NZP7012"
+        },
+        "ROMILSON": {
+          "cpf": "615.715.635-04",
+          "placa": "KJY3204 / KGG1152"
+        },
+        "ROMILSON DAMASCENO": {
+          "cpf": "615.715.635-04",
+          "placa": "KJY3204 / KGG1152"
+        },
+        "ROMILDO": {
+          "cpf": "615.715.635-04",
+          "placa": "KJY3204 / KGG1152"
+        }
+      }
+    },
+    "nova_filial": {
+      "id": "nova_filial",
+      "nome": "Nova Filial (Perfil 1)",
+      "perfis_chep": [
+        {
+          "user": "210249_1",
+          "pass": "210249"
+        }
+      ],
+      "email_backup": "gabrielpxt98+1@gmail.com",
+      "motoristas": {}
+    }
+  }
+}
