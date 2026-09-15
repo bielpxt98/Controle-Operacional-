@@ -894,6 +894,7 @@
                     <input type="text" id="searchInput" class="search-input" placeholder="Pesquisar por Nome, Delivery ou Cliente..." autocomplete="off" oninput="filterTable()" onkeyup="filterTable()">
                 </div>
                 <button class="view-monthly-btn" onclick="goToToday()" style="background: var(--accent-blue); color: white; border-color: var(--accent-blue);">Hoje <i class="fa-solid fa-calendar-day"></i></button>
+                <button class="view-monthly-btn" id="btnEmAberto" onclick="filterColetasEmAberto()" style="background: #ea580c; color: white; border-color: #f97316;" title="Ver todas as coletas em aberto / pendentes no CS"><i class="fa-solid fa-truck-ramp-box"></i> Em Aberto / No CS</button>
                 <button class="view-monthly-btn" onclick="toggleMonthlyView()">Ver Calendário Mensal <i class="fa-solid fa-calendar-days"></i></button>
             </div>
         </div>
@@ -1574,6 +1575,74 @@
                     console.error("Erro na busca global:", e);
                 }
             }, 200);
+        }
+
+        async function filterColetasEmAberto() {
+            if (typeof saveCurrentDayColetasDirectAsync === 'function') {
+                saveCurrentDayColetasDirectAsync(activeDateStr);
+            }
+            
+            const tbody = document.getElementById('tableBody');
+            const mobileCards = document.getElementById('mobileCards');
+            
+            // Remove destaque dos dias do calendário
+            document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active'));
+            document.getElementById('currentDateText').innerHTML = '<span style="color: #f97316;"><i class="fa-solid fa-truck-ramp-box"></i> Coletas em Aberto / Pendentes no CS</span>';
+            
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) searchInput.value = '';
+
+            const copyBtn = document.getElementById('copySheetBtn');
+            if (copyBtn) copyBtn.style.display = 'none';
+
+            tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2.5rem; color: #f97316; font-size: 1rem;"><i class="fa-solid fa-spinner fa-spin" style="margin-right: 8px;"></i> Buscando todas as coletas em aberto no banco de dados...</td></tr>`;
+            if (mobileCards) mobileCards.innerHTML = `<div style="text-align:center;padding:2rem;color:#f97316"><i class="fa-solid fa-spinner fa-spin"></i> Carregando coletas em aberto...</div>`;
+
+            try {
+                const res = await fetch('/api/coletas');
+                const json = await res.json();
+                const allData = json.data || [];
+
+                // Filtra apenas as coletas não finalizadas que possuem delivery ou motorista
+                const pendentes = allData.filter(item => {
+                    const fHorario = (item.f_horario || item.h_finalizado || '').trim();
+                    const isFinalizado = fHorario !== '' && fHorario !== '-';
+                    const hasDeliveryOrDriver = (item.delivery && String(item.delivery).trim() !== '') || (item.motorista && String(item.motorista).trim() !== '');
+                    return !isFinalizado && hasDeliveryOrDriver;
+                });
+
+                // Ordena: datas mais recentes primeiro
+                pendentes.sort((a, b) => {
+                    const dtA = parseDateBR(a.data) || 0;
+                    const dtB = parseDateBR(b.data) || 0;
+                    return dtB - dtA;
+                });
+
+                tbody.innerHTML = '';
+                if (mobileCards) mobileCards.innerHTML = '';
+
+                if (pendentes.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="17" class="empty-day-message" style="color: #34d399;">
+                                <i class="fa-solid fa-circle-check" style="color: #34d399; font-size: 2rem; margin-bottom: 8px;"></i><br>
+                                <strong>Excelente! Não há nenhuma coleta em aberto ou pendente de finalização no momento.</strong>
+                            </td>
+                        </tr>
+                    `;
+                    if (mobileCards) {
+                        mobileCards.innerHTML = `<div style="text-align:center;padding:2rem;color:#34d399;font-weight:bold"><i class="fa-solid fa-circle-check"></i> Todas as coletas estão finalizadas!</div>`;
+                    }
+                } else {
+                    pendentes.forEach(rec => {
+                        try { appendRowFromData(rec, true); } catch(e) { console.error("Erro ao renderizar linha pendente:", e); }
+                        try { appendMobileCard(rec, true); } catch(e) { console.error("Erro ao renderizar card pendente:", e); }
+                    });
+                }
+            } catch (err) {
+                console.error("Erro ao buscar coletas em aberto:", err);
+                tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2rem; color: #ef4444;">Erro ao carregar coletas em aberto: ${err.message}</td></tr>`;
+            }
         }
 
         async function fetchDayDataFromSupabase(dateStr) {

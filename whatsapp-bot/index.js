@@ -93,6 +93,7 @@ const qrPath = path.join(__dirname, '..', 'static', 'qr.png');
 let lastCSCommandTimestamp = 0;
 const processedMsgIds = new Set();
 const botStartTime = Math.floor(Date.now() / 1000);
+const GRUPO_TRABALHO = '120363408148934220@g.us';
 
 // ============================================================
 // ============================================================
@@ -251,10 +252,13 @@ async function startWhatsApp() {
         textoCompleto.trim().length <= 35 && (
             /\bno\s+cs\b/i.test(textoCompleto) || 
             /\b(quem|qual)\s+(est[aá]|t[aá]|motorista)\s+no\s+cs\b/i.test(textoCompleto) ||
+            /\b(coleta[s]?\s+em\s+aberto|em\s+aberto)\b/i.test(textoCompleto) ||
             textoCompleto.trim() === 'no cs' ||
             textoCompleto.trim() === 'no cs?' ||
             textoCompleto.trim() === 'cs' ||
-            textoCompleto.trim() === 'cs?'
+            textoCompleto.trim() === 'cs?' ||
+            textoCompleto.trim() === 'aberto' ||
+            textoCompleto.trim() === 'aberto?'
         );
 
     if (isConsultaCS) {
@@ -274,79 +278,118 @@ async function startWhatsApp() {
                 .not('motorista', 'is', null)
                 .order('id', { ascending: false });
 
-            const targetJid = isFromGroup ? msg.key.remoteJid : '120363408148934220@g.us';
+            const targetJid = GRUPO_TRABALHO;
 
             if (errCS || !allDeliveries) {
                 await sock.sendMessage(targetJid, { text: `❌ Não foi possível consultar as pendências do CS no banco de dados.` });
                 return;
             }
 
-            // Descobre dinamicamente a data imediatamente anterior de operação (dia anterior da coleta)
+            const isAbertoGeral = /\b(coleta[s]?\s+em\s+aberto|em\s+aberto|aberto|aberto\?)\b/i.test(textoCompleto.trim());
+
+            // Agrupa pendências de todas as datas anteriores por data e por motorista
             const hojeDataObj = new Date();
-            const datasAnteriores = [];
+            const hojeMeiaNoite = new Date(hojeDataObj.getFullYear(), hojeDataObj.getMonth(), hojeDataObj.getDate());
+            
+            const pendenciasPorData = {};
+            const pendenciasHoje = {};
+
             allDeliveries.forEach(item => {
-                if (!item.data) return;
+                if (!item.data || !item.motorista) return;
                 const dt = parseDateBR(item.data);
-                if (dt && dt < hojeDataObj) {
-                    const dStr = item.data.trim();
-                    if (!datasAnteriores.some(d => d.str === dStr)) {
-                        datasAnteriores.push({ str: dStr, dt: dt });
-                    }
-                }
-            });
-
-            datasAnteriores.sort((a, b) => b.dt - a.dt);
-
-            if (datasAnteriores.length === 0) {
-                await sock.sendMessage(targetJid, { text: `ℹ️ Nenhuma data anterior registrada para consulta de pendências.` });
-                return;
-            }
-
-            const dataAnteriorMaisRecente = datasAnteriores[0].str; // ex: '11/09/2026'
-
-            const pendentesPorMotorista = {};
-
-            allDeliveries.forEach(item => {
-                // Filtra ESTRITAMENTE a data anterior de operação, NUNCA hoje e NUNCA dias velhos
-                if (item.data !== dataAnteriorMaisRecente || !item.motorista) return;
+                if (!dt) return;
 
                 const fHorario = (item.f_horario || '').trim();
                 const isFinalizado = fHorario !== '' && fHorario !== '-';
                 const hasColeta = (item.l_horario && item.l_horario.trim() !== '' && item.l_horario.trim() !== '-') || 
                                   (item.c_horario && item.c_horario.trim() !== '' && item.c_horario.trim() !== '-') ||
-                                  (item.pc != null && Number(item.pc) > 0);
+                                  (item.pc != null && Number(item.pc) > 0) ||
+                                  (item.delivery && item.delivery.trim() !== '');
 
                 if (!isFinalizado && hasColeta) {
                     const motNome = item.motorista.trim().toUpperCase();
-                    if (!pendentesPorMotorista[motNome]) pendentesPorMotorista[motNome] = [];
-                    pendentesPorMotorista[motNome].push({
-                        data: item.data,
-                        delivery: item.delivery || 'S/D',
-                        cliente: item.cliente || 'N/A',
-                        pc: item.pc
-                    });
+                    if (dt < hojeMeiaNoite) {
+                        const dStr = item.data.trim();
+                        if (!pendenciasPorData[dStr]) pendenciasPorData[dStr] = {};
+                        if (!pendenciasPorData[dStr][motNome]) pendenciasPorData[dStr][motNome] = [];
+                        pendenciasPorData[dStr][motNome].push({
+                            delivery: item.delivery || 'S/D',
+                            cliente: item.cliente || 'N/A',
+                            pc: item.pc
+                        });
+                    } else if (isAbertoGeral) {
+                        if (!pendenciasHoje[motNome]) pendenciasHoje[motNome] = [];
+                        pendenciasHoje[motNome].push({
+                            delivery: item.delivery || 'S/D',
+                            cliente: item.cliente || 'N/A',
+                            pc: item.pc
+                        });
+                    }
                 }
             });
 
-            const motoristasKeys = Object.keys(pendentesPorMotorista);
-            if (motoristasKeys.length === 0) {
-                await sock.sendMessage(targetJid, { text: `✅ *Nenhum motorista pendente de descarga no CS da data anterior (${dataAnteriorMaisRecente})!*` });
+            const datasOrdenadas = Object.keys(pendenciasPorData).sort((a, b) => {
+                const dtA = parseDateBR(a) || 0;
+                const dtB = parseDateBR(b) || 0;
+                return dtB - dtA; // Mais recente primeiro
+            });
+
+            const motHojeKeys = Object.keys(pendenciasHoje);
+
+            if (isAbertoGeral) {
+                if (datasOrdenadas.length === 0 && motHojeKeys.length === 0) {
+                    await sock.sendMessage(targetJid, { text: `✅ *Nenhuma coleta em aberto no momento! Todas as coletas estão finalizadas.*` });
+                } else {
+                    let msgTexto = `📋 *COLETAS EM ABERTO NO SISTEMA:*\n\n`;
+                    if (datasOrdenadas.length > 0) {
+                        msgTexto += `🚚 *PENDÊNCIAS NO CS (DATAS ANTERIORES):*\n`;
+                        datasOrdenadas.forEach(dStr => {
+                            msgTexto += `📅 *${dStr}*\n`;
+                            const motMap = pendenciasPorData[dStr];
+                            Object.keys(motMap).forEach(mot => {
+                                msgTexto += `  🔸 *${mot}*\n`;
+                                motMap[mot].forEach(c => {
+                                    msgTexto += `    • Delivery: *${c.delivery}* | ${c.cliente}${c.pc ? ` (${c.pc} paletes)` : ''}\n`;
+                                });
+                            });
+                        });
+                        msgTexto += `\n`;
+                    }
+                    if (motHojeKeys.length > 0) {
+                        msgTexto += `📦 *COLETAS DE HOJE AINDA EM ABERTO:*\n`;
+                        motHojeKeys.forEach(mot => {
+                            msgTexto += `  🔸 *${mot}*\n`;
+                            pendenciasHoje[mot].forEach(c => {
+                                msgTexto += `    • Delivery: *${c.delivery}* | ${c.cliente}${c.pc ? ` (${c.pc} paletes)` : ''}\n`;
+                            });
+                        });
+                    }
+                    await sock.sendMessage(targetJid, { text: msgTexto.trim() });
+                }
             } else {
-                let msgTexto = `🚚 *MOTORISTAS NO CS (DESCARGA DO DIA ANTERIOR - ${dataAnteriorMaisRecente}):*\n\n`;
-                motoristasKeys.forEach(mot => {
-                    msgTexto += `🔸 *${mot}*\n`;
-                    pendentesPorMotorista[mot].forEach(c => {
-                        msgTexto += `  • Delivery: *${c.delivery}* | ${c.cliente}${c.pc ? ` (${c.pc} paletes)` : ''}\n`;
+                // Consulta estrita 'NO CS' (foco em descargas anteriores no CS)
+                if (datasOrdenadas.length === 0) {
+                    await sock.sendMessage(targetJid, { text: `✅ *Nenhum motorista pendente de descarga no CS de datas anteriores!*` });
+                } else {
+                    let msgTexto = `🚚 *MOTORISTAS NO CS (DESCARGA PENDENTE DE DATAS ANTERIORES):*\n\n`;
+                    datasOrdenadas.forEach(dStr => {
+                        msgTexto += `📅 *DATA DA COLETA: ${dStr}*\n`;
+                        const motMap = pendenciasPorData[dStr];
+                        Object.keys(motMap).forEach(mot => {
+                            msgTexto += `  🔸 *${mot}*\n`;
+                            motMap[mot].forEach(c => {
+                                msgTexto += `    • Delivery: *${c.delivery}* | ${c.cliente}${c.pc ? ` (${c.pc} paletes)` : ''}\n`;
+                            });
+                        });
+                        msgTexto += `\n`;
                     });
-                    msgTexto += `\n`;
-                });
-                msgTexto += `ℹ️ _Cargas coletadas em ${dataAnteriorMaisRecente} pendentes de descarregar no CS._`;
-                await sock.sendMessage(targetJid, { text: msgTexto.trim() });
+                    msgTexto += `ℹ️ _Cargas coletadas em datas anteriores que ainda não foram finalizadas/descarregadas no CS._\n💡 _Dica: Digite "em aberto" para ver também as de hoje._`;
+                    await sock.sendMessage(targetJid, { text: msgTexto.trim() });
+                }
             }
         } catch (e) {
-            console.error('[WPP-BOT] Erro ao processar comando NO CS:', e);
-            const targetJid = isFromGroup ? msg.key.remoteJid : '120363408148934220@g.us';
-            await sock.sendMessage(targetJid, { text: `❌ Erro ao consultar motoristas no CS: ${e.message}` });
+            console.error('[WPP-BOT] Erro ao processar comando NO CS / EM ABERTO:', e);
+            await sock.sendMessage(GRUPO_TRABALHO, { text: `❌ Erro ao consultar pendências: ${e.message}` });
         }
         return;
     }
@@ -536,7 +579,7 @@ async function startWhatsApp() {
         const jsonText = await parseProgramacaoText(txtMsg);
         if (jsonText && jsonText.tipo === "PROGRAMACAO") {
             await handleMotorista(jsonText, senderName);
-            await sock.sendMessage(msg.key.remoteJid, { text: `✅ Programação de cargas processada com sucesso via texto!` });
+            await sock.sendMessage(GRUPO_TRABALHO, { text: `✅ Programação de cargas processada com sucesso via texto!` });
         }
         return;
     }
