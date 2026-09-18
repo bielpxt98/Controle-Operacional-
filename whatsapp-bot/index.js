@@ -185,6 +185,7 @@ async function startWhatsApp() {
     const numC = "558183493082";
     const numD = "5581983493082";
     const numE = "558193792908"; // Gabriel Peixoto antigo
+    const numF = "557186888333"; // Gabriel Peixoto atual
     const isAdmin = msg.key.fromMe || remetenteNum.includes("557181942525") || remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || remetenteNum.includes(numE) || remetenteNum.includes(numF) || senderName.toLowerCase().includes("luciana") || senderName.toLowerCase().includes("osvaldo") || senderName.toLowerCase().includes("gabriel");
 
     // =========================================================
@@ -522,11 +523,11 @@ async function startWhatsApp() {
                 const { error: updErr } = await supabase.from('deliveries').update(updateObj).eq('id', verif[0].id);
                 
                 if (!updErr) {
-                    await sock.sendMessage('120363408148934220@g.us', { text: msgSucesso });
+                    await sock.sendMessage(GRUPO_TRABALHO, { text: msgSucesso });
                     console.log(`[WPP] Correção manual via WhatsApp para delivery ${numeroDeliveryStr} processada.`);
                 }
             } else {
-                await sock.sendMessage('120363408148934220@g.us', { text: `❌ Não encontrei nenhuma entrega no banco com o delivery ${numeroDeliveryStr}.` });
+                await sock.sendMessage(GRUPO_TRABALHO, { text: `❌ Não encontrei nenhuma entrega no banco com o delivery ${numeroDeliveryStr}.` });
             }
             return;
         }
@@ -575,11 +576,11 @@ async function startWhatsApp() {
                 
                 if (escolhido) {
                     await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', escolhido.id);
-                    await sock.sendMessage('120363408148934220@g.us', { text: `📍 H_LOCAL marcado manualmente para ${motoristaAlvo} (${horaAtual})\nCliente: ${escolhido.cliente || "N/A"}` });
+                    await sock.sendMessage(GRUPO_TRABALHO, { text: `📍 H_LOCAL marcado manualmente para ${motoristaAlvo} (${horaAtual})\nCliente: ${escolhido.cliente || "N/A"}` });
                     console.log(`[WPP-ADMIN] H_LOCAL marcado no banco! (${horaAtual}) Cliente ID: ${escolhido.id}`);
                 }
             } else {
-                await sock.sendMessage('120363408148934220@g.us', { text: `❌ Não encontrei nenhuma coleta pendente hoje (sem H_LOCAL) para ${motoristaAlvo}.` });
+                await sock.sendMessage(GRUPO_TRABALHO, { text: `❌ Não encontrei nenhuma coleta pendente hoje (sem H_LOCAL) para ${motoristaAlvo}.` });
             }
             return;
         }
@@ -666,7 +667,7 @@ async function startWhatsApp() {
             
         if (pendentes && pendentes.length === 1) {
             await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', pendentes[0].id);
-            await sock.sendMessage('120363408148934220@g.us', { text: `📍 H_LOCAL marcado para ${motoristaPrimeiroNome} (${horaAtual})\nCliente: ${pendentes[0].cliente || "N/A"}` });
+            await sock.sendMessage(GRUPO_TRABALHO, { text: `📍 H_LOCAL marcado para ${motoristaPrimeiroNome} (${horaAtual})\nCliente: ${pendentes[0].cliente || "N/A"}` });
             console.log(`[WPP-GRUPO] H_LOCAL marcado no banco! (${horaAtual})`);
         } else if (pendentes && pendentes.length > 1) {
             let escolhido = null;
@@ -688,11 +689,11 @@ async function startWhatsApp() {
             
             if (escolhido) {
                 await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', escolhido.id);
-                await sock.sendMessage('120363408148934220@g.us', { text: `📍 H_LOCAL marcado para ${motoristaPrimeiroNome} (${horaAtual}) via GPS Inteligente!\nCliente: ${escolhido.cliente || "N/A"}` });
+                await sock.sendMessage(GRUPO_TRABALHO, { text: `📍 H_LOCAL marcado para ${motoristaPrimeiroNome} (${horaAtual}) via GPS Inteligente!\nCliente: ${escolhido.cliente || "N/A"}` });
                 console.log(`[WPP-GRUPO] H_LOCAL marcado no banco por GPS Inteligente! (${horaAtual})`);
             } else {
                 let msgOpcoes = pendentes.map(p => `- ${p.cliente}`).join('\n');
-                await sock.sendMessage('120363408148934220@g.us', { text: `⚠️ O motorista ${motoristaPrimeiroNome} enviou a localização, mas possui ${pendentes.length} coletas pendentes:\n\n${msgOpcoes}\n\n👉 Responda com o nome do motorista e o local (ex: "${motoristaPrimeiroNome} Cabula") para registrar a chegada.` });
+                await sock.sendMessage(GRUPO_TRABALHO, { text: `⚠️ O motorista ${motoristaPrimeiroNome} enviou a localização, mas possui ${pendentes.length} coletas pendentes:\n\n${msgOpcoes}\n\n👉 Responda com o nome do motorista e o local (ex: "${motoristaPrimeiroNome} Cabula") para registrar a chegada.` });
                 console.log(`[WPP-GRUPO] Aguardando desempate manual para ${motoristaPrimeiroNome}.`);
             }
         } else {
@@ -794,11 +795,11 @@ async function startWhatsApp() {
                     const dataHojeCompleta = dataHojeCurta + '/' + hojeObj.getFullYear();
                     const { error: updErr } = await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO', data_finalizacao: dataHojeCompleta }).eq('id', finalizavelId);
                     if (updErr) console.log('[ERRO SUPABASE]', updErr);
-                    await sock.sendMessage('120363408148934220@g.us', { text: `✅ H_FINALIZADO marcado! Cliente: ${finalizavelCliente} | Delivery: ${finalizavelDelivery} | Hora: ${horaAtual} | DF: ${dataHojeCompleta}` });
+                    await sock.sendMessage(GRUPO_TRABALHO, { text: `✅ H_FINALIZADO marcado! Cliente: ${finalizavelCliente} | Delivery: ${finalizavelDelivery} | Hora: ${horaAtual} | DF: ${dataHojeCompleta}` });
                     console.log(`[WPP-GRUPO] H_FINALIZADO marcado com sucesso! ID: ${finalizavelId}`);
                 } else {
                     console.log(`[WPP-GRUPO] FALHA TOTAL: Nenhuma carga encontrada para motorista=${motoristaPrimeiroNome} hoje ou pelo delivery`);
-                    await sock.sendMessage('120363408148934220@g.us', { text: `⚠️ Não consegui localizar a coleta de ${motoristaPrimeiroNome} para finalizar.\nDelivery lido: ${deliveryLido}\nPreencha manualmente no painel.` });
+                    await sock.sendMessage(GRUPO_TRABALHO, { text: `⚠️ Não consegui localizar a coleta de ${motoristaPrimeiroNome} para finalizar.\nDelivery lido: ${deliveryLido}\nPreencha manualmente no painel.` });
                 }
             }
         });
@@ -882,20 +883,20 @@ async function classifyImage(buffer, textCaption, isFromGroup, isTextOnly = fals
         console.log("[GEMINI] Analisando dados recebidos...");
         let prompt = "";
         if (isFromGroup) {
-            prompt = `Analise a imagem em anexo, que é um documento enviado por um motorista.
+            prompt = `Analise a imagem em anexo, que é um documento operacional enviado por um motorista no grupo de entregas.
 Regras:
-1. Verifique se a imagem contém carimbos de recebimento, assinaturas confirmando a entrega, ou textos manuscritos como 'recebido'. Se SIM, isso indica que a carga foi FINALIZADA.
-2. Neste caso, extraia a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (ex: "ASSAI", "ATACADAO", "WMS"). ATENÇÃO ÀS REMESSAS: Se a nota tiver carimbo da "JACOBS", "DOUWE EGBERTS" ou "JDE", preencha o cliente como "JDE". Se tiver "JSL", preencha "JSL". Se tiver "BOOMIX", preencha "BOOMIX".
+1. Verifique se a imagem é um comprovante ou documento de entrega: canhoto de Nota Fiscal (DANFE/NF-e), ticket de pesagem/descarga, comprovante de recebimento, canhoto assinado/carimbado, declaração de devolução/recusa ou qualquer documento de encerramento de coleta/entrega. Se SIM, isso indica que a carga foi entregue/finalizada (tipo: "NF_ASSINADA").
+2. Neste caso, extraia a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (ex: "ASSAI", "ATACADAO", "WMS", "COCA", "RAIA", "AMAZON"). ATENÇÃO ÀS REMESSAS: Se a nota tiver carimbo da "JACOBS", "DOUWE EGBERTS" ou "JDE", preencha o cliente como "JDE". Se tiver "JSL", preencha "JSL". Se tiver "BOOMIX", preencha "BOOMIX". Se for Coca-Cola ou Solar, preencha "COCA COLA".
 3. Identifique o TIPO DE DOCUMENTO com máxima atenção:
-   a) NOTA FISCAL (DANFE / NF-e / canhoto):
-      - O número do Delivery é frequentemente escrito à mão (manuscrito) e contém EXATAMENTE 10 dígitos (começando com 37 ou 34).
-      - Em NOTA FISCAL, NÃO existe número de SR! O campo "sr" DEVE ser obrigatoriamente null.
+   a) NOTA FISCAL / CANHOTO / TICKET DE DESCARGA:
+      - O número do Delivery é frequentemente impresso ou escrito à mão (manuscrito) e contém EXATAMENTE 10 dígitos (começando com 37 ou 34).
+      - Em NOTA FISCAL/CANHOTO padrão, NÃO existe número de SR! O campo "sr" DEVE ser obrigatoriamente null.
    b) DECLARAÇÃO DE DEVOLUÇÃO OU RECUSA (papel ofício / declaração avulsa / timbrado):
       - O número de SR (Service Request) contém EXATAMENTE 8 dígitos (ex: 43469815, 43314606). Retorne este número no campo "sr".
       - Só preencha "delivery" se houver um número explícito de 10 dígitos iniciando com 37 ou 34. Caso contrário, retorne "delivery": null.
 4. REGRA CRÍTICA ANTI-GLID: Códigos de identificação de cliente conhecidos como GLID (que geralmente contêm 10 dígitos iniciando com 1000... ou 5500...) NUNCA são número de delivery! Jamais coloque um GLID no campo delivery. Se o único número de 10 dígitos for um GLID de cliente, coloque "delivery": null.
 5. Devolva EXATAMENTE no formato JSON: {"tipo": "NF_ASSINADA", "cliente": "PRIMEIRA_PALAVRA_CLIENTE", "delivery": "NUM_10_DIGITOS", "sr": "NUM_8_DIGITOS"} (Se não achar o delivery ou a SR legítimos, mande null nos respectivos campos).
-6. Se a imagem não tiver carimbos/assinaturas de conclusão nem texto de recebido, devolva: {"tipo": "IRRELEVANTE"}`;
+6. Se a imagem for algo totalmente aleatório que não seja documento de entrega (ex: selfie, foto da estrada, meme), devolva: {"tipo": "IRRELEVANTE"}`;
         } else {
             prompt = `Analise a programação de cargas diárias enviada pelo usuário (pode ser uma imagem de tabela ou texto corrido como 'ArgemiroWMS Max').
 Extraia os dados em formato JSON estrito, sem formatação markdown.
