@@ -185,8 +185,7 @@ async function startWhatsApp() {
     const numC = "558183493082";
     const numD = "5581983493082";
     const numE = "558193792908"; // Gabriel Peixoto antigo
-    const numF = "557186888333"; // Gabriel Peixoto atual
-    const isAdmin = msg.key.fromMe || remetenteNum.includes("557181942525") || remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || remetenteNum.includes(numE) || remetenteNum.includes(numF) || senderName.toLowerCase().includes("luciana") || senderName.toLowerCase().includes("osvaldo");
+    const isAdmin = msg.key.fromMe || remetenteNum.includes("557181942525") || remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || remetenteNum.includes(numE) || remetenteNum.includes(numF) || senderName.toLowerCase().includes("luciana") || senderName.toLowerCase().includes("osvaldo") || senderName.toLowerCase().includes("gabriel");
 
     // =========================================================
     // 1. MENSAGEM NO PRIVADO
@@ -398,29 +397,41 @@ async function startWhatsApp() {
     }
 
     // ==========================================
-    // LOGICA DE SR ENVIADA PELO ADMIN
+    // LOGICA DE SR / GLID ENVIADA PELO ADMIN OU NO GRUPO
     // ==========================================
-    if (isAdmin && txtMsg.toUpperCase().includes('SR') && quotedMsg && quotedMsg.imageMessage) {
+    const isSRMsg = (isAdmin || isFromGroup) && (txtMsg.toUpperCase().includes('SR') || txtMsg.toUpperCase().includes('GLID'));
+    if (isSRMsg) {
         const srMatch = txtMsg.match(/\b\d{8}\b/);
         if (srMatch) {
             const numeroSR = srMatch[0];
             const motoristasConhecidos = ["GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIS", "FABIO", "ARIEL", "LEANDRO", "ROMILSON"];
             let motoristaAlvo = motoristasConhecidos.find(m => txtMsg.toUpperCase().includes(m));
             
+            // Se o motorista não estiver explícito no texto, tenta extrair da legenda da mensagem citada (se houver)
+            if (!motoristaAlvo && quotedMsg) {
+                const quotedCaption = (quotedMsg.imageMessage?.caption || quotedMsg.conversation || quotedMsg.extendedTextMessage?.text || "").toUpperCase();
+                motoristaAlvo = motoristasConhecidos.find(m => quotedCaption.includes(m));
+            }
+            
             if (motoristaAlvo) {
                 console.log(`[WPP-ADMIN] Identificada SR ${numeroSR} para ${motoristaAlvo}`);
                 
                 let clientNameHint = null;
-                if (txtMsg.toUpperCase().includes('GLID')) {
+                if (txtMsg.toUpperCase().includes('GLID') || txtMsg.toUpperCase().includes('AMAZON')) {
                     const parts = txtMsg.split('-');
                     if (parts.length >= 3) {
                         clientNameHint = parts[1].trim(); 
                     } else if (parts.length >= 2) {
                         clientNameHint = parts[1].trim();
+                    } else {
+                        clientNameHint = "AMAZON";
                     }
                 }
+                if (!clientNameHint && txtMsg.toUpperCase().includes('AMAZON')) {
+                    clientNameHint = "AMAZON";
+                }
                 
-                let query = supabase.from('deliveries').select('id, cliente, f_horario').ilike('motorista', `%${motoristaAlvo}%`);
+                let query = supabase.from('deliveries').select('id, cliente, delivery, f_horario, c_horario, data').ilike('motorista', `%${motoristaAlvo}%`);
                 let { data: allMotoristaLoads } = await query;
                 
                 let pendentes = [];
@@ -458,12 +469,12 @@ async function startWhatsApp() {
                     
                     if (updErr) console.log('[ERRO SUPABASE SR]', updErr);
                     
-                    await sock.sendMessage('120363408148934220@g.us', { text: `✅ SR ${numeroSR} e H_COLETADO registrados para ${motoristaAlvo} (${horaAtual})!\nCliente: ${escolhido.cliente || "N/A"}` });
-                    console.log(`[WPP-ADMIN] SR salva no H_COLETADO com sucesso.`);
+                    await sock.sendMessage(GRUPO_TRABALHO, { text: `✅ SR *${numeroSR}* e H_COLETADO registrados para *${motoristaAlvo}* (${horaAtual})!\n🏢 Cliente: *${escolhido.cliente || "AMAZON"}*` });
+                    console.log(`[WPP-ADMIN] SR ${numeroSR} salva no H_COLETADO com sucesso.`);
                     return; 
                 } else {
-                    console.log(`[WPP-ADMIN] Nao achei coleta pendente para ${motoristaAlvo} hoje.`);
-                    await sock.sendMessage('120363408148934220@g.us', { text: `❌ Não consegui achar carga pendente para ${motoristaAlvo} (SR: ${numeroSR}).\nResponda esta mensagem digitando apenas a delivery.` });
+                    console.log(`[WPP-ADMIN] Nao achei coleta pendente para ${motoristaAlvo}.`);
+                    await sock.sendMessage(GRUPO_TRABALHO, { text: `❌ Não consegui achar carga pendente para *${motoristaAlvo}* (SR: ${numeroSR}).` });
                     return;
                 }
             }
@@ -587,7 +598,9 @@ async function startWhatsApp() {
         return;
     }
 
-    const deliveryMatch = txtMsg.match(/\b\d{10}\b/);
+    // Se a mensagem for de SR ou GLID, NUNCA deve cair como delivery de 10 dígitos
+    const isGlidOrSR = txtMsg.toUpperCase().includes('GLID') || txtMsg.toUpperCase().includes('SR');
+    const deliveryMatch = !isGlidOrSR ? txtMsg.match(/\b\d{10}\b/) : null;
     if (deliveryMatch && quotedMsg && quotedMsg.imageMessage) {
         const numeroDelivery = deliveryMatch[0];
         const legendaOriginal = quotedMsg.imageMessage.caption || "";
@@ -615,11 +628,16 @@ async function startWhatsApp() {
         
         const { data: verifJaColetado } = await supabase
             .from('deliveries')
-            .select('id, c_horario')
+            .select('id, c_horario, cliente')
             .eq('delivery', numeroDelivery)
             .limit(1);
 
-        if (verifJaColetado && verifJaColetado.length > 0 && verifJaColetado[0].c_horario && verifJaColetado[0].c_horario !== '-') {
+        if (!verifJaColetado || verifJaColetado.length === 0) {
+            console.log(`[WPP] Delivery ${numeroDelivery} não encontrada no banco. Ignorando.`);
+            return;
+        }
+
+        if (verifJaColetado[0].c_horario && verifJaColetado[0].c_horario !== '-') {
             console.log(`[WPP] Delivery ${numeroDelivery} já possui c_horario (${verifJaColetado[0].c_horario}). Ignorando disparo duplicado.`);
             return;
         }
@@ -627,7 +645,7 @@ async function startWhatsApp() {
         console.log(`[WPP] H_COLETADO detectado. Delivery: ${numeroDelivery}, Paletes: ${paletesNumStr}`);
         const { error } = await supabase.from('deliveries').update(updatePayload).eq('delivery', numeroDelivery);
         if (!error) {
-            await sock.sendMessage('120363408148934220@g.us', { text: `📦 H_COLETADO marcado! Delivery: ${numeroDelivery} | Paletes: ${paletesNumStr}` });
+            await sock.sendMessage(GRUPO_TRABALHO, { text: `📦 H_COLETADO marcado! Delivery: ${numeroDelivery} | Paletes: ${paletesNumStr}` });
         }
         return;
     }
