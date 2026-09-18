@@ -703,6 +703,14 @@ async function startWhatsApp() {
     }
 
     if (msg.message.imageMessage && !deliveryMatch) {
+        // Se a legenda da foto for apenas contagem de paletes (ex: "171", "171 paletes", "100 cx"),
+        // é uma foto de COLETA aguardando o admin responder com o número da delivery. Não tenta finalizar!
+        const isPaletesCaption = /^\s*\d+\s*(?:palet|un|und|p\b|cx|peca|peça)?\s*$/i.test(captionMsg.trim());
+        if (isPaletesCaption) {
+            console.log(`[WPP-GRUPO] Foto de coleta de ${motoristaPrimeiroNome} com legenda de paletes ("${captionMsg.trim()}"). Aguardando resposta com delivery.`);
+            return;
+        }
+
         console.log(`[WPP-GRUPO] Foto enviada por ${motoristaPrimeiroNome}. Enfileirando na fila sequencial...`);
         enqueueMediaTask(async () => {
             console.log(`[WPP-GRUPO] Processando foto de ${motoristaPrimeiroNome}...`);
@@ -798,8 +806,11 @@ async function startWhatsApp() {
                     await sock.sendMessage(GRUPO_TRABALHO, { text: `✅ H_FINALIZADO marcado! Cliente: ${finalizavelCliente} | Delivery: ${finalizavelDelivery} | Hora: ${horaAtual} | DF: ${dataHojeCompleta}` });
                     console.log(`[WPP-GRUPO] H_FINALIZADO marcado com sucesso! ID: ${finalizavelId}`);
                 } else {
-                    console.log(`[WPP-GRUPO] FALHA TOTAL: Nenhuma carga encontrada para motorista=${motoristaPrimeiroNome} hoje ou pelo delivery`);
-                    await sock.sendMessage(GRUPO_TRABALHO, { text: `⚠️ Não consegui localizar a coleta de ${motoristaPrimeiroNome} para finalizar.\nDelivery lido: ${deliveryLido}\nPreencha manualmente no painel.` });
+                    console.log(`[WPP-GRUPO] Nenhuma carga encontrada para motorista=${motoristaPrimeiroNome}`);
+                    // Só envia alerta no grupo se a IA de fato leu um número explícito de Delivery ou SR
+                    if (deliveryLido || srLido) {
+                        await sock.sendMessage(GRUPO_TRABALHO, { text: `⚠️ Não consegui localizar a coleta de ${motoristaPrimeiroNome} para finalizar.\nDelivery lido: ${deliveryLido || srLido}\nPreencha manualmente no painel.` });
+                    }
                 }
             }
         });
@@ -883,20 +894,25 @@ async function classifyImage(buffer, textCaption, isFromGroup, isTextOnly = fals
         console.log("[GEMINI] Analisando dados recebidos...");
         let prompt = "";
         if (isFromGroup) {
-            prompt = `Analise a imagem em anexo, que é um documento operacional enviado por um motorista no grupo de entregas.
-Regras:
-1. Verifique se a imagem é um comprovante ou documento de entrega: canhoto de Nota Fiscal (DANFE/NF-e), ticket de pesagem/descarga, comprovante de recebimento, canhoto assinado/carimbado, declaração de devolução/recusa ou qualquer documento de encerramento de coleta/entrega. Se SIM, isso indica que a carga foi entregue/finalizada (tipo: "NF_ASSINADA").
-2. Neste caso, extraia a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (ex: "ASSAI", "ATACADAO", "WMS", "COCA", "RAIA", "AMAZON"). ATENÇÃO ÀS REMESSAS: Se a nota tiver carimbo da "JACOBS", "DOUWE EGBERTS" ou "JDE", preencha o cliente como "JDE". Se tiver "JSL", preencha "JSL". Se tiver "BOOMIX", preencha "BOOMIX". Se for Coca-Cola ou Solar, preencha "COCA COLA".
-3. Identifique o TIPO DE DOCUMENTO com máxima atenção:
-   a) NOTA FISCAL / CANHOTO / TICKET DE DESCARGA:
-      - O número do Delivery é frequentemente impresso ou escrito à mão (manuscrito) e contém EXATAMENTE 10 dígitos (começando com 37 ou 34).
-      - Em NOTA FISCAL/CANHOTO padrão, NÃO existe número de SR! O campo "sr" DEVE ser obrigatoriamente null.
-   b) DECLARAÇÃO DE DEVOLUÇÃO OU RECUSA (papel ofício / declaração avulsa / timbrado):
-      - O número de SR (Service Request) contém EXATAMENTE 8 dígitos (ex: 43469815, 43314606). Retorne este número no campo "sr".
-      - Só preencha "delivery" se houver um número explícito de 10 dígitos iniciando com 37 ou 34. Caso contrário, retorne "delivery": null.
-4. REGRA CRÍTICA ANTI-GLID: Códigos de identificação de cliente conhecidos como GLID (que geralmente contêm 10 dígitos iniciando com 1000... ou 5500...) NUNCA são número de delivery! Jamais coloque um GLID no campo delivery. Se o único número de 10 dígitos for um GLID de cliente, coloque "delivery": null.
-5. Devolva EXATAMENTE no formato JSON: {"tipo": "NF_ASSINADA", "cliente": "PRIMEIRA_PALAVRA_CLIENTE", "delivery": "NUM_10_DIGITOS", "sr": "NUM_8_DIGITOS"} (Se não achar o delivery ou a SR legítimos, mande null nos respectivos campos).
-6. Se a imagem for algo totalmente aleatório que não seja documento de entrega (ex: selfie, foto da estrada, meme), devolva: {"tipo": "IRRELEVANTE"}`;
+            prompt = `Analise a imagem em anexo enviada por um motorista no grupo de entregas.
+DIFERENCIAÇÃO CRÍTICA ENTRE DOCUMENTO DE COLETA vs COMPROVANTE DE FINALIZAÇÃO:
+
+1. COMPROVANTE DE FINALIZAÇÃO (tipo: "NF_ASSINADA"):
+   - Canhoto de Nota Fiscal (ou DANFE) que contenha OBRIGATORIAMENTE CARIMBO DE RECEBIDO/ENTREGUE, ASSINATURA DE RECEBIMENTO DO CLIENTE ou texto manuscrito de recebimento confirmando que a mercadoria foi entregue/descarregada.
+   - OU Ticket de pesagem/descarga emitido pelo CS/armazém.
+   - OU Declaração de devolução/recusa assinada com número de SR (Service Request).
+
+2. DOCUMENTO DE COLETA OU CARGA (tipo: "IRRELEVANTE"):
+   - Nota Fiscal (DANFE) limpa, sem carimbo de recebimento do destinatário, sem assinatura de entrega.
+   - Foto dos paletes/carga no caminhão ou foto da mercadoria.
+   - Se o documento NÃO possuir carimbo/assinatura de conclusão da entrega nem for ticket de descarga/declaração de SR, você DEVE retornar {"tipo": "IRRELEVANTE"}.
+
+Regras de Extração (SOMENTE se for COMPROVANTE DE FINALIZAÇÃO):
+- Extraia a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (ex: "ASSAI", "ATACADAO", "WMS", "COCA", "RAIA", "AMAZON"). ATENÇÃO ÀS REMESSAS: Se a nota tiver carimbo da "JACOBS", "DOUWE EGBERTS" ou "JDE", preencha "JDE". Se tiver "JSL", preencha "JSL". Se tiver "BOOMIX", preencha "BOOMIX". Se for Coca-Cola ou Solar, preencha "COCA COLA".
+- Identifique o número de Delivery: Se for impresso ou manuscrito com EXATAMENTE 10 dígitos (iniciando com 37 ou 34). Se for SR (8 dígitos), preencha o campo "sr" e deixe "delivery": null.
+- REGRA ANTI-GLID: GLIDs (iniciando com 1000... ou 5500...) NUNCA são delivery!
+- Devolva EXATAMENTE no formato JSON: {"tipo": "NF_ASSINADA", "cliente": "PRIMEIRA_PALAVRA_CLIENTE", "delivery": "NUM_10_DIGITOS", "sr": "NUM_8_DIGITOS"} (ou null onde não achar).
+- Para qualquer outra foto (incluindo DANFE sem carimbo/assinatura de recebimento, selfie, estrada, carga), devolva: {"tipo": "IRRELEVANTE"}`;
         } else {
             prompt = `Analise a programação de cargas diárias enviada pelo usuário (pode ser uma imagem de tabela ou texto corrido como 'ArgemiroWMS Max').
 Extraia os dados em formato JSON estrito, sem formatação markdown.
@@ -1201,12 +1217,14 @@ async function handleMotorista(json, senderName) {
 
 
 // ==========================================
-// ROTINA DE BACKUP AUTOMATICO
+// ROTINA DE BACKUP AUTOMATICO E GOOGLE SHEETS
 // ==========================================
 const cron = require('node-cron');
 const { executarBackupDiario } = require('./backup.js');
+const { sincronizarGoogleSheets } = require('./backup_sheets.js');
 
-// Agenda o backup para rodar todos os dias as 23:50 (Horario de Brasilia)
-cron.schedule('50 23 * * *', () => {
-    executarBackupDiario();
+// Agenda o backup e sincronização para rodar todos os dias as 23:50 (Horario de Brasilia)
+cron.schedule('50 23 * * *', async () => {
+    await executarBackupDiario();
+    await sincronizarGoogleSheets();
 }, { timezone: "America/Sao_Paulo" });
