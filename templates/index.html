@@ -2085,15 +2085,21 @@
             return searchInput && searchInput.value.trim() !== '';
         }
 
+        let _autoSaveTimer = null;
         function saveCurrentDayColetasSilent() {
             if (isSearchActive()) return;
             const coletas = collectRowsFromUI();
             saveLocalBackupForDay(activeDateStr, coletas);
+            
+            // Auto-salva no Supabase em segundo plano com debounce de 400ms
+            if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
+            _autoSaveTimer = setTimeout(() => {
+                saveCurrentDayColetasDirectAsync(activeDateStr);
+            }, 400);
         }
 
         function saveCurrentDayColetasDirectAsync(dateForSave) {
             if (isSearchActive()) return;
-            saveCurrentDayColetasSilent();
             const coletas = collectRowsFromUI();
             if (coletas.length === 0) return;
 
@@ -2569,6 +2575,13 @@
                             if (!input || input === activeEl) return;
                             
                             const targetVal = (val === null || val === undefined) ? '' : String(val);
+                            
+                            // REGRA DE PROTEÇÃO: Se o usuário digitou algo na tela e no banco está vazio,
+                            // NÃO apaga o que o usuário acabou de digitar!
+                            if (input.value !== '' && (val === null || val === undefined || String(val).trim() === '')) {
+                                return;
+                            }
+
                             if (String(input.value) !== targetVal) {
                                 input.value = targetVal;
                                 input.style.transition = "background-color 0.4s";
@@ -2599,6 +2612,13 @@
                             if (!input || input === activeEl) return;
                             
                             const targetVal = (val === null || val === undefined) ? '' : String(val);
+                            
+                            // REGRA DE PROTEÇÃO: Se o usuário digitou algo na tela e no banco está vazio,
+                            // NÃO apaga o que o usuário acabou de digitar!
+                            if (input.value !== '' && (val === null || val === undefined || String(val).trim() === '')) {
+                                return;
+                            }
+
                             if (String(input.value) !== targetVal) {
                                 input.value = targetVal;
                                 input.style.transition = "background-color 0.4s";
