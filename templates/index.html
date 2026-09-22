@@ -1647,62 +1647,23 @@
 
         async function fetchDayDataFromSupabase(dateStr) {
             const tbody = document.getElementById('tableBody');
+            const mobileCards = document.getElementById('mobileCards');
             
-            // 1. CARREGA E EXIBE INSTANTANEAMENTE DO CACHE/BACKUP LOCAL (0ms)
-            const backup = getLocalBackupForDay(dateStr);
-            if (backup.length > 0) {
-                tbody.innerHTML = '';
-                document.getElementById('mobileCards').innerHTML = '';
-                stableSortRecords(backup);
-                backup.forEach(rec => appendRowFromData(rec));
-                checkAndHighlightCSDrivers(dateStr);
-            } else {
-                tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2rem;">Carregando coletas do Supabase...</td></tr>`;
-                document.getElementById('mobileCards').innerHTML = `<div style="text-align:center;padding:2rem;color:#64748b">Carregando...</div>`;
-            }
-
-            // 2. BUSCA NO SUPABASE EM SEGUNDO PLANO PARA ATUALIZAR
             try {
-                const res = await fetch(`/api/coletas?data=${encodeURIComponent(dateStr)}`);
+                const res = await fetch(`/api/coletas?data=${encodeURIComponent(dateStr)}&_t=${Date.now()}`);
                 const json = await res.json();
                 let records = json.data || [];
 
-                if (backup.length > 0) {
-                    backup.forEach(bItem => {
-                        const match = records.find(r => 
-                            (r.id && bItem.id && r.id == bItem.id) || 
-                            (r.delivery && bItem.delivery && r.delivery == bItem.delivery)
-                        );
-                        if (match) {
-                            if (!match.valor && bItem.valor) match.valor = bItem.valor;
-                            if (!match.l_horario && bItem.l_horario) match.l_horario = bItem.l_horario;
-                            if (!match.c_horario && bItem.c_horario) match.c_horario = bItem.c_horario;
-                            if (!match.f_horario && bItem.f_horario) match.f_horario = bItem.f_horario;
-                            if (!match.df && bItem.df) match.df = bItem.df;
-                            
-                            if (!match.paletes && bItem.paletes) match.paletes = bItem.paletes;
-                            if (match.pc == null && bItem.pc != null) match.pc = bItem.pc;
-                            if (!match.observacao && bItem.observacao) match.observacao = bItem.observacao;
-                            if (!match.sr && bItem.sr) match.sr = bItem.sr;
-                        } else if (!bItem.id) {
-                            // Só manter no cache local se for uma linha NOVA que ainda não foi salva (sem ID)
-                            records.push(bItem);
-                        }
-                    });
-                }
-
                 if (activeDateStr === dateStr) {
-                    // Prevenir re-render se o usuario esta digitando algo
+                    // Prevenir re-render completo apenas se o usuario estiver ativamente digitando em algum campo da tela
                     const activeElem = document.activeElement;
                     if (activeElem && (activeElem.tagName === 'INPUT' || activeElem.tagName === 'SELECT') && 
-                       (tbody.contains(activeElem) || document.getElementById('mobileCards').contains(activeElem))) {
-                        // Apenas atualiza o background silently
-                        saveLocalBackupForDay(dateStr, records);
+                       (tbody.contains(activeElem) || (mobileCards && mobileCards.contains(activeElem)))) {
                         return;
                     }
 
                     tbody.innerHTML = '';
-                    document.getElementById('mobileCards').innerHTML = '';
+                    if (mobileCards) mobileCards.innerHTML = '';
                     if (records.length === 0) {
                         tbody.innerHTML = `
                             <tr>
@@ -1720,7 +1681,7 @@
                     checkAndHighlightCSDrivers(dateStr);
                 }
             } catch (err) {
-                console.error("Erro em background no Supabase:", err);
+                console.error("Erro ao carregar dados do Supabase:", err);
             }
         }
 
@@ -2573,57 +2534,93 @@
             }
         }
     
-        // === SYNC REAL-TIME INVISIVEL ===
+        // === SYNC REAL-TIME INVISIVEL E UNIVERSAL ===
         async function syncRealTime() {
             if (document.hidden) return; // Nao polui o servidor se a aba estiver em segundo plano
             if (isSearchActive()) return;
             
-            // Nao interromper se o usuario estiver digitando algo
-            const activeEl = document.activeElement;
-            if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT')) return;
-            
             try {
-                const res = await fetch(`/api/coletas?data=${encodeURIComponent(activeDateStr)}`);
+                const res = await fetch(`/api/coletas?data=${encodeURIComponent(activeDateStr)}&_t=${Date.now()}`);
                 const json = await res.json();
                 const records = json.data || [];
                 
                 const rows = document.querySelectorAll('#tableBody tr[data-id]');
+                const cards = document.querySelectorAll('.coleta-card[data-id]');
                 
+                // Se a quantidade de linhas for diferente (coleta adicionada ou excluida em outro dispositivo)
                 if (records.length !== rows.length) {
-                    fetchDayDataFromSupabase(activeDateStr);
+                    const activeEl = document.activeElement;
+                    const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT');
+                    if (!isTyping) {
+                        fetchDayDataFromSupabase(activeDateStr);
+                    }
                     return;
                 }
                 
+                const activeEl = document.activeElement;
+                
+                // Atualiza linhas da tabela (Desktop)
                 for (const row of rows) {
                     const id = row.getAttribute('data-id');
                     const rec = records.find(r => String(r.id) === id);
                     if (rec) {
                         const setVal = (cls, val) => {
                             const input = row.querySelector(cls);
-                            if (!input) return;
+                            if (!input || input === activeEl) return;
                             
-                            // Se o banco de dados tem valor vazio, mas o usuario digitou algo e nao salvou, preserva o que o usuario digitou
-                            if ((val === '' || val === null) && input.value !== '') return;
-                            
-                            if (String(input.value) !== String(val)) {
-                                input.value = val;
-                                input.style.transition = "background-color 0.5s";
+                            const targetVal = (val === null || val === undefined) ? '' : String(val);
+                            if (String(input.value) !== targetVal) {
+                                input.value = targetVal;
+                                input.style.transition = "background-color 0.4s";
                                 input.style.backgroundColor = "#dcfce7";
-                                setTimeout(() => input.style.backgroundColor = "", 1500);
+                                setTimeout(() => input.style.backgroundColor = "", 1200);
                             }
                         };
                         
                         setVal('.input-lhorario', rec.l_horario || '');
                         setVal('.input-chorario', rec.c_horario || '');
                         setVal('.input-fhorario', rec.f_horario || '');
+                        setVal('.input-df', rec.df || rec.data_finalizacao || '');
                         setVal('.input-pc', rec.pc ?? '');
+                        setVal('.input-sr', rec.sr || '');
+                        setVal('.input-observacao', rec.observacao || rec.motivo || rec.observacoes || '');
                         
                         updateRowStatus(row);
                     }
                 }
+
+                // Atualiza cards (Mobile)
+                for (const card of cards) {
+                    const id = card.getAttribute('data-id');
+                    const rec = records.find(r => String(r.id) === id);
+                    if (rec) {
+                        const setCardVal = (cls, val) => {
+                            const input = card.querySelector(cls);
+                            if (!input || input === activeEl) return;
+                            
+                            const targetVal = (val === null || val === undefined) ? '' : String(val);
+                            if (String(input.value) !== targetVal) {
+                                input.value = targetVal;
+                                input.style.transition = "background-color 0.4s";
+                                input.style.backgroundColor = "#dcfce7";
+                                setTimeout(() => input.style.backgroundColor = "", 1200);
+                            }
+                        };
+                        
+                        setCardVal('.input-lhorario', rec.l_horario || '');
+                        setCardVal('.input-chorario', rec.c_horario || '');
+                        setCardVal('.input-fhorario', rec.f_horario || '');
+                        setCardVal('.input-df', rec.df || rec.data_finalizacao || '');
+                        setCardVal('.input-pc', rec.pc ?? '');
+                        setCardVal('.input-sr', rec.sr || '');
+                        setCardVal('.input-observacao', rec.observacao || rec.motivo || rec.observacoes || '');
+                        
+                        updateRowStatus(card);
+                    }
+                }
             } catch(e) {}
         }
-        setInterval(syncRealTime, 10000);
+        setInterval(syncRealTime, 3000);
         // ================================
 
 </script>
