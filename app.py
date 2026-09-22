@@ -330,8 +330,11 @@ def save_coletas():
             if not df_user_val and f_horario_val and f_horario_val != "-":
                 df_user_val = data_operacao
 
+            existing = existing_items.get(str(item.get("id", "")), {})
+            item_date = item.get("data") or existing.get("data") or data_operacao
+
             raw_registro = {
-                "data": data_operacao or item.get("data"),
+                "data": item_date,
                 "motorista": item.get("motorista") or "",
                 "delivery": item.get("delivery") or "",
                 "cliente": item.get("cliente") or "",
