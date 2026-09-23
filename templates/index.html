@@ -2623,18 +2623,8 @@
                 
                 const rows = document.querySelectorAll('#tableBody tr[data-id]');
                 const cards = document.querySelectorAll('.coleta-card[data-id]');
-                
-                // Se a quantidade de linhas for diferente (coleta adicionada ou excluida em outro dispositivo)
-                if (records.length !== rows.length) {
-                    const activeEl = document.activeElement;
-                    const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT');
-                    if (!isTyping) {
-                        fetchDayDataFromSupabase(activeDateStr);
-                    }
-                    return;
-                }
-                
                 const activeEl = document.activeElement;
+                const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT' || activeEl.tagName === 'TEXTAREA');
                 
                 // Atualiza linhas da tabela (Desktop)
                 for (const row of rows) {
@@ -2708,6 +2698,11 @@
                         
                         updateRowStatus(card);
                     }
+                }
+
+                // Se a quantidade de linhas for diferente no banco e na tela (coleta nova adicionada ou excluida) E usuário não está digitando
+                if (records.length !== rows.length && !isTyping) {
+                    fetchDayDataFromSupabase(activeDateStr);
                 }
             } catch(e) {}
         }

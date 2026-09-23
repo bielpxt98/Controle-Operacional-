@@ -778,19 +778,26 @@ async function startWhatsApp() {
                         .order('id', { ascending: true });
 
                     if (pendentes && pendentes.length > 0) {
-                        // Tenta achar uma coleta onde o nome do cliente bata com o que a IA leu
-                        let alvo = null;
-                        const clienteIA = clienteLimpo.split(' ')[0]; // Pega a primeira palavra (ex: "WMS" ou "ASSAI")
+                        const norm = str => (str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+                        const clienteIANorm = norm(clienteLimpo);
+                        const palavrasIA = clienteIANorm.split(/\s+/).filter(w => w.length > 2);
                         
+                        let alvo = null;
                         for (const p of pendentes) {
-                            if (p.cliente && p.cliente.toUpperCase().includes(clienteIA)) {
+                            const pNorm = norm(p.cliente);
+                            if (palavrasIA.some(w => pNorm.includes(w)) || (pNorm && clienteIANorm.includes(pNorm))) {
                                 alvo = p;
                                 console.log(`[WPP-GRUPO] Match de cliente encontrado no Fallback! Banco: ${p.cliente} | IA: ${clienteLimpo}`);
                                 break;
                             }
                         }
                         
-                        // Se achou pelo cliente, usa ela. Se não achou, NÃO preenche aleatório.
+                        // Se o motorista tem apenas 1 entrega pendente, vincula a ela diretamente
+                        if (!alvo && pendentes.length === 1) {
+                            alvo = pendentes[0];
+                            console.log(`[WPP-GRUPO] Fallback de entrega única para ${motoristaPrimeiroNome}: ${alvo.cliente} (${alvo.delivery || alvo.id})`);
+                        }
+                        
                         if (alvo) {
                             finalizavelId = alvo.id;
                             finalizavelDelivery = alvo.delivery || "N/A";
@@ -894,25 +901,25 @@ async function classifyImage(buffer, textCaption, isFromGroup, isTextOnly = fals
         console.log("[GEMINI] Analisando dados recebidos...");
         let prompt = "";
         if (isFromGroup) {
-            prompt = `Analise a imagem em anexo enviada por um motorista no grupo de entregas.
-DIFERENCIAÇÃO CRÍTICA ENTRE DOCUMENTO DE COLETA vs COMPROVANTE DE FINALIZAÇÃO:
+            prompt = `Você é um assistente de logística especialista em conferência de comprovantes e documentos de transporte.
+Analise a foto enviada pelo motorista no grupo de entregas.
+
+CLASSIFICAÇÃO DO DOCUMENTO:
 
 1. COMPROVANTE DE FINALIZAÇÃO (tipo: "NF_ASSINADA"):
-   - Canhoto de Nota Fiscal (ou DANFE) que contenha OBRIGATORIAMENTE CARIMBO DE RECEBIDO/ENTREGUE, ASSINATURA DE RECEBIMENTO DO CLIENTE ou texto manuscrito de recebimento confirmando que a mercadoria foi entregue/descarregada.
-   - OU Ticket de pesagem/descarga emitido pelo CS/armazém.
-   - OU Declaração de devolução/recusa assinada com número de SR (Service Request).
+   - Qualquer foto de Nota Fiscal (DANFE), canhoto destacado, comprovante de entrega, ticket de descarga/pesagem, espelho de NF ou declaração de devolução/SR enviada pelo motorista para comprovar a finalização da descarga/entrega.
+   - Mesmo que o carimbo, assinatura, visto ou anotação manuscrita esteja em qualquer posição da folha, de cabeça para baixo, apagado, parcial ou na parte inferior/superior do canhoto.
+   - Se for uma Nota Fiscal / DANFE enviada pelo motorista, considere como comprovante de entrega ("NF_ASSINADA").
 
-2. DOCUMENTO DE COLETA OU CARGA (tipo: "IRRELEVANTE"):
-   - Nota Fiscal (DANFE) limpa, sem carimbo de recebimento do destinatário, sem assinatura de entrega.
-   - Foto dos paletes/carga no caminhão ou foto da mercadoria.
-   - Se o documento NÃO possuir carimbo/assinatura de conclusão da entrega nem for ticket de descarga/declaração de SR, você DEVE retornar {"tipo": "IRRELEVANTE"}.
+2. FOTOS QUE NÃO SÃO DOCUMENTOS (tipo: "IRRELEVANTE"):
+   - Fotos que NÃO contenham documento ou nota fiscal (exemplo: fotos de selfie, fotos de estrada/rodovia, memes, comprovante de pix pessoal, etc.).
 
-Regras de Extração (SOMENTE se for COMPROVANTE DE FINALIZAÇÃO):
-- Extraia a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente (ex: "ASSAI", "ATACADAO", "WMS", "COCA", "RAIA", "AMAZON"). ATENÇÃO ÀS REMESSAS: Se a nota tiver carimbo da "JACOBS", "DOUWE EGBERTS" ou "JDE", preencha "JDE". Se tiver "JSL", preencha "JSL". Se tiver "BOOMIX", preencha "BOOMIX". Se for Coca-Cola ou Solar, preencha "COCA COLA".
-- Identifique o número de Delivery: Se for impresso ou manuscrito com EXATAMENTE 10 dígitos (iniciando com 37 ou 34). Se for SR (8 dígitos), preencha o campo "sr" e deixe "delivery": null.
+Regras de Extração (quando for NF_ASSINADA):
+- Extraia a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente/destinatário (ex: "ASSAI", "ATACADAO", "WMS", "COCA", "RAIA", "AMAZON", "JDE", "JSL", "BOOMIX", "DISTRIBUIDORA", "CABRAL", "SOLUCAO", "COMERCIAL", "MERCANTIL", "DROGARIA", "PLANETA", "ARMAZEM", "LUTAN", "DECMINAS", "CENCOSUD").
+- Identifique o número de Delivery: Sequência de 10 dígitos iniciando com 37 ou 34 (pode estar impressa no corpo da nota, na chave de acesso, ou escrita à mão pelo motorista).
+- Se houver número de SR (Service Request de 8 dígitos), preencha no campo "sr".
 - REGRA ANTI-GLID: GLIDs (iniciando com 1000... ou 5500...) NUNCA são delivery!
-- Devolva EXATAMENTE no formato JSON: {"tipo": "NF_ASSINADA", "cliente": "PRIMEIRA_PALAVRA_CLIENTE", "delivery": "NUM_10_DIGITOS", "sr": "NUM_8_DIGITOS"} (ou null onde não achar).
-- Para qualquer outra foto (incluindo DANFE sem carimbo/assinatura de recebimento, selfie, estrada, carga), devolva: {"tipo": "IRRELEVANTE"}`;
+- Devolva EXATAMENTE no formato JSON: {"tipo": "NF_ASSINADA", "cliente": "PRIMEIRA_PALAVRA_CLIENTE", "delivery": "NUM_10_DIGITOS", "sr": "NUM_8_DIGITOS"} (ou null onde não achar).`;
         } else {
             prompt = `Analise a programação de cargas diárias enviada pelo usuário (pode ser uma imagem de tabela ou texto corrido como 'ArgemiroWMS Max').
 Extraia os dados em formato JSON estrito, sem formatação markdown.
