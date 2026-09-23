@@ -1481,17 +1481,10 @@
                         <span class="count">coletas</span>
                     `;
 
-                    // TROCA INSTANTÂNEA DE DIA SEM NENHUM DELAY (SALVA EM SEGUNDO PLANO)
+                    // TROCA INSTANTÂNEA DE DIA SEM CONTAMINAÇÃO DE CACHE
                 pill.onclick = () => {
-                    const prevDate = activeDateStr;
-                    if (!isSearchActive()) {
-                        const currentColetas = collectRowsFromUI();
-                        saveLocalBackupForDay(prevDate, currentColetas);
-                        saveCurrentDayColetasDirectAsync(prevDate);
-                    }
-
                     const searchInput = document.getElementById('searchInput');
-                    if (searchInput.value.trim() !== '') {
+                    if (searchInput && searchInput.value.trim() !== '') {
                         searchInput.value = '';
                     }
 
@@ -1505,6 +1498,7 @@
                     persistActiveDate(fullDateStr);
                     document.getElementById('currentDateText').innerText = fullDateStr;
                     const cBtn = document.getElementById('copySheetBtn'); if(cBtn) cBtn.style.display = 'none';
+                    if (document.activeElement) document.activeElement.blur();
                     fetchDayDataFromSupabase(fullDateStr);
                 };
 
@@ -1676,42 +1670,16 @@
             const tbody = document.getElementById('tableBody');
             const mobileCards = document.getElementById('mobileCards');
             
+            // Exibe indicador visual de carregamento para nunca manter linhas do dia anterior
+            tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2.5rem; color: #60a5fa;"><i class="fa-solid fa-spinner fa-spin" style="margin-right: 8px;"></i> Carregando coletas de ${dateStr}...</td></tr>`;
+            if (mobileCards) mobileCards.innerHTML = `<div style="text-align:center;padding:2rem;color:#60a5fa"><i class="fa-solid fa-spinner fa-spin"></i> Carregando...</div>`;
+            
             try {
-                const res = await fetch(`/api/coletas?data=${encodeURIComponent(dateStr)}&_t=${Date.now()}`);
+                const res = await fetch(`/api/coletas?data=${encodeURIComponent(dateStr)}&_t=${Date.now()}`, { cache: "no-store" });
                 const json = await res.json();
                 let records = json.data || [];
 
-                // Recupera rascunho local de até 1 hora APENAS para linhas NOVAS não salvas (sem ID) deste dia
-                const localDraft = getLocalBackupForDay(dateStr);
-                if (localDraft && localDraft.length > 0) {
-                    const dbDeliveries = new Set(records.map(r => String(r.delivery || '').trim()).filter(Boolean));
-
-                    localDraft.forEach(draftItem => {
-                        const dId = draftItem.id ? String(draftItem.id) : null;
-                        const dDeliv = String(draftItem.delivery || '').trim();
-                        const itemDate = draftItem.data || dateStr;
-
-                        // Só restaura linhas novas digitadas na tela que ainda não foram salvas no Supabase
-                        if (!dId && itemDate === dateStr) {
-                            if (!dDeliv || !dbDeliveries.has(dDeliv)) {
-                                const hasData = dDeliv || draftItem.cliente || (draftItem.motorista && draftItem.motorista !== '-') || draftItem.paletes || draftItem.pc || draftItem.valor || draftItem.l_horario || draftItem.c_horario || draftItem.f_horario;
-                                if (hasData) {
-                                    records.push(draftItem);
-                                    if (dDeliv) dbDeliveries.add(dDeliv);
-                                }
-                            }
-                        }
-                    });
-                }
-
                 if (activeDateStr === dateStr) {
-                    // Prevenir re-render completo apenas se o usuario estiver ativamente digitando em algum campo da tela
-                    const activeElem = document.activeElement;
-                    if (activeElem && (activeElem.tagName === 'INPUT' || activeElem.tagName === 'SELECT') && 
-                       (tbody.contains(activeElem) || (mobileCards && mobileCards.contains(activeElem)))) {
-                        return;
-                    }
-
                     tbody.innerHTML = '';
                     if (mobileCards) mobileCards.innerHTML = '';
                     if (records.length === 0) {
@@ -1724,16 +1692,15 @@
                                 </td>
                             </tr>
                         `;
-                        saveLocalBackupForDay(dateStr, []);
                         return;
                     }
                     stableSortRecords(records);
                     records.forEach(rec => appendRowFromData(rec));
-                    saveLocalBackupForDay(dateStr, records);
                     checkAndHighlightCSDrivers(dateStr);
                 }
             } catch (err) {
                 console.error("Erro ao carregar dados do Supabase:", err);
+                tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2rem; color: #ef4444;">Erro ao carregar coletas do Supabase.</td></tr>`;
             }
         }
 
@@ -2254,7 +2221,6 @@
         }
 
         function prevDay() {
-            saveCurrentDayColetasDirectAsync(activeDateStr);
             const parts = activeDateStr.split('/');
             const dateObj = new Date(parts[2], parseInt(parts[1]) - 1, parts[0]);
             dateObj.setDate(dateObj.getDate() - 1);
@@ -2262,7 +2228,6 @@
         }
 
         function nextDay() {
-            saveCurrentDayColetasDirectAsync(activeDateStr);
             const parts = activeDateStr.split('/');
             const dateObj = new Date(parts[2], parseInt(parts[1]) - 1, parts[0]);
             dateObj.setDate(dateObj.getDate() + 1);
@@ -2270,12 +2235,7 @@
         }
 
         function changeToDate(dateObj) {
-            const prevDate = activeDateStr;
-            if (!isSearchActive()) {
-                const currentColetas = collectRowsFromUI();
-                saveLocalBackupForDay(prevDate, currentColetas);
-                saveCurrentDayColetasDirectAsync(prevDate);
-            }
+            if (document.activeElement) document.activeElement.blur();
             currentSelectedYear = dateObj.getFullYear();
             currentSelectedMonthIndex = dateObj.getMonth();
             const dStr = String(dateObj.getDate()).padStart(2, '0') + '/' + String(dateObj.getMonth() + 1).padStart(2, '0') + '/' + currentSelectedYear;
@@ -2289,7 +2249,6 @@
         }
 
         function goToToday() {
-            saveCurrentDayColetasDirectAsync(activeDateStr);
             const dateObj = new Date();
             changeToDate(dateObj);
             
@@ -2310,7 +2269,7 @@
         }
 
         function selectMonthByIndex(monthIdx) {
-            saveCurrentDayColetasDirectAsync(activeDateStr);
+            if (document.activeElement) document.activeElement.blur();
             currentSelectedMonthIndex = monthIdx;
             
             const firstDateStr = `01/${String(monthIdx+1).padStart(2,'0')}/${currentSelectedYear}`;
@@ -2353,6 +2312,7 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            try { localStorage.removeItem('controle_coletas_backup'); } catch(e) {}
             loadColumnWidths();
             updateMonthLabels();
             document.getElementById('currentDateText').innerText = activeDateStr;
