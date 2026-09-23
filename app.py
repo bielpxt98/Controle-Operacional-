@@ -320,10 +320,24 @@ def save_coletas():
         
         saved_items = []
         for item in coletas:
+            deliv_raw = str(item.get("delivery") or "").strip()
+            cliente_raw = str(item.get("cliente") or "").strip()
+            driver_raw = str(item.get("motorista") or "").strip()
+            if driver_raw in ["-", "-- SELECIONE --", "-- SELECIONE MOTORISTA --"]:
+                driver_raw = ""
             obs_value = str(item.get("observacao") or item.get("motivo") or item.get("observacoes") or "").strip()
             valor_raw = item.get("valor") or item.get("valor_frete") or item.get("valor_total") or item.get("val_frete")
             valor_num = parse_valor_numeric(valor_raw)
+            paletes_num = sanitize_number(item.get("paletes"))
+            pc_num = sanitize_number(item.get("pc"))
+            l_h = str(item.get("l_horario") or "").strip()
+            c_h = str(item.get("c_horario") or "").strip()
             f_horario_val = str(item.get("f_horario") or "").strip()
+
+            # Ignora inserção de linhas completamente vazias
+            if not item.get("id"):
+                if not deliv_raw and not cliente_raw and not driver_raw and not paletes_num and not pc_num and not valor_num and not obs_value and not l_h and not c_h and not f_horario_val:
+                    continue
             
             # DF editável enviado do formulário ou auto-sugerido
             df_user_val = str(item.get("df") or item.get("data_finalizacao") or "").strip()
@@ -335,11 +349,11 @@ def save_coletas():
 
             raw_registro = {
                 "data": item_date,
-                "motorista": item.get("motorista") or "",
-                "delivery": item.get("delivery") or "",
-                "cliente": item.get("cliente") or "",
-                "paletes": sanitize_number(item.get("paletes")),
-                "pc": sanitize_number(item.get("pc")),
+                "motorista": driver_raw or item.get("motorista") or "",
+                "delivery": deliv_raw,
+                "cliente": cliente_raw,
+                "paletes": paletes_num,
+                "pc": pc_num,
                 "valor": valor_num,
                 "valor_frete": valor_num,
                 "valor_total": valor_num,

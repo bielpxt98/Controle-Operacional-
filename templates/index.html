@@ -1992,25 +1992,33 @@
         function collectRowsFromUI() {
             const coletas = [];
             const seenIds = new Set();
+            let tableHasRows = false;
 
             // Lê da tabela desktop
             document.querySelectorAll('#tableBody tr').forEach(tr => {
                 const driverSelect = tr.querySelector('.driver-select');
                 if (!driverSelect) return;
+                tableHasRows = true;
                 const id = tr.getAttribute('data-id');
                 if (id && seenIds.has(id)) return;
                 if (id) seenIds.add(id);
 
                 let driverName = driverSelect.selectedOptions[0].text.replace(' ▼', '');
                 if (driverName === '-- SELECIONE --' || driverName === '-- SELECIONE MOTORISTA --') driverName = '-';
-                const delivery = tr.querySelector('.input-delivery')?.value || '';
-                const cliente = tr.querySelector('.input-cliente')?.value || '';
-                const paletes = tr.querySelector('.input-paletes')?.value || '';
-                const pc = tr.querySelector('.input-pc')?.value || '';
-                const valor = tr.querySelector('.input-valor')?.value || '';
-                const obs = tr.querySelector('.input-observacao')?.value || '';
+                const delivery = tr.querySelector('.input-delivery')?.value?.trim() || '';
+                const cliente = tr.querySelector('.input-cliente')?.value?.trim() || '';
+                const paletes = tr.querySelector('.input-paletes')?.value?.trim() || '';
+                const pc = tr.querySelector('.input-pc')?.value?.trim() || '';
+                const valor = tr.querySelector('.input-valor')?.value?.trim() || '';
+                const l_horario = tr.querySelector('.input-lhorario')?.value?.trim() || '';
+                const c_horario = tr.querySelector('.input-chorario')?.value?.trim() || '';
+                const f_horario = tr.querySelector('.input-fhorario')?.value?.trim() || '';
+                const df = tr.querySelector('.input-df')?.value?.trim() || '';
+                const sr = tr.querySelector('.input-sr')?.value?.trim() || '';
+                const obs = tr.querySelector('.input-observacao')?.value?.trim() || '';
                 
-                if (!delivery && !cliente && (!driverName || driverName === "-") && !paletes && !pc && !valor && !obs) return;
+                // Se tudo estiver em branco e sem ID, não inclui
+                if (!id && !delivery && !cliente && (!driverName || driverName === "-") && !paletes && !pc && !valor && !obs && !l_horario && !c_horario && !f_horario) return;
 
                 const originalDate = tr.getAttribute('data-original-date');
                 const item = {
@@ -2018,16 +2026,16 @@
                     motorista: driverName,
                     delivery,
                     cliente,
-                    paletes: tr.querySelector('.input-paletes')?.value || '',
-                    pc: tr.querySelector('.input-pc')?.value || '',
-                    valor: tr.querySelector('.input-valor')?.value || '',
-                    l_horario: tr.querySelector('.input-lhorario')?.value || '',
-                    c_horario: tr.querySelector('.input-chorario')?.value || '',
-                    f_horario: tr.querySelector('.input-fhorario')?.value || '',
-                    df: tr.querySelector('.input-df')?.value || '',
-                    data_finalizacao: tr.querySelector('.input-df')?.value || '',
-                    sr: tr.querySelector('.input-sr')?.value || '',
-                    observacao: tr.querySelector('.input-observacao')?.value || '',
+                    paletes,
+                    pc,
+                    valor,
+                    l_horario,
+                    c_horario,
+                    f_horario,
+                    df,
+                    data_finalizacao: df,
+                    sr,
+                    observacao: obs,
                     cpf: tr.querySelector('.cpf-val')?.innerText || '',
                     cavalo: tr.querySelector('.cavalo-val')?.innerText || '',
                     carreta: tr.querySelector('.carreta-val')?.innerText || ''
@@ -2036,46 +2044,55 @@
                 coletas.push(item);
             });
 
-            // Lê dos cards mobile (apenas os que nao estao na tabela já)
-            document.querySelectorAll('.coleta-card').forEach(card => {
-                const driverSelect = card.querySelector('.driver-select');
-                if (!driverSelect) return;
-                const id = card.getAttribute('data-id');
-                if (id && seenIds.has(id)) return;
-                if (id) seenIds.add(id);
+            // Se não houver linhas na tabela desktop (ex: tela puramente mobile sem tabela renderizada)
+            if (!tableHasRows) {
+                document.querySelectorAll('.coleta-card').forEach(card => {
+                    const driverSelect = card.querySelector('.driver-select');
+                    if (!driverSelect) return;
+                    const id = card.getAttribute('data-id');
+                    if (id && seenIds.has(id)) return;
+                    if (id) seenIds.add(id);
 
-                let driverName = driverSelect.selectedOptions[0].text.replace(' ▼', '');
-                if (driverName === '-- SELECIONE --' || driverName === '-- SELECIONE MOTORISTA --') driverName = '-';
-                const delivery = card.querySelector('.input-delivery')?.value || '';
-                const cliente = card.querySelector('.input-cliente')?.value || '';
-                const paletes = card.querySelector('.input-paletes')?.value || '';
-                const pc = card.querySelector('.input-pc')?.value || '';
-                const valor = card.querySelector('.input-valor')?.value || '';
-                const obs = card.querySelector('.input-observacao')?.value || '';
-                
-                const originalDate = card.getAttribute('data-original-date');
-                const item = {
-                    data: originalDate || activeDateStr,
-                    motorista: driverName,
-                    delivery,
-                    cliente,
-                    paletes: card.querySelector('.input-paletes')?.value || '',
-                    pc: card.querySelector('.input-pc')?.value || '',
-                    valor: card.querySelector('.input-valor')?.value || '',
-                    l_horario: card.querySelector('.input-lhorario')?.value || '',
-                    c_horario: card.querySelector('.input-chorario')?.value || '',
-                    f_horario: card.querySelector('.input-fhorario')?.value || '',
-                    df: card.querySelector('.input-df')?.value || '',
-                    data_finalizacao: card.querySelector('.input-df')?.value || '',
-                    sr: card.querySelector('.input-sr')?.value || '',
-                    observacao: card.querySelector('.input-observacao')?.value || '',
-                    cpf: card.querySelector('.cpf-val')?.innerText || '',
-                    cavalo: card.querySelector('.cavalo-val')?.innerText || '',
-                    carreta: card.querySelector('.carreta-val')?.innerText || ''
-                };
-                if (id) item.id = id;
-                coletas.push(item);
-            });
+                    let driverName = driverSelect.selectedOptions[0].text.replace(' ▼', '');
+                    if (driverName === '-- SELECIONE --' || driverName === '-- SELECIONE MOTORISTA --') driverName = '-';
+                    const delivery = card.querySelector('.input-delivery')?.value?.trim() || '';
+                    const cliente = card.querySelector('.input-cliente')?.value?.trim() || '';
+                    const paletes = card.querySelector('.input-paletes')?.value?.trim() || '';
+                    const pc = card.querySelector('.input-pc')?.value?.trim() || '';
+                    const valor = card.querySelector('.input-valor')?.value?.trim() || '';
+                    const l_horario = card.querySelector('.input-lhorario')?.value?.trim() || '';
+                    const c_horario = card.querySelector('.input-chorario')?.value?.trim() || '';
+                    const f_horario = card.querySelector('.input-fhorario')?.value?.trim() || '';
+                    const df = card.querySelector('.input-df')?.value?.trim() || '';
+                    const sr = card.querySelector('.input-sr')?.value?.trim() || '';
+                    const obs = card.querySelector('.input-observacao')?.value?.trim() || '';
+                    
+                    if (!id && !delivery && !cliente && (!driverName || driverName === "-") && !paletes && !pc && !valor && !obs && !l_horario && !c_horario && !f_horario) return;
+
+                    const originalDate = card.getAttribute('data-original-date');
+                    const item = {
+                        data: originalDate || activeDateStr,
+                        motorista: driverName,
+                        delivery,
+                        cliente,
+                        paletes,
+                        pc,
+                        valor,
+                        l_horario,
+                        c_horario,
+                        f_horario,
+                        df,
+                        data_finalizacao: df,
+                        sr,
+                        observacao: obs,
+                        cpf: card.querySelector('.cpf-val')?.innerText || '',
+                        cavalo: card.querySelector('.cavalo-val')?.innerText || '',
+                        carreta: card.querySelector('.carreta-val')?.innerText || ''
+                    };
+                    if (id) item.id = id;
+                    coletas.push(item);
+                });
+            }
 
             return coletas;
         }
@@ -2368,7 +2385,6 @@
                 delivery: "", cliente: "", paletes: "", pc: "", valor: "",
                 l_horario: "", c_horario: "", f_horario: "", df: "", sr: "", observacao: ""
             });
-            saveCurrentDayColetasSilent();
         }
 
         async function deleteRow(btn) {
