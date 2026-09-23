@@ -339,13 +339,13 @@ def save_coletas():
                 if not deliv_raw and not cliente_raw and not driver_raw and not paletes_num and not pc_num and not valor_num and not obs_value and not l_h and not c_h and not f_horario_val:
                     continue
             
+            existing = existing_items.get(str(item.get("id", "")), {})
+            item_date = item.get("data") or existing.get("data") or data_operacao
+
             # DF editável enviado do formulário ou auto-sugerido
             df_user_val = str(item.get("df") or item.get("data_finalizacao") or "").strip()
             if not df_user_val and f_horario_val and f_horario_val != "-":
-                df_user_val = data_operacao
-
-            existing = existing_items.get(str(item.get("id", "")), {})
-            item_date = item.get("data") or existing.get("data") or data_operacao
+                df_user_val = item_date or data_operacao
 
             raw_registro = {
                 "data": item_date,
