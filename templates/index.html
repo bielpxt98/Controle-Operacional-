@@ -1085,17 +1085,20 @@
             const entry = store[dateStr];
             if (!entry) return [];
             
+            let list = [];
             // Suporte ao formato antigo (array direto) ou novo (com timestamp)
-            if (Array.isArray(entry)) return entry;
-            
-            if (entry.timestamp && (Date.now() - entry.timestamp < DRAFT_EXPIRATION_MS)) {
-                return entry.coletas || [];
+            if (Array.isArray(entry)) list = entry;
+            else if (entry.timestamp && (Date.now() - entry.timestamp < DRAFT_EXPIRATION_MS)) {
+                list = entry.coletas || [];
             } else {
                 // Rascunho com mais de 1 hora: descarta e limpa automaticamente
                 delete store[dateStr];
                 setLocalStore(store);
                 return [];
             }
+
+            // Garante que só retorna itens que pertencem a este dia e que não foram registrados com data diferente
+            return list.filter(item => !item.data || item.data === dateStr);
         }
 
         function formatDateInput(input) {
@@ -1678,17 +1681,18 @@
                 const json = await res.json();
                 let records = json.data || [];
 
-                // Recupera rascunho local de até 1 hora (linhas digitadas na tela que ainda não foram para o Supabase)
+                // Recupera rascunho local de até 1 hora APENAS para linhas NOVAS não salvas (sem ID) deste dia
                 const localDraft = getLocalBackupForDay(dateStr);
                 if (localDraft && localDraft.length > 0) {
-                    const dbIds = new Set(records.map(r => String(r.id)));
                     const dbDeliveries = new Set(records.map(r => String(r.delivery || '').trim()).filter(Boolean));
 
                     localDraft.forEach(draftItem => {
                         const dId = draftItem.id ? String(draftItem.id) : null;
                         const dDeliv = String(draftItem.delivery || '').trim();
+                        const itemDate = draftItem.data || dateStr;
 
-                        if (!dId) {
+                        // Só restaura linhas novas digitadas na tela que ainda não foram salvas no Supabase
+                        if (!dId && itemDate === dateStr) {
                             if (!dDeliv || !dbDeliveries.has(dDeliv)) {
                                 const hasData = dDeliv || draftItem.cliente || (draftItem.motorista && draftItem.motorista !== '-') || draftItem.paletes || draftItem.pc || draftItem.valor || draftItem.l_horario || draftItem.c_horario || draftItem.f_horario;
                                 if (hasData) {
@@ -1696,9 +1700,6 @@
                                     if (dDeliv) dbDeliveries.add(dDeliv);
                                 }
                             }
-                        } else if (!dbIds.has(dId)) {
-                            records.push(draftItem);
-                            dbIds.add(dId);
                         }
                     });
                 }
@@ -1723,10 +1724,12 @@
                                 </td>
                             </tr>
                         `;
+                        saveLocalBackupForDay(dateStr, []);
                         return;
                     }
                     stableSortRecords(records);
                     records.forEach(rec => appendRowFromData(rec));
+                    saveLocalBackupForDay(dateStr, records);
                     checkAndHighlightCSDrivers(dateStr);
                 }
             } catch (err) {
