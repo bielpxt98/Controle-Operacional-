@@ -1067,15 +1067,35 @@
             } catch (e) {}
         }
 
+        const DRAFT_EXPIRATION_MS = 60 * 60 * 1000; // Validade de 1 hora para rascunhos
+
         function saveLocalBackupForDay(dateStr, coletas) {
+            if (!dateStr) return;
             const store = getLocalStore();
-            store[dateStr] = coletas;
+            store[dateStr] = {
+                timestamp: Date.now(),
+                coletas: coletas
+            };
             setLocalStore(store);
         }
 
         function getLocalBackupForDay(dateStr) {
+            if (!dateStr) return [];
             const store = getLocalStore();
-            return store[dateStr] || [];
+            const entry = store[dateStr];
+            if (!entry) return [];
+            
+            // Suporte ao formato antigo (array direto) ou novo (com timestamp)
+            if (Array.isArray(entry)) return entry;
+            
+            if (entry.timestamp && (Date.now() - entry.timestamp < DRAFT_EXPIRATION_MS)) {
+                return entry.coletas || [];
+            } else {
+                // Rascunho com mais de 1 hora: descarta e limpa automaticamente
+                delete store[dateStr];
+                setLocalStore(store);
+                return [];
+            }
         }
 
         function formatDateInput(input) {
@@ -1461,7 +1481,11 @@
                     // TROCA INSTANTÂNEA DE DIA SEM NENHUM DELAY (SALVA EM SEGUNDO PLANO)
                 pill.onclick = () => {
                     const prevDate = activeDateStr;
-                    saveCurrentDayColetasDirectAsync(prevDate); // Aborta sozinho se isSearchActive() for true
+                    if (!isSearchActive()) {
+                        const currentColetas = collectRowsFromUI();
+                        saveLocalBackupForDay(prevDate, currentColetas);
+                        saveCurrentDayColetasDirectAsync(prevDate);
+                    }
 
                     const searchInput = document.getElementById('searchInput');
                     if (searchInput.value.trim() !== '') {
@@ -1653,6 +1677,31 @@
                 const res = await fetch(`/api/coletas?data=${encodeURIComponent(dateStr)}&_t=${Date.now()}`);
                 const json = await res.json();
                 let records = json.data || [];
+
+                // Recupera rascunho local de até 1 hora (linhas digitadas na tela que ainda não foram para o Supabase)
+                const localDraft = getLocalBackupForDay(dateStr);
+                if (localDraft && localDraft.length > 0) {
+                    const dbIds = new Set(records.map(r => String(r.id)));
+                    const dbDeliveries = new Set(records.map(r => String(r.delivery || '').trim()).filter(Boolean));
+
+                    localDraft.forEach(draftItem => {
+                        const dId = draftItem.id ? String(draftItem.id) : null;
+                        const dDeliv = String(draftItem.delivery || '').trim();
+
+                        if (!dId) {
+                            if (!dDeliv || !dbDeliveries.has(dDeliv)) {
+                                const hasData = dDeliv || draftItem.cliente || (draftItem.motorista && draftItem.motorista !== '-') || draftItem.paletes || draftItem.pc || draftItem.valor || draftItem.l_horario || draftItem.c_horario || draftItem.f_horario;
+                                if (hasData) {
+                                    records.push(draftItem);
+                                    if (dDeliv) dbDeliveries.add(dDeliv);
+                                }
+                            }
+                        } else if (!dbIds.has(dId)) {
+                            records.push(draftItem);
+                            dbIds.add(dId);
+                        }
+                    });
+                }
 
                 if (activeDateStr === dateStr) {
                     // Prevenir re-render completo apenas se o usuario estiver ativamente digitando em algum campo da tela
@@ -2218,6 +2267,12 @@
         }
 
         function changeToDate(dateObj) {
+            const prevDate = activeDateStr;
+            if (!isSearchActive()) {
+                const currentColetas = collectRowsFromUI();
+                saveLocalBackupForDay(prevDate, currentColetas);
+                saveCurrentDayColetasDirectAsync(prevDate);
+            }
             currentSelectedYear = dateObj.getFullYear();
             currentSelectedMonthIndex = dateObj.getMonth();
             const dStr = String(dateObj.getDate()).padStart(2, '0') + '/' + String(dateObj.getMonth() + 1).padStart(2, '0') + '/' + currentSelectedYear;
