@@ -978,15 +978,15 @@
 
     <script>
         const driverDatabase = {
-            "gabriel_borges": { name: "GABRIEL BORGES", cpf: "095.312.255-75", cavalo: "JJF1856", carreta: "NVQ8447" },
             "argemiro_borges": { name: "ARGEMIRO BORGES", cpf: "041.604.865-09", cavalo: "PEG7666", carreta: "DTD8506" },
-            "valdemir_de_jesus": { name: "VALDEMIR DE JESUS", cpf: "044.327.095-37", cavalo: "HWB9F22", carreta: "-" },
-            "jones_rosario": { name: "JONES ROSARIO", cpf: "053.359.465-04", cavalo: "JHX3C33", carreta: "KKT9007" },
-            "luis_carlos": { name: "LUIS CARLOS", cpf: "830.317.905-53", cavalo: "KLB5018", carreta: "NKZ6545" },
-            "fabio_souza": { name: "FABIO SOUZA", cpf: "890.066.155-87", cavalo: "PEJ4695", carreta: "NLB7814" },
             "ariel_nascimento": { name: "ARIEL NASCIMENTO", cpf: "050.153.565-95", cavalo: "JVL8A44", carreta: "-" },
+            "fabio_souza": { name: "FABIO SOUZA", cpf: "890.066.155-87", cavalo: "PEJ4695", carreta: "NLB7814" },
+            "gabriel_borges": { name: "GABRIEL BORGES", cpf: "095.312.255-75", cavalo: "JJF1856", carreta: "NVQ8447" },
+            "jones_rosario": { name: "JONES ROSARIO", cpf: "053.359.465-04", cavalo: "JHX3C33", carreta: "KKT9007" },
             "leandro_de_andrade": { name: "LEANDRO DE ANDRADE", cpf: "017.793.835.84", cavalo: "NZP7012", carreta: "-" },
-            "romilson_damasceno": { name: "ROMILSON DAMASCENO", cpf: "615.715.635-04", cavalo: "KJY3204", carreta: "KGG1152" }
+            "luis_carlos": { name: "LUIS CARLOS", cpf: "830.317.905-53", cavalo: "KLB5018", carreta: "NKZ6545" },
+            "romilson_damasceno": { name: "ROMILSON DAMASCENO", cpf: "615.715.635-04", cavalo: "KJY3204", carreta: "KGG1152" },
+            "valdemir_de_jesus": { name: "VALDEMIR DE JESUS", cpf: "044.327.095-37", cavalo: "HWB9F22", carreta: "-" }
         };
 
         const dayNamesShort = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
@@ -1740,15 +1740,15 @@
                     ${dateBadge}
                     <select class="driver-select" onchange="updateDriverData(this); updateWppMessage(this.closest('tr')); saveCurrentDayColetasSilent();">
                         <option value="" ${(!driverKey || driverKey === '')?'selected':''}>-- SELECIONE --</option>
-                        <option value="gabriel_borges" ${driverKey.includes('gabriel')?'selected':''}>GABRIEL BORGES ▼</option>
                         <option value="argemiro_borges" ${driverKey.includes('argemiro')?'selected':''}>ARGEMIRO BORGES ▼</option>
-                        <option value="valdemir_de_jesus" ${driverKey.includes('valdemir')?'selected':''}>VALDEMIR DE JESUS ▼</option>
-                        <option value="jones_rosario" ${driverKey.includes('jones')?'selected':''}>JONES ROSARIO ▼</option>
-                        <option value="luis_carlos" ${driverKey.includes('luis')?'selected':''}>LUIS CARLOS ▼</option>
-                        <option value="fabio_souza" ${driverKey.includes('fabio')?'selected':''}>FABIO SOUZA ▼</option>
                         <option value="ariel_nascimento" ${driverKey.includes('ariel')?'selected':''}>ARIEL NASCIMENTO ▼</option>
+                        <option value="fabio_souza" ${driverKey.includes('fabio')?'selected':''}>FABIO SOUZA ▼</option>
+                        <option value="gabriel_borges" ${driverKey.includes('gabriel')?'selected':''}>GABRIEL BORGES ▼</option>
+                        <option value="jones_rosario" ${driverKey.includes('jones')?'selected':''}>JONES ROSARIO ▼</option>
                         <option value="leandro_de_andrade" ${driverKey.includes('leandro')?'selected':''}>LEANDRO DE ANDRADE ▼</option>
+                        <option value="luis_carlos" ${driverKey.includes('luis')?'selected':''}>LUIS CARLOS ▼</option>
                         <option value="romilson_damasceno" ${driverKey.includes('romilson')?'selected':''}>ROMILSON DAMASCENO ▼</option>
+                        <option value="valdemir_de_jesus" ${driverKey.includes('valdemir')?'selected':''}>VALDEMIR DE JESUS ▼</option>
                     </select>
                 </td>
                 <td><input type="text" class="input-delivery" value="${deliveryVal}" style="font-weight: 700; color: #60a5fa;" oninput="updateWppMessage(this.closest('tr'))" onblur="checkDuplicateDelivery(this); saveCurrentDayColetasSilent()"></td>
@@ -1817,15 +1817,15 @@
                 <div class="coleta-card-header">
                     <select class="card-driver-select driver-select" onchange="updateCardDriverData(this); updateCardWpp(this.closest('.coleta-card')); saveCurrentDayColetasSilent();">
                         <option value="" ${(!driverKey || driverKey === '')?'selected':''}>-- SELECIONE MOTORISTA --</option>
-                        <option value="gabriel_borges" ${driverKey.includes('gabriel')?'selected':''}>GABRIEL BORGES</option>
                         <option value="argemiro_borges" ${driverKey.includes('argemiro')?'selected':''}>ARGEMIRO BORGES</option>
-                        <option value="valdemir_de_jesus" ${driverKey.includes('valdemir')?'selected':''}>VALDEMIR DE JESUS</option>
-                        <option value="jones_rosario" ${driverKey.includes('jones')?'selected':''}>JONES ROSARIO</option>
-                        <option value="luis_carlos" ${driverKey.includes('luis')?'selected':''}>LUIS CARLOS</option>
-                        <option value="fabio_souza" ${driverKey.includes('fabio')?'selected':''}>FABIO SOUZA</option>
                         <option value="ariel_nascimento" ${driverKey.includes('ariel')?'selected':''}>ARIEL NASCIMENTO</option>
+                        <option value="fabio_souza" ${driverKey.includes('fabio')?'selected':''}>FABIO SOUZA</option>
+                        <option value="gabriel_borges" ${driverKey.includes('gabriel')?'selected':''}>GABRIEL BORGES</option>
+                        <option value="jones_rosario" ${driverKey.includes('jones')?'selected':''}>JONES ROSARIO</option>
                         <option value="leandro_de_andrade" ${driverKey.includes('leandro')?'selected':''}>LEANDRO DE ANDRADE</option>
+                        <option value="luis_carlos" ${driverKey.includes('luis')?'selected':''}>LUIS CARLOS</option>
                         <option value="romilson_damasceno" ${driverKey.includes('romilson')?'selected':''}>ROMILSON DAMASCENO</option>
+                        <option value="valdemir_de_jesus" ${driverKey.includes('valdemir')?'selected':''}>VALDEMIR DE JESUS</option>
                     </select>
                     <div class="status-badge" style="font-weight: 700; font-size: 0.65rem; border-radius: 4px; padding: 4px 8px; display: inline-block; margin-right: 8px;">PENDENTE</div>
                     <button class="card-delete-btn" onclick="deleteCard(this)"><i class="fa-solid fa-trash"></i></button>
