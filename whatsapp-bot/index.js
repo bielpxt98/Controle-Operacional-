@@ -79,7 +79,6 @@ const pino = require('pino');
 const qrcode = require('qrcode');
 const fs = require('fs');
 
-const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { createClient } = require('@supabase/supabase-js');
 const { updateChepOccurrence, runChepProgramacaoAmanha } = require('./chep.js');
