@@ -229,11 +229,24 @@ async function startWhatsApp() {
     // 2. MENSAGENS NO GRUPO (PURM SALVADOR)
     // =========================================================
     
-    let motoristaPrimeiroNome = senderName.split(' ')[0].toUpperCase();
-    motoristaPrimeiroNome = motoristaPrimeiroNome.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    if (motoristaPrimeiroNome.includes("GABRIEL")) motoristaPrimeiroNome = "GABRIEL";
-    if (motoristaPrimeiroNome === "BORGES") motoristaPrimeiroNome = "ARGEMIRO"; // "borges filho" -> ARGEMIRO
-    if (motoristaPrimeiroNome === "LEO") motoristaPrimeiroNome = "LEANDRO"; // "Leo carreta" -> LEANDRO
+    function identificarMotorista(sName, remNum = "") {
+        const s = (sName || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+        if (s.includes("ROMILSON") || s.includes("ROMILDO")) return "ROMILSON";
+        if (s.includes("VALDEMIR")) return "VALDEMIR";
+        if (s.includes("JONES")) return "JONES";
+        if (s.includes("ARGEMIRO") || s.includes("BORGES")) return "ARGEMIRO";
+        if (s.includes("GABRIEL")) return "GABRIEL";
+        if (s.includes("LUIS") || s.includes("LUIZ")) return "LUIS";
+        if (s.includes("FABIO")) return "FABIO";
+        if (s.includes("ARIEL")) return "ARIEL";
+        if (s.includes("LEANDRO") || s.includes("LEO")) return "LEANDRO";
+        
+        // Fallback: primeira palavra sem caracteres especiais
+        const primeira = s.split(/\s+/)[0].replace(/[^A-Z]/g, '');
+        return primeira || "MOTORISTA";
+    }
+
+    let motoristaPrimeiroNome = identificarMotorista(senderName, remetenteNum);
     
     const hojeObj = new Date();
     const dataHojeCurta = hojeObj.getDate().toString().padStart(2, '0') + '/' + (hojeObj.getMonth() + 1).toString().padStart(2, '0');
@@ -652,23 +665,36 @@ async function startWhatsApp() {
     }
 
     const isLocation = !!msg.message.locationMessage || !!msg.message.liveLocationMessage;
+    const isTextoChegada = !isAdmin && txtMsg && /^\s*(no\s+local|cheguei|chegando|no\s+cliente|na\s+loja|no\s+cd|na\s+filial|chegada|estou\s+no\s+local|cheguei\s+no\s+local|cheguei\s+aqui)\b/i.test(txtMsg.trim());
     
-    if (isLocation && !isAdmin) {
-        console.log(`[WPP-GRUPO] H_LOCAL detectado para o motorista ${motoristaPrimeiroNome}`);
+    if ((isLocation || isTextoChegada) && !isAdmin) {
+        console.log(`[WPP-GRUPO] H_LOCAL detectado (${isLocation ? 'GPS' : 'Texto'}) para o motorista ${motoristaPrimeiroNome}`);
         
-        const locName = (msg.message.locationMessage?.name || msg.message.locationMessage?.address || "").toLowerCase();
+        const locName = (msg.message.locationMessage?.name || msg.message.locationMessage?.address || txtMsg || "").toLowerCase();
         
-        const { data: pendentes } = await supabase.from('deliveries').select('id, cliente')
+        // 1. Busca primeiro nas cargas de hoje sem l_horario
+        let { data: pendentes } = await supabase.from('deliveries').select('id, cliente, data')
             .ilike('motorista', `%${motoristaPrimeiroNome}%`)
             .ilike('data', `%${dataHojeCurta}%`)
             .is('l_horario', null)
             .not('delivery', 'ilike', '340%')
             .order('id', { ascending: true });
             
+        // 2. Se não encontrou hoje, busca em cargas recentes em aberto do motorista
+        if (!pendentes || pendentes.length === 0) {
+            const { data: pendentesGerais } = await supabase.from('deliveries').select('id, cliente, data')
+                .ilike('motorista', `%${motoristaPrimeiroNome}%`)
+                .is('l_horario', null)
+                .not('delivery', 'ilike', '340%')
+                .order('id', { ascending: false })
+                .limit(5);
+            pendentes = pendentesGerais || [];
+        }
+            
         if (pendentes && pendentes.length === 1) {
             await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', pendentes[0].id);
             await sock.sendMessage(GRUPO_TRABALHO, { text: `📍 H_LOCAL marcado para ${motoristaPrimeiroNome} (${horaAtual})\nCliente: ${pendentes[0].cliente || "N/A"}` });
-            console.log(`[WPP-GRUPO] H_LOCAL marcado no banco! (${horaAtual})`);
+            console.log(`[WPP-GRUPO] H_LOCAL marcado no banco! (${horaAtual}) Cliente: ${pendentes[0].cliente}`);
         } else if (pendentes && pendentes.length > 1) {
             let escolhido = null;
             if (locName) {
@@ -689,15 +715,15 @@ async function startWhatsApp() {
             
             if (escolhido) {
                 await supabase.from('deliveries').update({ l_horario: horaAtual }).eq('id', escolhido.id);
-                await sock.sendMessage(GRUPO_TRABALHO, { text: `📍 H_LOCAL marcado para ${motoristaPrimeiroNome} (${horaAtual}) via GPS Inteligente!\nCliente: ${escolhido.cliente || "N/A"}` });
-                console.log(`[WPP-GRUPO] H_LOCAL marcado no banco por GPS Inteligente! (${horaAtual})`);
+                await sock.sendMessage(GRUPO_TRABALHO, { text: `📍 H_LOCAL marcado para ${motoristaPrimeiroNome} (${horaAtual})!\nCliente: ${escolhido.cliente || "N/A"}` });
+                console.log(`[WPP-GRUPO] H_LOCAL marcado no banco! (${horaAtual})`);
             } else {
-                let msgOpcoes = pendentes.map(p => `- ${p.cliente}`).join('\n');
-                await sock.sendMessage(GRUPO_TRABALHO, { text: `⚠️ O motorista ${motoristaPrimeiroNome} enviou a localização, mas possui ${pendentes.length} coletas pendentes:\n\n${msgOpcoes}\n\n👉 Responda com o nome do motorista e o local (ex: "${motoristaPrimeiroNome} Cabula") para registrar a chegada.` });
+                let msgOpcoes = pendentes.map(p => `- ${p.cliente} (${p.data || 'Hoje'})`).join('\n');
+                await sock.sendMessage(GRUPO_TRABALHO, { text: `⚠️ O motorista ${motoristaPrimeiroNome} chegou no local, mas possui ${pendentes.length} coletas pendentes:\n\n${msgOpcoes}\n\n👉 Responda com o nome do motorista e o local (ex: "${motoristaPrimeiroNome} ${pendentes[0].cliente.split(' ')[0]}") para registrar a chegada.` });
                 console.log(`[WPP-GRUPO] Aguardando desempate manual para ${motoristaPrimeiroNome}.`);
             }
         } else {
-            console.log(`[WPP-GRUPO] FALHA: Nenhuma carga vazia (l_horario=null) achada para motorista=${motoristaPrimeiroNome} na data=${dataHojeCurta}`);
+            console.log(`[WPP-GRUPO] FALHA: Nenhuma carga vazia (l_horario=null) achada para motorista=${motoristaPrimeiroNome}`);
         }
         return;
     }
@@ -770,12 +796,17 @@ async function startWhatsApp() {
                 if (!finalizavelId) {
                     console.log(`[WPP-GRUPO] Delivery não encontrado. Tentando FALLBACK INTELIGENTE cruzando cliente para motorista=${motoristaPrimeiroNome}...`);
                     
-                    // Busca TODAS as coletas do motorista que ainda não foram concluídas (pode ser de dias anteriores)
-                    const { data: pendentes } = await supabase.from('deliveries')
-                        .select('id, delivery, cliente, f_horario, data')
+                    // Busca coletas do motorista (sem filtro neq que exclui NULL no PostgREST)
+                    const { data: allMotoristaLoads } = await supabase.from('deliveries')
+                        .select('id, delivery, cliente, f_horario, status, data')
                         .ilike('motorista', `%${motoristaPrimeiroNome}%`)
-                        .neq('status', 'CONCLUIDO')
-                        .order('id', { ascending: true });
+                        .order('id', { ascending: false });
+
+                    // Filtra em memória todas as que NÃO estão concluídas
+                    const pendentes = (allMotoristaLoads || []).filter(p => {
+                        const isConcluido = p.status === 'CONCLUIDO' || (p.f_horario && p.f_horario.trim() !== '' && p.f_horario !== '-');
+                        return !isConcluido;
+                    });
 
                     if (pendentes && pendentes.length > 0) {
                         const norm = str => (str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
