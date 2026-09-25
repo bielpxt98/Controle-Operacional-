@@ -162,104 +162,136 @@ def ping():
 
 @app.route("/api/search", methods=["GET"])
 def search_coletas():
-    q = request.args.get("q", "").strip().lower()
+    q = request.args.get("q", "").strip()
     if not q:
         return jsonify({"status": "success", "data": [], "total": 0})
         
     import re
     from datetime import datetime
     
+    q_clean = q.strip()
+    q_lower = q_clean.lower()
+    
     date_pattern = r'(\d{2}/\d{2}(?:/\d{2,4})?)'
-    dates = re.findall(date_pattern, q)
+    dates = re.findall(date_pattern, q_lower)
     
     # Extrair linguagem natural como "dia 10 ao dia 20" ou "do dia 10 ao 20"
     if not dates:
         nat_pattern = r'(?:do\s+)?(?:dia\s+)?(\d{1,2})\s+(?:a|ao|ate|at[eé])\s+(?:o\s+)?(?:dia\s+)?(\d{1,2})'
-        nat_match = re.search(nat_pattern, q)
+        nat_match = re.search(nat_pattern, q_lower)
         if nat_match:
             d1, d2 = nat_match.groups()
             curr_month = datetime.now().month
             curr_year = datetime.now().year
             dates = [f"{int(d1):02d}/{curr_month:02d}/{curr_year}", f"{int(d2):02d}/{curr_month:02d}/{curr_year}"]
-            q = re.sub(nat_pattern, '', q).strip()
+            q_clean = re.sub(nat_pattern, '', q_clean, flags=re.IGNORECASE).strip()
             
     # Extrair também buscas por um único dia "dia 10"
     if not dates:
-        single_day_pattern = r'dia\s+(\d{1,2})'
-        single_match = re.search(single_day_pattern, q)
+        single_day_pattern = r'dia\s+(\d{1,2})\b'
+        single_match = re.search(single_day_pattern, q_lower)
         if single_match:
             d1 = single_match.group(1)
             curr_month = datetime.now().month
             curr_year = datetime.now().year
-            dates = [f"{int(d1):02d}/{curr_month:02d}/{curr_year}", f"{int(d1):02d}/{curr_month:02d}/{curr_year}"]
-            q = re.sub(single_day_pattern, '', q).strip()
+            dates = [f"{int(d1):02d}/{curr_month:02d}/{curr_year}"]
+            q_clean = re.sub(single_day_pattern, '', q_clean, flags=re.IGNORECASE).strip()
     
     target_status = None
-    if "deslocamento" in q: target_status = "deslocamento"
-    elif "bloqueio" in q: target_status = "bloqueio"
-    elif "finalizado" in q: target_status = "finalizado"
-    elif "pendente" in q: target_status = "pendente"
+    if "deslocamento" in q_lower: target_status = "deslocamento"
+    elif "bloqueio" in q_lower: target_status = "bloqueio"
+    elif "finalizado" in q_lower: target_status = "finalizado"
+    elif "pendente" in q_lower: target_status = "pendente"
 
     try:
-        all_data = db_select_all()
         results = []
-        
-        def parse_custom_date(ds):
-            parts = ds.split('/')
-            if len(parts) == 2:
-                ds = f"{ds}/{datetime.now().year}"
-            try:
-                return datetime.strptime(ds, "%d/%m/%Y")
-            except:
-                try:
-                    return datetime.strptime(ds, "%d/%m/%y")
-                except:
-                    return datetime.min
-        
-        start_date = None
-        end_date = None
-        if len(dates) >= 2:
-            start_date = parse_custom_date(dates[0])
-            end_date = parse_custom_date(dates[-1])
-            if start_date > end_date:
-                start_date, end_date = end_date, start_date
-
-        search_terms = q.split()
-
-        for item in all_data:
-            item_date = parse_date_for_sort(item.get("data", ""))
-            idt = item_date
-                
-            pc_val = sanitize_number(item.get("pc"))
-            hl = item.get("l_horario")
-            hc = item.get("c_horario")
-            hf = item.get("f_horario")
-            obs = str(item.get("observacao") or item.get("observacoes") or item.get("motivo") or "").lower()
-            
-            st = "pendente"
-            if (pc_val is not None and pc_val > 0 and hl and hc and hf):
-                st = "finalizado"
-            elif (pc_val is None or pc_val == 0) and hl and hf and "bloqueio" in obs:
-                st = "bloqueio"
-            elif (pc_val is None or pc_val == 0) and hl and hf and "deslocamento" in obs:
-                st = "deslocamento"
-
-            if target_status and len(dates) >= 2:
-                if start_date <= idt <= end_date and st == target_status:
-                    results.append(item)
-            elif target_status:
-                if st == target_status:
-                    row_str = " ".join([str(v) for v in item.values() if v is not None]).lower()
-                    other_terms = [t for t in search_terms if t != target_status]
-                    if all(t in row_str for t in other_terms):
-                        results.append(item)
+        # Se for busca direta por texto (cliente, motorista, delivery, etc.)
+        if not target_status and len(dates) == 0:
+            terms = [t.strip() for t in q_clean.split() if len(t.strip()) > 0]
+            searchTerm = q_clean.replace(" ", "%")
+            url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?or=(cliente.ilike.*{searchTerm}*,motorista.ilike.*{searchTerm}*,delivery.ilike.*{searchTerm}*,sr.ilike.*{searchTerm}*,cavalo.ilike.*{searchTerm}*,carreta.ilike.*{searchTerm}*,observacoes.ilike.*{searchTerm}*,data.ilike.*{searchTerm}*)&order=id.desc&limit=150"
+            res = requests.get(url, headers=get_headers(), timeout=8)
+            if res.status_code in [200, 206]:
+                results = res.json()
             else:
-                row_str = " ".join([str(v) for v in item.values() if v is not None]).lower() + f" {st}"
-                if all(t in row_str for t in search_terms):
-                    results.append(item)
+                results = []
                 
+            if not results and len(terms) > 1:
+                firstTerm = terms[0]
+                url_fb = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?or=(cliente.ilike.*{firstTerm}*,motorista.ilike.*{firstTerm}*,delivery.ilike.*{firstTerm}*)&order=id.desc&limit=150"
+                res_fb = requests.get(url_fb, headers=get_headers(), timeout=8)
+                if res_fb.status_code in [200, 206]:
+                    all_fb = res_fb.json()
+                    results = [
+                        item for item in all_fb
+                        if all(t.lower() in " ".join([str(v) for v in item.values() if v is not None]).lower() for t in terms)
+                    ]
+        else:
+            all_data = db_select_all()
+            
+            def parse_custom_date(ds):
+                parts = ds.split('/')
+                if len(parts) == 2:
+                    ds = f"{ds}/{datetime.now().year}"
+                try:
+                    return datetime.strptime(ds, "%d/%m/%Y")
+                except:
+                    try:
+                        return datetime.strptime(ds, "%d/%m/%y")
+                    except:
+                        return datetime.min
+            
+            start_date = None
+            end_date = None
+            if len(dates) >= 2:
+                start_date = parse_custom_date(dates[0])
+                end_date = parse_custom_date(dates[-1])
+                if start_date > end_date:
+                    start_date, end_date = end_date, start_date
+            elif len(dates) == 1:
+                start_date = parse_custom_date(dates[0])
+                end_date = start_date
+
+            search_terms = q_clean.lower().split()
+
+            for item in all_data:
+                item_date = parse_date_for_sort(item.get("data", ""))
+                idt = item_date
+                    
+                pc_val = sanitize_number(item.get("pc"))
+                hl = item.get("l_horario")
+                hc = item.get("c_horario")
+                hf = item.get("f_horario")
+                obs = str(item.get("observacao") or item.get("observacoes") or item.get("motivo") or "").lower()
+                
+                st = "pendente"
+                if (pc_val is not None and pc_val > 0 and hl and hc and hf):
+                    st = "finalizado"
+                elif (pc_val is None or pc_val == 0) and hl and hf and "bloqueio" in obs:
+                    st = "bloqueio"
+                elif (pc_val is None or pc_val == 0) and hl and hf and "deslocamento" in obs:
+                    st = "deslocamento"
+
+                if target_status and start_date and end_date:
+                    if start_date <= idt <= end_date and st == target_status:
+                        results.append(item)
+                elif start_date and end_date:
+                    if start_date <= idt <= end_date:
+                        row_str = " ".join([str(v) for v in item.values() if v is not None]).lower()
+                        if not search_terms or all(t in row_str for t in search_terms):
+                            results.append(item)
+                elif target_status:
+                    if st == target_status:
+                        row_str = " ".join([str(v) for v in item.values() if v is not None]).lower()
+                        other_terms = [t for t in search_terms if t != target_status]
+                        if all(t in row_str for t in other_terms):
+                            results.append(item)
+                else:
+                    row_str = " ".join([str(v) for v in item.values() if v is not None]).lower() + f" {st}"
+                    if all(t in row_str for t in search_terms):
+                        results.append(item)
+                    
         results.sort(key=lambda x: parse_date_for_sort(x.get("data", "")), reverse=True)
-        
         return jsonify({"status": "success", "data": results, "total": len(results)})
     except Exception as e:
         print(f"Erro em search_coletas: {e}")

@@ -888,10 +888,12 @@
             <div class="continuous-roll-text">
                 Rolagem Contínua de Dias - Mês: <span id="continuousMonthText">AGOSTO 2026</span>
             </div>
-            <div class="calendar-right-actions">
-                <div class="search-container">
-                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                    <input type="text" id="searchInput" class="search-input" placeholder="Pesquisar por Nome, Delivery ou Cliente..." autocomplete="off" oninput="filterTable()" onkeyup="filterTable()">
+                <div class="search-container" style="display: flex; align-items: center; gap: 6px;">
+                    <div style="position: relative; flex: 1;">
+                        <i class="fa-solid fa-magnifying-glass search-icon" style="cursor: pointer;" onclick="executeSearch()" title="Clique para pesquisar"></i>
+                        <input type="text" id="searchInput" class="search-input" placeholder="Pesquisar por Nome, Delivery ou Cliente (Enter)..." autocomplete="off" onkeydown="if(event.key === 'Enter'){ event.preventDefault(); executeSearch(); }" oninput="if(this.value.trim() === '') restoreCurrentDayFromSearch();">
+                    </div>
+                    <button type="button" class="view-monthly-btn" onclick="executeSearch()" style="background: var(--accent-blue); color: white; border-color: var(--accent-blue); padding: 6px 14px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;" title="Clique ou pressione Enter para pesquisar"><i class="fa-solid fa-magnifying-glass"></i> Buscar</button>
                 </div>
                 <button class="view-monthly-btn" onclick="goToToday()" style="background: var(--accent-blue); color: white; border-color: var(--accent-blue);">Hoje <i class="fa-solid fa-calendar-day"></i></button>
                 <button class="view-monthly-btn" id="btnEmAberto" onclick="filterColetasEmAberto()" style="background: #ea580c; color: white; border-color: #f97316;" title="Ver todas as coletas em aberto / pendentes no CS"><i class="fa-solid fa-truck-ramp-box"></i> Em Aberto / No CS</button>
@@ -1516,86 +1518,103 @@
             }, 50);
         }
 
-        let searchDebounceTimeout = null;
-
-        function filterTable() {
-            const q = document.getElementById('searchInput').value.trim().toLowerCase();
-            const tbody = document.getElementById('tableBody');
-            const mobileCards = document.getElementById('mobileCards');
-            
+        function restoreCurrentDayFromSearch() {
+            const input = document.getElementById('searchInput');
+            const q = input ? input.value.trim() : '';
             if (!q) {
                 document.getElementById('currentDateText').innerText = activeDateStr;
                 const cBtn2 = document.getElementById('copySheetBtn'); if(cBtn2) cBtn2.style.display = 'none';
                 renderDaysStrip(currentSelectedYear, currentSelectedMonthIndex);
                 fetchDayDataFromSupabase(activeDateStr);
+            }
+        }
+
+        async function executeSearch() {
+            const input = document.getElementById('searchInput');
+            const q = input ? input.value.trim() : '';
+            const tbody = document.getElementById('tableBody');
+            const mobileCards = document.getElementById('mobileCards');
+            
+            if (!q) {
+                restoreCurrentDayFromSearch();
                 return;
             }
 
-            // UI de busca
+            // Remove destaque dos botões de dias do calendário
             document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active'));
-            document.getElementById('currentDateText').innerText = `Busca Global: "${q}"`;
+            document.getElementById('currentDateText').innerHTML = `Busca Global: "<strong>${q}</strong>"`;
             const copyBtn = document.getElementById('copySheetBtn');
             if (copyBtn) copyBtn.style.display = q.toLowerCase().includes('deslocamento') ? 'inline-block' : 'none';
 
-            // 1. Busca local instantanea (0ms) em todos os dias salvos no navegador
-            const localStore = getLocalStore();
-            const localResults = [];
-            const seenKeys = new Set();
-
-            Object.keys(localStore).forEach(dayKey => {
-                const dayItems = localStore[dayKey] || [];
-                dayItems.forEach(item => {
-                    const strVal = Object.values(item).join(' ').toLowerCase();
-                    if (strVal.includes(q)) {
-                        const itemKey = item.id || (item.delivery + '_' + item.cliente + '_' + item.motorista);
-                        if (!seenKeys.has(itemKey)) {
-                            seenKeys.add(itemKey);
-                            localResults.push(item);
-                        }
-                    }
-                });
-            });
-
-            if (localResults.length > 0) {
-                tbody.innerHTML = '';
-                if (mobileCards) mobileCards.innerHTML = '';
-                localResults.forEach(rec => appendRowFromData(rec));
+            // Feedback visual imediato de busca
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="17" style="text-align: center; padding: 2.5rem; color: #38bdf8; font-size: 0.95rem;">
+                        <i class="fa-solid fa-spinner fa-spin" style="margin-right: 8px; font-size: 1.2rem;"></i>
+                        Pesquisando "<strong>${q}</strong>" em todo o histórico...
+                    </td>
+                </tr>
+            `;
+            if (mobileCards) {
+                mobileCards.innerHTML = `<div style="text-align:center;padding:2rem;color:#38bdf8"><i class="fa-solid fa-spinner fa-spin"></i> Pesquisando "${q}"...</div>`;
             }
 
-            // 2. Busca no Supabase em segundo plano (em todo o banco)
-            clearTimeout(searchDebounceTimeout);
-            searchDebounceTimeout = setTimeout(async () => {
-                try {
-                    const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-                    const json = await res.json();
-                    if (json.status === 'success') {
-                        tbody.innerHTML = '';
-                        if (mobileCards) mobileCards.innerHTML = '';
+            try {
+                const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&_t=${Date.now()}`, { cache: 'no-store' });
+                const json = await res.json();
+                
+                tbody.innerHTML = '';
+                if (mobileCards) mobileCards.innerHTML = '';
 
-                        const records = json.data && json.data.length > 0 ? json.data : localResults;
+                if (json.status === 'success') {
+                    const records = json.data || [];
 
-                        if (records.length === 0) {
-                            tbody.innerHTML = `
-                                <tr>
-                                    <td colspan="17" class="empty-day-message">
-                                        <i class="fa-solid fa-magnifying-glass"></i>
-                                        Nenhum registro encontrado para "<strong>${q}</strong>" em todo o banco de dados.
-                                    </td>
-                                </tr>
-                            `;
-                            if (mobileCards) {
-                                mobileCards.innerHTML = `<div style="text-align:center;padding:2rem;color:#64748b">Nenhum registro encontrado para "${q}".</div>`;
-                            }
-                        } else {
-                            records.forEach(rec => {
-                                try { appendRowFromData(rec, true); } catch(err) { console.error("Erro ao renderizar item de busca:", err, rec); }
-                            });
+                    if (records.length === 0) {
+                        tbody.innerHTML = `
+                            <tr>
+                                <td colspan="17" class="empty-day-message">
+                                    <i class="fa-solid fa-magnifying-glass"></i>
+                                    Nenhum registro encontrado para "<strong>${q}</strong>" em todo o banco de dados.
+                                </td>
+                            </tr>
+                        `;
+                        if (mobileCards) {
+                            mobileCards.innerHTML = `<div style="text-align:center;padding:2rem;color:#64748b">Nenhum registro encontrado para "${q}".</div>`;
                         }
+                    } else {
+                        records.forEach(rec => {
+                            try {
+                                appendRowFromData(rec, true);
+                            } catch(err) {
+                                console.error("Erro ao renderizar item de busca:", err, rec);
+                            }
+                        });
                     }
-                } catch (e) {
-                    console.error("Erro na busca global:", e);
+                } else {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="17" class="empty-day-message" style="color: #ef4444;">
+                                <i class="fa-solid fa-circle-exclamation"></i>
+                                Erro ao realizar a busca: ${json.message || 'Falha no servidor'}
+                            </td>
+                        </tr>
+                    `;
                 }
-            }, 200);
+            } catch (e) {
+                console.error("Erro na busca global:", e);
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="17" class="empty-day-message" style="color: #ef4444;">
+                            <i class="fa-solid fa-circle-exclamation"></i>
+                            Erro de conexão: ${e.message}
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        function filterTable() {
+            executeSearch();
         }
 
         async function filterColetasEmAberto() {
