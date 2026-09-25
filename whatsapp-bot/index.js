@@ -186,7 +186,17 @@ async function startWhatsApp() {
     const numD = "5581983493082";
     const numE = "558193792908"; // Gabriel Peixoto antigo
     const numF = "557186888333"; // Gabriel Peixoto atual
-    const isAdmin = msg.key.fromMe || remetenteNum.includes("557181942525") || remetenteNum.includes(numA) || remetenteNum.includes(numB) || remetenteNum.includes(numC) || remetenteNum.includes(numD) || remetenteNum.includes(numE) || remetenteNum.includes(numF) || senderName.toLowerCase().includes("luciana") || senderName.toLowerCase().includes("osvaldo") || senderName.toLowerCase().includes("gabriel");
+    const isAdmin = msg.key.fromMe || 
+        remetenteNum.includes("557181942525") || 
+        remetenteNum.includes(numA) || 
+        remetenteNum.includes(numB) || 
+        remetenteNum.includes(numC) || 
+        remetenteNum.includes(numD) || 
+        remetenteNum.includes(numE) || 
+        remetenteNum.includes(numF) || 
+        senderName.toLowerCase().includes("luciana") || 
+        senderName.toLowerCase().includes("osvaldo") || 
+        (senderName.toLowerCase().includes("gabriel") && !senderName.toLowerCase().includes("borges") && !senderName.toLowerCase().includes("motorista"));
 
     // =========================================================
     // 1. MENSAGEM NO PRIVADO
@@ -231,11 +241,11 @@ async function startWhatsApp() {
     
     function identificarMotorista(sName, remNum = "") {
         const s = (sName || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+        if (s.includes("GABRIEL")) return "GABRIEL";
         if (s.includes("ROMILSON") || s.includes("ROMILDO")) return "ROMILSON";
         if (s.includes("VALDEMIR")) return "VALDEMIR";
         if (s.includes("JONES")) return "JONES";
         if (s.includes("ARGEMIRO") || s.includes("BORGES")) return "ARGEMIRO";
-        if (s.includes("GABRIEL")) return "GABRIEL";
         if (s.includes("LUIS") || s.includes("LUIZ")) return "LUIS";
         if (s.includes("FABIO")) return "FABIO";
         if (s.includes("ARIEL")) return "ARIEL";
