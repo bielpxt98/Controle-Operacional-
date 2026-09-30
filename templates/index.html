@@ -2166,7 +2166,36 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ data: dateForSave || activeDateStr, coletas })
-            }).catch(err => console.error("Auto-salvamento em background:", err));
+            })
+            .then(res => res.json())
+            .then(json => {
+                if (json && json.status === "success" && Array.isArray(json.saved)) {
+                    const trsWithoutId = document.querySelectorAll('#tableBody tr:not([data-id])');
+                    const cardsWithoutId = document.querySelectorAll('#mobileCards .coleta-card:not([data-id])');
+                    
+                    json.saved.forEach(savedItem => {
+                        if (!savedItem || !savedItem.id) return;
+                        const savedDelivery = String(savedItem.delivery || '').trim();
+                        if (savedDelivery) {
+                            trsWithoutId.forEach(tr => {
+                                if (tr.getAttribute('data-id')) return;
+                                const deliv = tr.querySelector('.input-delivery')?.value?.trim() || '';
+                                if (deliv === savedDelivery) {
+                                    tr.setAttribute('data-id', savedItem.id);
+                                }
+                            });
+                            cardsWithoutId.forEach(card => {
+                                if (card.getAttribute('data-id')) return;
+                                const deliv = card.querySelector('.input-delivery')?.value?.trim() || '';
+                                if (deliv === savedDelivery) {
+                                    card.setAttribute('data-id', savedItem.id);
+                                }
+                            });
+                        }
+                    });
+                }
+            })
+            .catch(err => console.error("Auto-salvamento em background:", err));
         }
 
         async function saveCurrentDayColetasWithAuth() {
@@ -2416,8 +2445,12 @@
 
         function addNewRow() {
             const tbody = document.getElementById('tableBody');
-            if (tbody.querySelector('.empty-day-message')) {
+            if (tbody && tbody.querySelector('.empty-day-message')) {
                 tbody.innerHTML = '';
+            }
+            const mobileCards = document.getElementById('mobileCards');
+            if (mobileCards && mobileCards.innerHTML.includes('Nenhuma coleta')) {
+                mobileCards.innerHTML = '';
             }
 
             appendRowFromData({
@@ -2425,6 +2458,28 @@
                 delivery: "", cliente: "", paletes: "", pc: "", valor: "",
                 l_horario: "", c_horario: "", f_horario: "", df: "", sr: "", observacao: ""
             });
+
+            window._lastUserActivityTime = Date.now();
+
+            // Foca imediatamente no campo de motorista ou delivery da nova coleta
+            setTimeout(() => {
+                const isMobile = window.innerWidth <= 1024;
+                if (isMobile) {
+                    const lastCard = document.querySelector('.coleta-card:last-child');
+                    if (lastCard) {
+                        const targetInput = lastCard.querySelector('.driver-select') || lastCard.querySelector('input');
+                        if (targetInput) targetInput.focus();
+                        lastCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                } else {
+                    const lastTr = document.querySelector('#tableBody tr:last-child');
+                    if (lastTr) {
+                        const targetInput = lastTr.querySelector('.driver-select') || lastTr.querySelector('input');
+                        if (targetInput) targetInput.focus();
+                        lastTr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+            }, 60);
         }
 
         async function deleteRow(btn) {
@@ -2596,7 +2651,30 @@
             }
         }
     
-        // === SYNC REAL-TIME INVISIVEL E UNIVERSAL ===
+        // Rastreamento universal de edição para proteger digitação do usuário contra sobrescrita
+        document.addEventListener('input', (e) => {
+            if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) {
+                e.target.dataset.lastEdited = String(Date.now());
+                const container = e.target.closest('tr, .coleta-card');
+                if (container) container.setAttribute('data-row-edited', String(Date.now()));
+                window._lastUserActivityTime = Date.now();
+                // Salva silenciosamente com debounce automático
+                if (typeof saveCurrentDayColetasSilent === 'function') {
+                    saveCurrentDayColetasSilent();
+                }
+            }
+        }, true);
+
+        document.addEventListener('change', (e) => {
+            if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) {
+                e.target.dataset.lastEdited = String(Date.now());
+                const container = e.target.closest('tr, .coleta-card');
+                if (container) container.setAttribute('data-row-edited', String(Date.now()));
+                window._lastUserActivityTime = Date.now();
+            }
+        }, true);
+
+        // === SYNC REAL-TIME INVISIVEL E UNIVERSAL (NÃO-DESTRUTIVO) ===
         async function syncRealTime() {
             if (document.hidden) return; // Nao polui o servidor se a aba estiver em segundo plano
             if (isSearchActive()) return;
@@ -2606,89 +2684,120 @@
                 const json = await res.json();
                 const records = json.data || [];
                 
+                const activeEl = document.activeElement;
                 const rows = document.querySelectorAll('#tableBody tr[data-id]');
                 const cards = document.querySelectorAll('.coleta-card[data-id]');
-                const activeEl = document.activeElement;
-                const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT' || activeEl.tagName === 'TEXTAREA');
+
+                // Helper de atualização de campo com imunidade a edições recentes
+                const safeUpdateField = (container, selector, serverVal) => {
+                    const input = container.querySelector(selector);
+                    if (!input || input === activeEl) return;
+
+                    // IMUNIDADE 1: Se o usuário editou este campo específico nos últimos 20s, NUNCA sobrescreve
+                    const lastEdited = parseInt(input.dataset.lastEdited || "0", 10);
+                    if (Date.now() - lastEdited < 20000) return;
+
+                    // IMUNIDADE 2: Se a linha/card como um todo foi editada nos últimos 6s, evita qualquer efeito colateral
+                    const rowEdited = parseInt(container.getAttribute('data-row-edited') || "0", 10);
+                    if (Date.now() - rowEdited < 6000) return;
+
+                    const targetVal = (serverVal === null || serverVal === undefined) ? '' : String(serverVal);
+
+                    // REGRA DE PROTEÇÃO: Se o usuário digitou algo na tela e no banco está vazio,
+                    // NUNCA apaga o que o usuário preencheu!
+                    if (input.value !== '' && targetVal.trim() === '') {
+                        return;
+                    }
+
+                    if (String(input.value) !== targetVal) {
+                        input.value = targetVal;
+                        input.style.transition = "background-color 0.4s";
+                        input.style.backgroundColor = "#dcfce7";
+                        setTimeout(() => input.style.backgroundColor = "", 1200);
+                    }
+                };
                 
-                // Atualiza linhas da tabela (Desktop)
+                // 1. Atualiza linhas da tabela (Desktop)
                 for (const row of rows) {
                     const id = row.getAttribute('data-id');
                     const rec = records.find(r => String(r.id) === id);
                     if (rec) {
-                        const setVal = (cls, val) => {
-                            const input = row.querySelector(cls);
-                            if (!input || input === activeEl) return;
-                            
-                            const targetVal = (val === null || val === undefined) ? '' : String(val);
-                            
-                            // REGRA DE PROTEÇÃO: Se o usuário digitou algo na tela e no banco está vazio,
-                            // NÃO apaga o que o usuário acabou de digitar!
-                            if (input.value !== '' && (val === null || val === undefined || String(val).trim() === '')) {
-                                return;
-                            }
-
-                            if (String(input.value) !== targetVal) {
-                                input.value = targetVal;
-                                input.style.transition = "background-color 0.4s";
-                                input.style.backgroundColor = "#dcfce7";
-                                setTimeout(() => input.style.backgroundColor = "", 1200);
-                            }
-                        };
-                        
-                        setVal('.input-lhorario', rec.l_horario || '');
-                        setVal('.input-chorario', rec.c_horario || '');
-                        setVal('.input-fhorario', rec.f_horario || '');
-                        setVal('.input-df', rec.df || rec.data_finalizacao || '');
-                        setVal('.input-pc', rec.pc ?? '');
-                        setVal('.input-sr', rec.sr || '');
-                        setVal('.input-observacao', rec.observacao || rec.motivo || rec.observacoes || '');
+                        safeUpdateField(row, '.input-lhorario', rec.l_horario || rec.h_local || '');
+                        safeUpdateField(row, '.input-chorario', rec.c_horario || rec.h_coletado || '');
+                        safeUpdateField(row, '.input-fhorario', rec.f_horario || rec.h_finalizado || '');
+                        safeUpdateField(row, '.input-df', rec.df || rec.data_finalizacao || '');
+                        safeUpdateField(row, '.input-pc', rec.pc ?? rec.coletados ?? '');
+                        safeUpdateField(row, '.input-sr', rec.sr || '');
+                        safeUpdateField(row, '.input-observacao', rec.observacao || rec.motivo || rec.observacoes || '');
                         
                         updateRowStatus(row);
                     }
                 }
 
-                // Atualiza cards (Mobile)
+                // 2. Atualiza cards (Mobile)
                 for (const card of cards) {
                     const id = card.getAttribute('data-id');
                     const rec = records.find(r => String(r.id) === id);
                     if (rec) {
-                        const setCardVal = (cls, val) => {
-                            const input = card.querySelector(cls);
-                            if (!input || input === activeEl) return;
-                            
-                            const targetVal = (val === null || val === undefined) ? '' : String(val);
-                            
-                            // REGRA DE PROTEÇÃO: Se o usuário digitou algo na tela e no banco está vazio,
-                            // NÃO apaga o que o usuário acabou de digitar!
-                            if (input.value !== '' && (val === null || val === undefined || String(val).trim() === '')) {
-                                return;
-                            }
-
-                            if (String(input.value) !== targetVal) {
-                                input.value = targetVal;
-                                input.style.transition = "background-color 0.4s";
-                                input.style.backgroundColor = "#dcfce7";
-                                setTimeout(() => input.style.backgroundColor = "", 1200);
-                            }
-                        };
-                        
-                        setCardVal('.input-lhorario', rec.l_horario || '');
-                        setCardVal('.input-chorario', rec.c_horario || '');
-                        setCardVal('.input-fhorario', rec.f_horario || '');
-                        setCardVal('.input-df', rec.df || rec.data_finalizacao || '');
-                        setCardVal('.input-pc', rec.pc ?? '');
-                        setCardVal('.input-sr', rec.sr || '');
-                        setCardVal('.input-observacao', rec.observacao || rec.motivo || rec.observacoes || '');
+                        safeUpdateField(card, '.input-lhorario', rec.l_horario || rec.h_local || '');
+                        safeUpdateField(card, '.input-chorario', rec.c_horario || rec.h_coletado || '');
+                        safeUpdateField(card, '.input-fhorario', rec.f_horario || rec.h_finalizado || '');
+                        safeUpdateField(card, '.input-df', rec.df || rec.data_finalizacao || '');
+                        safeUpdateField(card, '.input-pc', rec.pc ?? rec.coletados ?? '');
+                        safeUpdateField(card, '.input-sr', rec.sr || '');
+                        safeUpdateField(card, '.input-observacao', rec.observacao || rec.motivo || rec.observacoes || '');
                         
                         updateRowStatus(card);
                     }
                 }
 
-                // Se a quantidade de linhas for diferente no banco e na tela (coleta nova adicionada ou excluida) E usuário não está digitando
-                if (records.length !== rows.length && !isTyping) {
-                    fetchDayDataFromSupabase(activeDateStr);
-                }
+                // 3. Sincronização NÃO-DESTRUTIVA de coletas novas adicionadas no Supabase (por robô ou outro usuário)
+                records.forEach(rec => {
+                    if (!rec.id) return;
+                    const existsTr = document.querySelector(`#tableBody tr[data-id="${rec.id}"]`);
+                    
+                    if (!existsTr) {
+                        // Verifica se existe uma linha recém-criada localmente sem ID que bate com a delivery
+                        const trNoId = Array.from(document.querySelectorAll('#tableBody tr:not([data-id])')).find(t => {
+                            const d = t.querySelector('.input-delivery')?.value?.trim();
+                            return d && d === String(rec.delivery || '').trim();
+                        });
+                        
+                        if (trNoId) {
+                            trNoId.setAttribute('data-id', rec.id);
+                            const cardNoId = Array.from(document.querySelectorAll('#mobileCards .coleta-card:not([data-id])')).find(c => {
+                                const d = c.querySelector('.input-delivery')?.value?.trim();
+                                return d && d === String(rec.delivery || '').trim();
+                            });
+                            if (cardNoId) cardNoId.setAttribute('data-id', rec.id);
+                        } else {
+                            // Se nenhuma linha local corresponde e o usuário não interagiu nos últimos 3s
+                            const timeSinceLastActivity = Date.now() - (window._lastUserActivityTime || 0);
+                            if (timeSinceLastActivity > 3000) {
+                                const tbody = document.getElementById('tableBody');
+                                if (tbody && tbody.querySelector('.empty-day-message')) tbody.innerHTML = '';
+                                const mobileCards = document.getElementById('mobileCards');
+                                if (mobileCards && mobileCards.innerHTML.includes('Nenhuma coleta')) mobileCards.innerHTML = '';
+                                appendRowFromData(rec);
+                            }
+                        }
+                    }
+                });
+
+                // 4. Remoção segura de coletas excluídas do banco por outro usuário
+                rows.forEach(row => {
+                    const id = row.getAttribute('data-id');
+                    if (id && !records.some(r => String(r.id) === id)) {
+                        const isFocused = row.contains(document.activeElement);
+                        const rowEdited = parseInt(row.getAttribute('data-row-edited') || "0", 10);
+                        if (!isFocused && (Date.now() - rowEdited > 10000)) {
+                            row.remove();
+                            const card = document.querySelector(`.coleta-card[data-id="${id}"]`);
+                            if (card && !card.contains(document.activeElement)) card.remove();
+                        }
+                    }
+                });
+
             } catch(e) {}
         }
         setInterval(syncRealTime, 3000);
