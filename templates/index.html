@@ -581,6 +581,15 @@
             background: var(--accent-purple-hover);
         }
 
+        .btn-resumo {
+            background: #0284c7;
+            color: #fff;
+        }
+
+        .btn-resumo:hover {
+            background: #0369a1;
+        }
+
         .report-body {
             padding: 0.8rem;
         }
@@ -929,6 +938,7 @@
                     <div class="report-actions">
                         <button class="btn btn-add" onclick="addNewRow()"><i class="fa-solid fa-plus"></i> Adicionar Coleta</button>
                         <button class="btn btn-save" onclick="saveCurrentDayColetasWithAuth()"><i class="fa-solid fa-floppy-disk"></i> Salvar no Supabase</button>
+                        <button class="btn btn-resumo" id="btnCopiarResumo" onclick="copiarResumoContratante()" title="Copiar resumo formatado das coletas para enviar à contratante"><i class="fa-solid fa-clipboard-list"></i> Copiar Resumo</button>
                         <div style="position: relative; display: inline-block;">
                     <button class="export-btn" id="exportMenuBtn"><i class="fa-solid fa-file-excel"></i> Baixar Excel ▼</button>
                     <div id="exportDropdown" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 5px; background-color: #1e293b; min-width: 170px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5); z-index: 100; border-radius: 8px; overflow: hidden; border: 1px solid #334155;">
@@ -2801,8 +2811,151 @@
             } catch(e) {}
         }
         setInterval(syncRealTime, 3000);
-        // ================================
+        // ==========================================
+        // RESUMO EM TEMPO REAL PARA CONTRATANTE
+        // ==========================================
+        function copiarResumoContratante() {
+            const isMobile = window.innerWidth <= 1024;
+            const elements = isMobile ? document.querySelectorAll('#mobileCards .coleta-card') : document.querySelectorAll('#tableBody tr');
+            
+            const lines = [];
+            const seenDeliveries = new Set();
+
+            elements.forEach(el => {
+                const delivInput = el.querySelector('.input-delivery');
+                if (!delivInput) return;
+                const delivery = delivInput.value.trim();
+                if (!delivery || seenDeliveries.has(delivery)) return;
+
+                const cliente = (el.querySelector('.input-cliente')?.value || '').trim();
+                const hc = (el.querySelector('.input-chorario')?.value || '').trim();
+                const hf = (el.querySelector('.input-fhorario')?.value || '').trim();
+                const obs = (el.querySelector('.input-observacao')?.value || '').trim().toLowerCase();
+                const badge = (el.querySelector('.status-badge')?.innerText || '').trim().toUpperCase();
+
+                let status = null;
+
+                // 1. Bloqueio ou Deslocamento (motivo/observação ou status badge)
+                if (obs.includes('bloqueio') || badge === 'BLOQUEIO') {
+                    status = 'bloqueio';
+                } else if (obs.includes('deslocamento') || badge === 'DESLOCAMENTO') {
+                    status = 'deslocamento';
+                }
+                // 2. Finalizado (quando tiver o h_finalizado preenchido)
+                else if (hf && hf !== '-') {
+                    status = 'finalizado';
+                }
+                // 3. Coletado (quando tiver o h_coletado preenchido e ainda não finalizado)
+                else if (hc && hc !== '-') {
+                    status = 'coletado';
+                }
+
+                // Apenas inclui coletas que possuem um destes 3 status válidos
+                if (status) {
+                    seenDeliveries.add(delivery);
+                    lines.push(`${delivery} - ${cliente} - ${status}`);
+                }
+            });
+
+            if (lines.length === 0) {
+                alert("Nenhuma coleta com status (coletado, finalizado, bloqueio ou deslocamento) encontrada para o dia " + activeDateStr + ".");
+                return;
+            }
+
+            const textToCopy = lines.join('\n');
+
+            // Copia para área de transferência
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(textToCopy).catch(() => {
+                    fallbackCopyText(textToCopy);
+                });
+            } else {
+                fallbackCopyText(textToCopy);
+            }
+
+            // Efeito visual no botão
+            const btn = document.getElementById('btnCopiarResumo');
+            if (btn) {
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = '<i class="fa-solid fa-check"></i> Copiado!';
+                btn.style.background = '#059669';
+                setTimeout(() => {
+                    btn.innerHTML = originalHtml;
+                    btn.style.background = '#0284c7';
+                }, 2000);
+            }
+
+            // Exibe modal com o texto gerado
+            mostrarModalResumo(textToCopy, lines.length);
+        }
+
+        function fallbackCopyText(text) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            try { document.execCommand('copy'); } catch(e) {}
+            ta.remove();
+        }
+
+        function mostrarModalResumo(texto, total) {
+            const modal = document.getElementById('modalResumoContratante');
+            const txtArea = document.getElementById('modalResumoTexto');
+            const sub = document.getElementById('modalResumoSubtitulo');
+            if (!modal || !txtArea) return;
+
+            txtArea.value = texto;
+            if (sub) {
+                sub.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${total} coleta(s) copiada(s) para o dia ${activeDateStr}!`;
+            }
+            modal.style.display = 'flex';
+        }
+
+        function fecharModalResumo() {
+            const modal = document.getElementById('modalResumoContratante');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function copiarNovamenteResumo() {
+            const txtArea = document.getElementById('modalResumoTexto');
+            if (!txtArea) return;
+            const textToCopy = txtArea.value;
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(textToCopy);
+            } else {
+                fallbackCopyText(textToCopy);
+            }
+            alert('Texto copiado novamente para a Área de Transferência!');
+        }
 
 </script>
+
+    <!-- Modal Resumo para Contratante -->
+    <div id="modalResumoContratante" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px); align-items:center; justify-content:center;">
+        <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; width:92%; max-width:620px; padding:20px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.5); color:#f8fafc; font-family:inherit;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155; padding-bottom:12px; margin-bottom:14px;">
+                <h3 style="margin:0; font-size:1.1rem; display:flex; align-items:center; gap:8px; color:#38bdf8;">
+                    <i class="fa-solid fa-clipboard-list"></i> Resumo para Contratante
+                </h3>
+                <button onclick="fecharModalResumo()" style="background:none; border:none; color:#94a3b8; font-size:1.4rem; cursor:pointer; padding:0 5px;" title="Fechar">&times;</button>
+            </div>
+            <div style="margin-bottom:12px; font-size:0.85rem; color:#94a3b8;">
+                <span id="modalResumoSubtitulo" style="color:#34d399; font-weight:600; display:block;"><i class="fa-solid fa-circle-check"></i> Copiado com sucesso para a Área de Transferência!</span>
+                <span style="display:block; margin-top:4px;">Já pode colar (<kbd style="background:#334155; padding:2px 5px; border-radius:4px; font-family:inherit;">Ctrl+V</kbd>) diretamente no WhatsApp ou e-mail da empresa.</span>
+            </div>
+            <textarea id="modalResumoTexto" style="width:100%; height:220px; background:#0f172a; border:1px solid #334155; border-radius:8px; padding:12px; color:#e2e8f0; font-family:Consolas, Monaco, monospace; font-size:0.9rem; line-height:1.6; resize:vertical; box-sizing:border-box; outline:none;" readonly></textarea>
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:15px;">
+                <button class="btn" onclick="copiarNovamenteResumo()" style="background:#0284c7; color:#fff;">
+                    <i class="fa-solid fa-copy"></i> Copiar Novamente
+                </button>
+                <button class="btn" onclick="fecharModalResumo()" style="background:#475569; color:#fff;">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
