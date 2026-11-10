@@ -1,9 +1,10 @@
 import os
+import json
 from flask import Flask, render_template, request, jsonify, send_file
 import requests
 import pandas as pd
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timedelta
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
@@ -86,35 +87,149 @@ def sanitize_number(val):
     if val is None or val == "" or val == "-":
         return None
     try:
-        return int(float(str(val).replace(",", ".")))
+        n = int(float(str(val).replace(",", ".")))
+        return max(0, n)
     except Exception:
         return None
 
 def parse_valor_numeric(val):
     if val is None or val == "" or val == "-" or str(val).strip() == "":
         return None
+    if isinstance(val, (int, float)):
+        return float(val)
     try:
         clean = str(val).replace("R$", "").replace(" ", "").replace("\xa0", "").strip()
+        if not clean:
+            return None
         if "," in clean:
             clean = clean.replace(".", "").replace(",", ".")
         return float(clean)
     except Exception:
         return None
 
+def compute_operational_status(item):
+    pc_val = sanitize_number(item.get("pc"))
+    hl = item.get("l_horario")
+    hc = item.get("c_horario")
+    hf = item.get("f_horario")
+    obs = str(item.get("observacao") or item.get("observacoes") or item.get("motivo") or "").lower()
+    is_hf_valid = hf and str(hf).strip() not in ["", "-"]
+    if "bloqueio" in obs:
+        return "BLOQUEIO"
+    elif "deslocamento" in obs:
+        return "DESLOCAMENTO"
+    elif pc_val is not None and pc_val > 0 and hl and hc and is_hf_valid:
+        return "FINALIZADO"
+    return "PENDENTE"
+
+def extract_valor_final(item):
+    if not item or not isinstance(item, dict):
+        return None
+
+    valor = parse_valor_numeric(item.get("valor") or item.get("valor_frete") or item.get("valor_total") or item.get("val_frete"))
+    obs = str(item.get("observacao") or item.get("observacoes") or item.get("motivo") or "").lower()
+    st = compute_operational_status(item)
+
+    # 1. Se for Bloqueio: 0.0
+    if st == "BLOQUEIO" or "bloqueio" in obs:
+        return 0.0
+
+    # 2. Se for Deslocamento: Metade (50%)
+    if st == "DESLOCAMENTO" or "deslocamento" in obs:
+        if valor is not None:
+            return round(valor / 2.0, 2)
+        return 0.0
+
+    # Verifica se a coleta de fato ocorreu: Deve ter horário E paletes coletados (pc >= 0)
+    pc_val = sanitize_number(item.get("pc"))
+    ch = str(item.get("c_horario") or "").strip()
+    fh = str(item.get("f_horario") or "").strip()
+    has_horario = bool((ch and ch != "-") or (fh and fh != "-"))
+    has_pc = pc_val is not None and pc_val >= 0
+
+    if not (has_horario and has_pc):
+        return None
+
+    # Se a coleta ocorreu, verifica se há valor manual válido (não inflado)
+    manual_val = None
+    val = item.get("valor_final")
+    if val is not None and str(val).strip() != "":
+        try:
+            m = round(float(val), 2)
+            if valor and m > valor * 10:
+                pass  # Ignora valor corrompido/inflado por bug antigo
+            else:
+                manual_val = m
+        except Exception:
+            pass
+    if manual_val is None:
+        obs_sis = item.get("observacoes_sistema")
+        if obs_sis:
+            try:
+                parsed = json.loads(obs_sis) if isinstance(obs_sis, str) else obs_sis
+                if isinstance(parsed, dict) and "valor_final" in parsed and parsed["valor_final"] is not None:
+                    m = round(float(parsed["valor_final"]), 2)
+                    if not (valor and m > valor * 10):
+                        manual_val = m
+            except Exception:
+                pass
+
+    if manual_val is not None:
+        return manual_val
+
+    # 3. O resto: Fica o mesmo valor integral!
+    if valor is not None:
+        return round(valor, 2)
+    return None
+
+def parse_date_to_dt(date_str):
+    if not date_str:
+        return None
+    d = str(date_str).strip()
+    for fmt in ["%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%y"]:
+        try:
+            return datetime.strptime(d, fmt)
+        except Exception:
+            pass
+    return None
+
+def get_week_range(ref_date):
+    monday = ref_date - timedelta(days=ref_date.weekday())
+    saturday = monday + timedelta(days=5) # Segunda a Sabado
+    monday = monday.replace(hour=0, minute=0, second=0, microsecond=0)
+    saturday = saturday.replace(hour=23, minute=59, second=59, microsecond=999999)
+    return monday, saturday
+
+_CACHED_REAL_COLS = None
+KNOWN_DELIVERIES_COLS = {
+    'id', 'data', 'motorista', 'delivery', 'cliente', 'unidade', 'paletes', 'valor_frete',
+    'l_horario', 'c_horario', 'f_horario', 'cs_ok', 'c_ok', 'l_ok', 'f_ok', 'tipo',
+    'status', 'cpf', 'cavalo', 'carreta', 'observacoes', 'inconsistencias', 'confianca',
+    'criado_em', 'atualizado_em', 'cliente_bloqueado', 'motorista_bloqueado',
+    'unidade_bloqueado', 'observacoes_sistema', 'sr', 'data_finalizacao', 'pc', 'status_chep'
+}
+
 def get_real_table_columns():
+    global _CACHED_REAL_COLS
+    if _CACHED_REAL_COLS:
+        return _CACHED_REAL_COLS
     try:
         url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=*&limit=1"
         res = requests.get(url, headers=get_headers(), timeout=5)
         if res.status_code == 200 and res.json():
-            return set(res.json()[0].keys())
+            _CACHED_REAL_COLS = set(res.json()[0].keys())
+            return _CACHED_REAL_COLS
     except Exception as e:
         print(f"Erro ao consultar colunas reais: {e}")
+    return KNOWN_DELIVERIES_COLS
 
 def db_select_all():
     """Busca todos os registros do Supabase sem filtro de data (para pesquisa global)."""
     try:
-        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=*&order=id.asc"
-        res = requests.get(url, headers=get_headers(), timeout=12)
+        headers = get_headers()
+        headers["Range"] = "0-9999"
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=*&order=id.desc"
+        res = requests.get(url, headers=headers, timeout=12)
         if res.status_code in [200, 201, 206]:
             return res.json()
         print(f"Erro em db_select_all: HTTP {res.status_code} - {res.text}")
@@ -203,8 +318,70 @@ def search_coletas():
     elif "finalizado" in q_lower: target_status = "finalizado"
     elif "pendente" in q_lower: target_status = "pendente"
 
+    is_sr_search = (q_lower in ["sr", "s.r.", "s/r", "so sr", "só sr", "com sr", "pendencia sr", "pendencias sr"]) or (
+        "sr" in q_lower.split() and not any(len(w) >= 6 and w.isdigit() for w in q_lower.split())
+    )
+
     try:
         results = []
+
+        if is_sr_search:
+            all_data = db_select_all()
+            for item in all_data:
+                sr_val = str(item.get("sr") or "").strip()
+                if not sr_val or sr_val in ["-", "0"]:
+                    continue
+
+                # 1. Ignorar se nao contiver numeros ou for palavra como atraso/bloqueio/deslocamento
+                if not any(c.isdigit() for c in sr_val):
+                    continue
+                if sr_val.lower() in ["atraso", "bloqueio", "deslocamento", "cancelado", "sem", "nao"]:
+                    continue
+
+                # 2. Ignorar se o status operacional for DESLOCAMENTO ou BLOQUEIO
+                op_status = compute_operational_status(item)
+                db_status = str(item.get("status") or "").strip().upper()
+                if op_status in ["DESLOCAMENTO", "BLOQUEIO"] or db_status in ["DESLOCAMENTO", "BLOQUEIO"]:
+                    continue
+
+                if dates:
+                    def parse_custom_date(ds):
+                        parts = ds.split('/')
+                        if len(parts) == 2:
+                            ds = f"{ds}/{datetime.now().year}"
+                        for fmt in ["%d/%m/%Y", "%d/%m/%y"]:
+                            try:
+                                return datetime.strptime(ds, fmt)
+                            except:
+                                pass
+                        return datetime.min
+
+                    start_date = parse_custom_date(dates[0])
+                    end_date = parse_custom_date(dates[-1]) if len(dates) >= 2 else start_date
+                    if start_date > end_date:
+                        start_date, end_date = end_date, start_date
+
+                    item_dt = parse_date_to_dt(item.get("data") or item.get("df") or item.get("data_finalizacao"))
+                    if not item_dt or item_dt < start_date or item_dt > end_date:
+                        continue
+
+                extra_terms = [t for t in q_clean.lower().split() if t not in ["sr", "s.r.", "s/r", "so", "só", "com", "de", "do", "da"]]
+                if extra_terms:
+                    text_all = " ".join([str(v) for v in item.values() if v is not None]).lower()
+                    if not all(t in text_all for t in extra_terms):
+                        continue
+
+                item["valor_final"] = extract_valor_final(item)
+                item["status"] = compute_operational_status(item)
+                results.append(item)
+
+            def sort_key_sr(x):
+                dt = parse_date_to_dt(x.get("data") or x.get("df") or x.get("data_finalizacao"))
+                return (dt if dt else datetime.min, int(x.get("id") or 0))
+
+            results.sort(key=sort_key_sr, reverse=True)
+            return jsonify({"status": "success", "data": results, "total": len(results), "is_sr_search": True})
+
         # Se for busca direta por texto (cliente, motorista, delivery, etc.)
         if not target_status and len(dates) == 0:
             terms = [t.strip() for t in q_clean.split() if len(t.strip()) > 0]
@@ -291,6 +468,8 @@ def search_coletas():
                     if all(t in row_str for t in search_terms):
                         results.append(item)
                     
+        for r in results:
+            r["valor_final"] = extract_valor_final(r)
         results.sort(key=lambda x: parse_date_for_sort(x.get("data", "")), reverse=True)
         return jsonify({"status": "success", "data": results, "total": len(results)})
     except Exception as e:
@@ -322,15 +501,69 @@ def check_delivery():
         print(f"Erro em check_delivery: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route("/api/move_delivery", methods=["POST"])
+def move_delivery():
+    payload = request.json or {}
+    deliv_id = payload.get("id")
+    new_date = str(payload.get("new_date", "")).strip()
+
+    if not deliv_id or not new_date:
+        return jsonify({"status": "error", "message": "ID e nova data sao obrigatorios"}), 400
+
+    try:
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?id=eq.{deliv_id}"
+        patch_data = {
+            "data": new_date,
+            "atualizado_em": datetime.utcnow().isoformat()
+        }
+        res = requests.patch(url, headers=get_headers(), json=patch_data, timeout=8)
+        if res.status_code not in [200, 204]:
+            print(f"Erro no patch Supabase ao mover coleta: {res.status_code} {res.text}")
+            return jsonify({"status": "error", "message": f"Erro Supabase: {res.status_code}"}), 500
+
+        res_get = requests.get(url + "&select=*", headers=get_headers(), timeout=5)
+        updated_record = res_get.json()[0] if (res_get.status_code in [200, 206] and res_get.json()) else patch_data
+
+        return jsonify({
+            "status": "success",
+            "message": f"Coleta transferida para {new_date} com sucesso",
+            "coleta": updated_record
+        })
+    except Exception as e:
+        print(f"Erro em move_delivery: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route("/api/coletas", methods=["GET"])
 def get_coletas():
     data_filtro = request.args.get("data")
     try:
-        all_data = db_select_all()
         if data_filtro:
-            variants = set(format_date_variants(data_filtro))
-            filtered = [item for item in all_data if str(item.get("data", "")).strip() in variants]
+            variants = format_date_variants(data_filtro)
+            try:
+                # Busca direta ultra-rápida no Supabase indexada por data
+                quoted_variants = ",".join([f'"{v}"' for v in variants])
+                headers = get_headers()
+                headers["Range"] = "0-999"
+                url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?data=in.({quoted_variants})&order=id.asc"
+                res = requests.get(url, headers=headers, timeout=8)
+                if res.status_code in [200, 206]:
+                    items = res.json()
+                    for item in items:
+                        item["valor_final"] = extract_valor_final(item)
+                    return jsonify({"status": "success", "data": items})
+            except Exception as e_direct:
+                print(f"Fallback para db_select_all: {e_direct}")
+
+            all_data = db_select_all()
+            var_set = set(variants)
+            filtered = [item for item in all_data if str(item.get("data", "")).strip() in var_set]
+            for item in filtered:
+                item["valor_final"] = extract_valor_final(item)
             return jsonify({"status": "success", "data": filtered})
+
+        all_data = db_select_all()
+        for item in all_data:
+            item["valor_final"] = extract_valor_final(item)
         return jsonify({"status": "success", "data": all_data})
     except Exception as e:
         print(f"Erro em GET /api/coletas: {e}")
@@ -360,19 +593,38 @@ def save_coletas():
             obs_value = str(item.get("observacao") or item.get("motivo") or item.get("observacoes") or "").strip()
             valor_raw = item.get("valor") or item.get("valor_frete") or item.get("valor_total") or item.get("val_frete")
             valor_num = parse_valor_numeric(valor_raw)
+            valor_final_raw = item.get("valor_final") or item.get("val_final")
+            valor_final_num = parse_valor_numeric(valor_final_raw)
             paletes_num = sanitize_number(item.get("paletes"))
             pc_num = sanitize_number(item.get("pc"))
             l_h = str(item.get("l_horario") or "").strip()
             c_h = str(item.get("c_horario") or "").strip()
             f_horario_val = str(item.get("f_horario") or "").strip()
 
+            # Regra de exibição e gravação: Se não for Bloqueio nem Deslocamento,
+            # V. FINAL só deve ser gravado se houver Horário E Paletes Coletados
+            is_bloqueio = ("bloqueio" in obs_value.lower())
+            is_deslocamento = ("deslocamento" in obs_value.lower())
+            has_h = bool((c_h and c_h != "-") or (f_horario_val and f_horario_val != "-"))
+            has_p = (pc_num is not None and pc_num >= 0)
+
+            if is_bloqueio:
+                valor_final_num = 0.0
+            elif is_deslocamento:
+                valor_final_num = round(valor_num / 2.0, 2) if valor_num else 0.0
+            elif not (has_h and has_p):
+                valor_final_num = None
+            else:
+                if valor_final_num is not None and valor_num and valor_final_num > valor_num * 5:
+                    valor_final_num = valor_num
+
             # Ignora inserção de linhas completamente vazias
             if not item.get("id"):
-                if not deliv_raw and not cliente_raw and not driver_raw and not paletes_num and not pc_num and not valor_num and not obs_value and not l_h and not c_h and not f_horario_val:
+                if not deliv_raw and not cliente_raw and not driver_raw and not paletes_num and not pc_num and not valor_num and valor_final_num is None and not obs_value and not l_h and not c_h and not f_horario_val:
                     continue
             
             existing = existing_items.get(str(item.get("id", "")), {})
-            item_date = item.get("data") or existing.get("data") or data_operacao
+            item_date = existing.get("data") or item.get("data") or data_operacao
 
             # DF editável enviado do formulário ou auto-sugerido
             df_user_val = str(item.get("df") or item.get("data_finalizacao") or "").strip()
@@ -390,6 +642,7 @@ def save_coletas():
                 "valor_frete": valor_num,
                 "valor_total": valor_num,
                 "val_frete": valor_num,
+                "valor_final": valor_final_num,
                 "l_horario": str(item.get("l_horario") or "").strip() or None,
                 "c_horario": str(item.get("c_horario") or "").strip() or None,
                 "f_horario": f_horario_val or None,
@@ -403,31 +656,48 @@ def save_coletas():
                 "carreta": str(item.get("carreta") or "").strip() or None
             }
 
+            if real_cols and "valor_final" not in real_cols:
+                existing_obs_sis = existing.get("observacoes_sistema")
+                obs_sis_dict = {}
+                if existing_obs_sis:
+                    try:
+                        obs_sis_dict = json.loads(existing_obs_sis) if isinstance(existing_obs_sis, str) else dict(existing_obs_sis)
+                    except Exception:
+                        obs_sis_dict = {}
+                if valor_final_num is not None:
+                    obs_sis_dict["valor_final"] = valor_final_num
+                else:
+                    obs_sis_dict.pop("valor_final", None)
+                raw_registro["observacoes_sistema"] = json.dumps(obs_sis_dict) if obs_sis_dict else None
+
             if real_cols:
                 registro = {k: v for k, v in raw_registro.items() if k in real_cols and k != "id"}
             else:
                 registro = raw_registro
 
             registro_final = {}
-            protected_fields = ["l_horario", "c_horario", "f_horario", "pc", "motorista"]
-            existing = existing_items.get(str(item.get("id", "")), {})
-            
             for k, v in registro.items():
-                is_empty_stale = (v is None or str(v).strip() == "")
-                is_explicit_clear = (str(v).strip() == "-")
-                
-                if is_empty_stale and k in protected_fields and existing.get(k):
-                    continue  # Mantem o valor existente no banco (protege contra overwrite do frontend)
-                    
-                if is_explicit_clear:
-                    registro_final[k] = None # Delecao explicita autorizada
+                is_empty = (v is None or str(v).strip() in ["", "-", "00:00"])
+                if is_empty:
+                    registro_final[k] = None
                 else:
-                    registro_final[k] = None if is_empty_stale else v
+                    registro_final[k] = v
 
             rec_id = item.get("id")
             is_valid_id = rec_id is not None and str(rec_id).isdigit() and int(rec_id) > 0
 
             if is_valid_id:
+                old_m = str(existing.get("motorista") or "").strip().upper()
+                new_m = str(registro_final.get("motorista") or "").strip().upper()
+                old_cav = str(existing.get("cavalo") or "").strip().upper()
+                new_cav = str(registro_final.get("cavalo") or "").strip().upper()
+                old_car = str(existing.get("carreta") or "").strip().upper()
+                new_car = str(registro_final.get("carreta") or "").strip().upper()
+
+                # Se motorista ou placas foram alterados ou atribuidos, reseta status_chep para reenvio
+                if (new_m and new_m != old_m) or (new_cav and new_cav != old_cav) or (new_car and new_car != old_car):
+                    registro_final["status_chep"] = None
+
                 res = db_update_by_id(int(rec_id), registro_final)
             else:
                 res = db_insert_new(registro_final)
@@ -471,36 +741,79 @@ def delete_old_records():
 @app.route("/api/export-excel", methods=["GET"])
 def export_excel():
     data_filtro = request.args.get("data")
+    start_date_str = request.args.get("start_date") or request.args.get("data_inicio")
+    end_date_str = request.args.get("end_date") or request.args.get("data_fim")
     month_str = request.args.get("month")
     year_str = request.args.get("year")
+    week_str = request.args.get("week") or request.args.get("semana")
+    motorista_filtro = (request.args.get("motorista") or "").strip().upper()
     all_str = request.args.get("all")
 
     try:
         all_data = db_select_all()
+        for d in all_data:
+            d["valor_final"] = extract_valor_final(d)
+            d["status_operacional"] = compute_operational_status(d)
+
+        data = all_data
         sheet_name = "Coletas"
         filename = "Relatorio_Coletas.xlsx"
+        now = datetime.now()
 
         if all_str:
             data = all_data
             filename = "Relatorio_Projeto_Todo.xlsx"
             sheet_name = "Projeto Todo"
+        elif week_str:
+            ref_dt = now
+            if week_str not in ["current", "esta_semana", "atual", "true"]:
+                dt_cand = parse_date_to_dt(week_str)
+                if dt_cand:
+                    ref_dt = dt_cand
+            elif data_filtro:
+                dt_cand = parse_date_to_dt(data_filtro)
+                if dt_cand:
+                    ref_dt = dt_cand
+            mon, sat = get_week_range(ref_dt)
+            data = [d for d in all_data if mon <= parse_date_for_sort(d.get("data", "")) <= sat]
+            mon_s = mon.strftime("%d_%m")
+            sat_s = sat.strftime("%d_%m_%Y")
+            filename = f"Relatorio_Semanal_{mon_s}_a_{sat_s}.xlsx"
+            sheet_name = f"Semana {mon_s} a {sat_s}"[:31]
+        elif start_date_str and end_date_str:
+            dt_start = parse_date_to_dt(start_date_str)
+            dt_end = parse_date_to_dt(end_date_str)
+            if dt_start and dt_end:
+                if dt_start > dt_end:
+                    dt_start, dt_end = dt_end, dt_start
+                dt_end = dt_end.replace(hour=23, minute=59, second=59)
+                data = [d for d in all_data if dt_start <= parse_date_for_sort(d.get("data", "")) <= dt_end]
+                d1_s = dt_start.strftime("%d_%m")
+                d2_s = dt_end.strftime("%d_%m_%Y")
+                filename = f"Relatorio_{d1_s}_a_{d2_s}.xlsx"
+                sheet_name = f"{d1_s} a {d2_s}"[:31]
         elif month_str and year_str:
-            suffix = f"/{month_str}/{year_str}"
+            suffix = f"/{month_str.zfill(2)}/{year_str}"
             data = [d for d in all_data if str(d.get("data", "")).strip().endswith(suffix)]
             filename = f"Relatorio_Mes_{month_str}_{year_str}.xlsx"
-            sheet_name = f"Mes {month_str}-{year_str}"
+            sheet_name = f"Mes {month_str}-{year_str}"[:31]
         elif data_filtro:
             variants = set(format_date_variants(data_filtro))
             data = [d for d in all_data if str(d.get("data", "")).strip() in variants]
             filename = f"Relatorio_{data_filtro.replace('/', '_')}.xlsx"
-            sheet_name = f"Dia {data_filtro.replace('/', '-')}"
-        else:
-            data = all_data
+            sheet_name = f"Dia {data_filtro.replace('/', '-')}"[:31]
+
+        if motorista_filtro and motorista_filtro not in ["TODOS", "TODOS OS MOTORISTAS", "-- SELECIONE --", "-- SELECIONE MOTORISTA --"]:
+            data = [d for d in data if motorista_filtro in str(d.get("motorista") or "").upper()]
+            clean_drv = motorista_filtro.replace(" ", "_")
+            filename = f"Relatorio_{clean_drv}_{filename.replace('Relatorio_', '')}"
+
+        data.sort(key=lambda x: parse_date_for_sort(x.get("data", "")), reverse=False)
 
         if not data:
             df = pd.DataFrame(columns=[
-                "MOTORISTA", "DELIVERY", "CLIENTES", "PALETES", "PALETES COLETADO",
-                "VALOR", "H_LOCAL", "H_COLETADO", "H_FINALIZADO", "DATA FINALIZACAO (DF)", "SR", "MOTIVO", "CPF", "CAVALO", "CARRETA"
+                "DATA", "MOTORISTA", "DELIVERY", "CLIENTES", "PALETES", "PALETES COLETADO",
+                "VALOR", "VALOR FINAL", "H_LOCAL", "H_COLETADO", "H_FINALIZADO", "DATA FINALIZACAO (DF)", "STATUS", "SR", "MOTIVO", "CPF", "CAVALO", "CARRETA"
             ])
         else:
             rows = []
@@ -510,19 +823,28 @@ def export_excel():
                     val_display = f"R$ {val_raw:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
                 else:
                     val_display = str(val_raw or "")
+
+                vf_raw = d.get("valor_final")
+                if isinstance(vf_raw, (int, float)):
+                    vf_display = f"R$ {vf_raw:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
+                else:
+                    vf_display = str(vf_raw or "")
                 
                 df_display = d.get("df") or d.get("data_finalizacao") or ""
                 rows.append({
+                    "DATA": d.get("data", ""),
                     "MOTORISTA": d.get("motorista", ""),
                     "DELIVERY": d.get("delivery", ""),
                     "CLIENTES": d.get("cliente", ""),
                     "PALETES": d.get("paletes", ""),
                     "PALETES COLETADO": d.get("pc", ""),
                     "VALOR": val_display,
+                    "VALOR FINAL": vf_display,
                     "H_LOCAL": d.get("l_horario", ""),
                     "H_COLETADO": d.get("c_horario", ""),
                     "H_FINALIZADO": d.get("f_horario", ""),
                     "DATA FINALIZACAO (DF)": df_display,
+                    "STATUS": d.get("status_operacional", ""),
                     "SR": d.get("sr", ""),
                     "MOTIVO": d.get("motivo") or d.get("observacoes") or d.get("observacao") or "",
                     "CPF": d.get("cpf", ""),
@@ -538,7 +860,8 @@ def export_excel():
             # Ajuste auto width para colunas
             worksheet = writer.sheets[sheet_name[:31]]
             for idx, col in enumerate(df.columns):
-                worksheet.column_dimensions[chr(65 + idx)].width = 20
+                col_letter = chr(65 + idx) if idx < 26 else f"A{chr(65 + idx - 26)}"
+                worksheet.column_dimensions[col_letter].width = 20
                 
         output.seek(0)
         return send_file(output, download_name=filename, as_attachment=True, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -546,15 +869,226 @@ def export_excel():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/api/relatorios", methods=["GET"])
+def api_relatorios():
+    period = request.args.get("period", "this_week").strip().lower()
+    start_date_str = request.args.get("start_date", "").strip()
+    end_date_str = request.args.get("end_date", "").strip()
+    motorista_filtro = request.args.get("motorista", "").strip().upper()
+
+    try:
+        all_data = db_select_all()
+        for d in all_data:
+            d["valor_final"] = extract_valor_final(d)
+            d["status_operacional"] = compute_operational_status(d)
+
+        now = datetime.now()
+        dt_start = None
+        dt_end = None
+
+        if period == "today":
+            dt_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            dt_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+        elif period in ["this_week", "week", "semana_atual"]:
+            dt_start, dt_end = get_week_range(now)
+        elif period in ["last_week", "semana_passada"]:
+            dt_start, dt_end = get_week_range(now - timedelta(days=7))
+        elif period in ["this_month", "month", "mes_atual"]:
+            dt_start = datetime(now.year, now.month, 1)
+            next_m = datetime(now.year + 1, 1, 1) if now.month == 12 else datetime(now.year, now.month + 1, 1)
+            dt_end = next_m - timedelta(microseconds=1)
+        elif period in ["last_month", "mes_passado"]:
+            last_m_dt = (datetime(now.year, now.month, 1) - timedelta(days=1))
+            dt_start = datetime(last_m_dt.year, last_m_dt.month, 1)
+            dt_end = datetime(now.year, now.month, 1) - timedelta(microseconds=1)
+        elif period == "custom" and start_date_str and end_date_str:
+            dt_start = parse_date_to_dt(start_date_str)
+            dt_end = parse_date_to_dt(end_date_str)
+            if dt_start and dt_end:
+                if dt_start > dt_end:
+                    dt_start, dt_end = dt_end, dt_start
+                dt_end = dt_end.replace(hour=23, minute=59, second=59)
+        elif period == "all":
+            dt_start = datetime.min
+            dt_end = datetime.max
+
+        filtered = []
+        for item in all_data:
+            idt = parse_date_for_sort(item.get("data", ""))
+            if dt_start and dt_end:
+                if not (dt_start <= idt <= dt_end):
+                    continue
+            if motorista_filtro and motorista_filtro not in ["TODOS", "TODOS OS MOTORISTAS"]:
+                if motorista_filtro not in str(item.get("motorista") or "").upper():
+                    continue
+            filtered.append(item)
+
+        total_coletas = len(filtered)
+        finalizadas = sum(1 for d in filtered if d.get("status_operacional") == "FINALIZADO")
+        bloqueios = sum(1 for d in filtered if d.get("status_operacional") == "BLOQUEIO")
+        deslocamentos = sum(1 for d in filtered if d.get("status_operacional") == "DESLOCAMENTO")
+        pendentes = total_coletas - (finalizadas + bloqueios + deslocamentos)
+
+        paletes_agendados = sum(sanitize_number(d.get("paletes")) or 0 for d in filtered)
+        paletes_coletados = sum(sanitize_number(d.get("pc")) or 0 for d in filtered)
+        eficacia_pct = round((paletes_coletados / paletes_agendados * 100), 1) if paletes_agendados > 0 else 0.0
+
+        valor_previsto = sum(parse_valor_numeric(d.get("valor") or d.get("valor_frete")) or 0 for d in filtered)
+        valor_final = sum(d.get("valor_final") or 0 for d in filtered)
+
+        dias_unicos = set(d.get("data") for d in filtered if d.get("data"))
+        motoristas_unicos = set(str(d.get("motorista")).strip().upper() for d in filtered if d.get("motorista") and str(d.get("motorista")).strip() not in ["-", "", "NONE", "NULL"])
+
+        drivers_map = {}
+        for d in filtered:
+            m_name = str(d.get("motorista") or "").strip().upper()
+            if not m_name or m_name in ["-", "NONE", "NULL", "-- SELECIONE --", "-- SELECIONE MOTORISTA --"]:
+                m_name = "SEM MOTORISTA"
+            if m_name not in drivers_map:
+                drivers_map[m_name] = {
+                    "motorista": m_name,
+                    "coletas": 0,
+                    "finalizadas": 0,
+                    "bloqueios": 0,
+                    "deslocamentos": 0,
+                    "pendentes": 0,
+                    "paletes_agendados": 0,
+                    "paletes_coletados": 0,
+                    "valor_previsto": 0.0,
+                    "valor_final": 0.0,
+                    "dias": set(),
+                    "placas": set()
+                }
+            grp = drivers_map[m_name]
+            grp["coletas"] += 1
+            st = d.get("status_operacional")
+            if st == "FINALIZADO": grp["finalizadas"] += 1
+            elif st == "BLOQUEIO": grp["bloqueios"] += 1
+            elif st == "DESLOCAMENTO": grp["deslocamentos"] += 1
+            else: grp["pendentes"] += 1
+
+            p = sanitize_number(d.get("paletes")) or 0
+            pc = sanitize_number(d.get("pc")) or 0
+            grp["paletes_agendados"] += p
+            grp["paletes_coletados"] += pc
+
+            v = parse_valor_numeric(d.get("valor") or d.get("valor_frete")) or 0.0
+            vf = d.get("valor_final") or 0.0
+            grp["valor_previsto"] += v
+            grp["valor_final"] += vf
+
+            if d.get("data"): grp["dias"].add(d.get("data"))
+            cav = str(d.get("cavalo") or "").strip()
+            car = str(d.get("carreta") or "").strip()
+            if cav and cav != "-":
+                grp["placas"].add(f"{cav}/{car}" if car and car != "-" else cav)
+
+        por_motorista = []
+        for m_name, grp in drivers_map.items():
+            tot_p = grp["paletes_agendados"]
+            tot_pc = grp["paletes_coletados"]
+            ef = round((tot_pc / tot_p * 100), 1) if tot_p > 0 else 0.0
+            por_motorista.append({
+                "motorista": m_name,
+                "coletas": grp["coletas"],
+                "finalizadas": grp["finalizadas"],
+                "bloqueios": grp["bloqueios"],
+                "deslocamentos": grp["deslocamentos"],
+                "pendentes": grp["pendentes"],
+                "paletes_agendados": tot_p,
+                "paletes_coletados": tot_pc,
+                "eficacia_pct": ef,
+                "valor_previsto": round(grp["valor_previsto"], 2),
+                "valor_final": round(grp["valor_final"], 2),
+                "dias_operados": len(grp["dias"]),
+                "veiculos": list(grp["placas"])
+            })
+
+        por_motorista.sort(key=lambda x: x["coletas"], reverse=True)
+        filtered.sort(key=lambda x: parse_date_for_sort(x.get("data", "")), reverse=True)
+
+        return jsonify({
+            "status": "success",
+            "period": period,
+            "start_date": dt_start.strftime("%d/%m/%Y") if dt_start and dt_start != datetime.min else "",
+            "end_date": dt_end.strftime("%d/%m/%Y") if dt_end and dt_end != datetime.max else "",
+            "kpis": {
+                "total_coletas": total_coletas,
+                "finalizadas": finalizadas,
+                "bloqueios": bloqueios,
+                "deslocamentos": deslocamentos,
+                "pendentes": pendentes,
+                "paletes_agendados": paletes_agendados,
+                "paletes_coletados": paletes_coletados,
+                "eficacia_pct": eficacia_pct,
+                "valor_previsto": round(valor_previsto, 2),
+                "valor_final": round(valor_final, 2),
+                "dias_operados": len(dias_unicos),
+                "total_motoristas": len(motoristas_unicos)
+            },
+            "por_motorista": por_motorista,
+            "total_registros": len(filtered),
+            "coletas": filtered[:150]
+        })
+    except Exception as e:
+        print(f"Erro em api_relatorios: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route("/whatsapp")
 def whatsapp_qr():
     import os as _os
     import time
-    qr_path = _os.path.join(app.static_folder, "qr.png")
-    if _os.path.exists(qr_path):
+    qr_path = os.path.join(app.static_folder, "qr.png")
+    if os.path.exists(qr_path):
         ts = int(time.time())
-        return f"<h1>Conecte o WhatsApp</h1><p>Escaneie o QR Code abaixo:</p><img src='/static/qr.png?t={ts}' style='width:300px'/><p>Atualize a pagina em 10 seg.</p>"
-    return "<h1>WhatsApp Conectado!</h1><p>Bot ativo e monitorando mensagens.</p>"
+        return f'''<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Conectar WhatsApp</title>
+    <meta http-equiv="refresh" content="6">
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 85vh; background: #0f172a; color: white; margin: 0; }}
+        .box {{ background: #1e293b; padding: 2.5rem; border-radius: 16px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); max-width: 400px; }}
+        img {{ border-radius: 12px; background: white; padding: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }}
+        .pulse {{ display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #22c55e; margin-right: 6px; animation: blink 1.5s infinite; }}
+        @keyframes blink {{ 0% {{ opacity: 1; }} 50% {{ opacity: 0.3; }} 100% {{ opacity: 1; }} }}
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2 style="color:#22c55e; margin-top:0;">📱 Conectar WhatsApp</h2>
+        <p style="font-size:0.95rem; color:#cbd5e1; line-height: 1.5;">Abra o WhatsApp no celular:<br><b>Menu > Aparelhos conectados > Conectar aparelho</b></p>
+        <img id="qrImg" src="/static/qr.png?t={ts}" style="width:260px; height:260px;"/>
+        <p style="font-size:0.85rem; color:#94a3b8; margin-top: 15px;"><span class="pulse"></span>Atualizando em tempo real...</p>
+    </div>
+    <script>
+        setInterval(function() {{
+            var img = document.getElementById('qrImg');
+            if (img) img.src = '/static/qr.png?t=' + Date.now();
+        }}, 2000);
+    </script>
+</body>
+</html>'''
+    return '''<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>WhatsApp Conectado</title>
+    <meta http-equiv="refresh" content="10">
+    <style>
+        body {{ font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 85vh; background: #0f172a; color: white; }}
+        .box {{ background: #1e293b; padding: 2.5rem; border-radius: 16px; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2 style="color:#22c55e;">✅ WhatsApp Conectado com Sucesso!</h2>
+        <p style="color:#cbd5e1;">O robô já está ativo e monitorando mensagens em tempo real.</p>
+    </div>
+</body>
+</html>'''
 
 
 @app.route("/logs")
@@ -611,6 +1145,115 @@ def limpar_logs():
         msg.append(f"Erro no restart: {e}")
     
     return jsonify({"status": "success", "details": msg}), 200
+
+
+# ==========================================
+# GESTÃO DINÂMICA DE MOTORISTAS E FROTAS
+# ==========================================
+
+DEFAULT_DRIVERS = [
+    {"id": "argemiro_borges", "name": "ARGEMIRO BORGES", "cpf": "041.604.865-09", "cavalo": "PEG7666", "carreta": "DTD8506"},
+    {"id": "ariel_nascimento", "name": "ARIEL NASCIMENTO", "cpf": "050.153.565-95", "cavalo": "JVL8A44", "carreta": "-"},
+    {"id": "fabio_souza", "name": "FABIO SOUZA", "cpf": "890.066.155-87", "cavalo": "PEJ4695", "carreta": "NLB7814"},
+    {"id": "gabriel_borges", "name": "GABRIEL BORGES", "cpf": "095.312.255-75", "cavalo": "JJF1856", "carreta": "NVQ8447"},
+    {"id": "jones_rosario", "name": "JONES ROSARIO", "cpf": "053.359.465-04", "cavalo": "JHX3C33", "carreta": "KKT9007"},
+    {"id": "leandro_de_andrade", "name": "LEANDRO DE ANDRADE", "cpf": "017.793.835.84", "cavalo": "NZP7012", "carreta": "-"},
+    {"id": "luis_carlos", "name": "LUIS CARLOS", "cpf": "830.317.905-53", "cavalo": "KLB5018", "carreta": "NKZ6545"},
+    {"id": "romilson_damasceno", "name": "ROMILSON DAMASCENO", "cpf": "615.715.635-04", "cavalo": "KJY3204", "carreta": "KGG1152"},
+    {"id": "valdemir_de_jesus", "name": "VALDEMIR DE JESUS", "cpf": "044.327.095-37", "cavalo": "HWB9F22", "carreta": "-"}
+]
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CADASTRO_PATH = os.path.join(BASE_DIR, "motoristas_cadastro.json")
+WPP_MOTORISTAS_PATH = os.path.join(BASE_DIR, "whatsapp-bot", "motoristas.json")
+CHEP_MOTORISTAS_PATH = os.path.join(BASE_DIR, "chep-bot", "motoristas.json")
+
+def load_drivers_list():
+    if os.path.exists(CADASTRO_PATH) and os.path.getsize(CADASTRO_PATH) > 0:
+        try:
+            with open(CADASTRO_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list) and len(data) > 0:
+                    return data
+        except Exception as e:
+            print("Erro ao ler cadastro de motoristas:", e)
+    return DEFAULT_DRIVERS
+
+def sync_drivers_to_bots(drivers):
+    bot_dict = {}
+    for d in drivers:
+        name = str(d.get("name") or "").strip().upper()
+        if not name:
+            continue
+        cpf = str(d.get("cpf") or "").strip()
+        cavalo = str(d.get("cavalo") or "").strip().upper()
+        carreta = str(d.get("carreta") or "").strip().upper()
+        if carreta and carreta != "-":
+            placa_str = f"{cavalo} / {carreta}"
+        else:
+            placa_str = cavalo
+        
+        bot_dict[name] = {"cpf": cpf, "placa": placa_str}
+        first_name = name.split()[0]
+        bot_dict[first_name] = {"cpf": cpf, "placa": placa_str}
+
+        if "ROMILSON" in name:
+            bot_dict["ROMILDO"] = {"cpf": cpf, "placa": placa_str}
+        if "LUIS" in name or "LUIZ" in name:
+            bot_dict["LUIZ"] = {"cpf": cpf, "placa": placa_str}
+            bot_dict["LUZ"] = {"cpf": cpf, "placa": placa_str}
+            bot_dict["LUIZ CARLOS"] = {"cpf": cpf, "placa": placa_str}
+
+    # Salva no whatsapp-bot
+    try:
+        with open(WPP_MOTORISTAS_PATH, "w", encoding="utf-8") as f:
+            json.dump(bot_dict, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print("Erro ao atualizar whatsapp-bot/motoristas.json:", e)
+
+    # Salva no chep-bot se existir
+    if os.path.exists(os.path.dirname(CHEP_MOTORISTAS_PATH)):
+        try:
+            with open(CHEP_MOTORISTAS_PATH, "w", encoding="utf-8") as f:
+                json.dump(bot_dict, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print("Erro ao atualizar chep-bot/motoristas.json:", e)
+
+@app.route("/api/motoristas", methods=["GET", "POST"])
+def api_motoristas():
+    if request.method == "GET":
+        drivers = load_drivers_list()
+        return jsonify({"status": "success", "drivers": drivers})
+
+    try:
+        data = request.get_json(force=True) or {}
+        drivers = data.get("drivers")
+        if not isinstance(drivers, list) or len(drivers) == 0:
+            return jsonify({"status": "error", "message": "Lista de motoristas invalida."}), 400
+
+        sanitized = []
+        for d in drivers:
+            name = str(d.get("name") or "").strip().upper()
+            if not name:
+                continue
+            key = str(d.get("id") or "").strip().lower()
+            if not key:
+                key = name.lower().replace(" ", "_").replace("-", "_")
+            sanitized.append({
+                "id": key,
+                "name": name,
+                "cpf": str(d.get("cpf") or "").strip(),
+                "cavalo": str(d.get("cavalo") or "").strip().upper(),
+                "carreta": str(d.get("carreta") or "-").strip().upper() or "-"
+            })
+
+        with open(CADASTRO_PATH, "w", encoding="utf-8") as f:
+            json.dump(sanitized, f, ensure_ascii=False, indent=2)
+
+        sync_drivers_to_bots(sanitized)
+        return jsonify({"status": "success", "message": "Motoristas e frotas atualizados com sucesso!", "drivers": sanitized})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
