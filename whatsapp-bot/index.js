@@ -114,6 +114,22 @@ function parseDateBR(dStr) {
     return null;
 }
 
+
+// Helper: Retorna lista de datas recentes em formato DD/MM/AAAA e DD/MM (para evitar tocar em coletas de meses atrás)
+function getDatasRecentesFormatadas(diasAtras = 5) {
+    const list = [];
+    for (let i = 0; i <= diasAtras; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        list.push(`${dd}/${mm}/${yyyy}`);
+        list.push(`${dd}/${mm}`);
+    }
+    return list;
+}
+
 async function startWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
     const sock = makeWASocket({ auth: state, printQRInTerminal: false, logger: pino({ level: "silent" }), browser: ["Controle CHEP", "Chrome", "10.0.0"] });
@@ -464,34 +480,48 @@ async function startWhatsApp() {
                     clientNameHint = "AMAZON";
                 }
                 
-                let query = supabase.from('deliveries').select('id, cliente, delivery, f_horario, c_horario, data').ilike('motorista', `%${motoristaAlvo}%`);
+                let query = supabase.from('deliveries')
+                    .select('id, cliente, delivery, f_horario, c_horario, data, status')
+                    .ilike('motorista', `%${motoristaAlvo}%`)
+                    .order('id', { ascending: false });
                 let { data: allMotoristaLoads } = await query;
                 
-                let pendentes = [];
-                if (allMotoristaLoads) {
-                    pendentes = allMotoristaLoads.filter(p => !p.f_horario || p.f_horario.trim() === '' || p.f_horario === '-');
-                }
+                // Filtra APENAS coletas recentes (últimos 5 dias) que NÃO estejam finalizadas
+                const datasPermitidas = getDatasRecentesFormatadas(5);
+                let pendentes = (allMotoristaLoads || []).filter(p => {
+                    const isRecent = datasPermitidas.some(dr => (p.data || '').includes(dr));
+                    const isConcluido = p.status === 'CONCLUIDO' || (p.f_horario && p.f_horario.trim() !== '' && p.f_horario !== '-');
+                    return isRecent && !isConcluido;
+                });
                 
                 if (pendentes && pendentes.length > 0) {
                     let escolhido = null;
-                    if (clientNameHint) {
-                        let palavrasDica = clientNameHint.replace(/[^\w\s]/g, '').toLowerCase().split(' ').filter(p => p.length >= 3);
-                        let melhorPontuacao = 0;
-                        for (let p of pendentes) {
-                            let nomeDB = (p.cliente || "").toLowerCase();
-                            let pontuacao = 0;
-                            for (let pd of palavrasDica) {
-                                if (nomeDB.includes(pd)) pontuacao++;
-                            }
-                            if (pontuacao > melhorPontuacao && pontuacao > 0) {
-                                melhorPontuacao = pontuacao;
-                                escolhido = p;
-                            }
+                    
+                    // Busca menções de clientes no texto da mensagem ou na mensagem citada
+                    const textoCompletoBusca = (txtMsg + " " + (quotedMsg ? (quotedMsg.conversation || quotedMsg.extendedTextMessage?.text || "") : "")).toUpperCase();
+                    
+                    for (const p of pendentes) {
+                        const clienteNome = (p.cliente || "").toUpperCase();
+                        const palavras = clienteNome.split(/\s+/).filter(w => w.length > 3);
+                        if (palavras.some(w => textoCompletoBusca.includes(w))) {
+                            escolhido = p;
+                            break;
                         }
                     }
                     
-                    if (!escolhido) {
+                    // Se houver apenas 1 coleta pendente do motorista na janela recente, vincula com segurança
+                    if (!escolhido && pendentes.length === 1) {
                         escolhido = pendentes[0];
+                    }
+                    
+                    // TRAVA ANTI-ALEATÓRIA: Se houver mais de 1 carga e nenhuma correspondência com o cliente, NUNCA joga em uma aleatória!
+                    if (!escolhido) {
+                        let opcoes = pendentes.map(p => `• ${p.cliente} (${p.delivery || 'Sem delivery'}) - Data: ${p.data}`).join('\n');
+                        await sock.sendMessage(GRUPO_TRABALHO, { 
+                            text: `⚠️ Identifiquei a SR *${numeroSR}* para *${motoristaAlvo}*, mas ele possui ${pendentes.length} coletas pendentes:\n\n${opcoes}\n\n👉 Por favor, envie o nome do cliente ou a delivery para vincular corretamente sem erros.` 
+                        });
+                        console.log(`[WPP-ADMIN] Mais de 1 coleta pendente para ${motoristaAlvo} sem cliente identificado. Não vinculada aleatoriamente.`);
+                        return;
                     }
                     
                     const { error: updErr } = await supabase.from('deliveries').update({
@@ -773,16 +803,32 @@ async function startWhatsApp() {
                 let finalizavelDelivery = deliveryLido;
                 let finalizavelCliente = clienteLimpo;
 
+                const datasRecentes = getDatasRecentesFormatadas(7);
+
                 if (srLido) {
                     const matchSR = String(srLido).match(/\d{8}/);
                     if (matchSR) {
                         const srNum = matchSR[0];
-                        const { data: exatoSR } = await supabase.from('deliveries').select('id, delivery, cliente').eq('sr', srNum).limit(1);
+                        const { data: exatoSR } = await supabase.from('deliveries')
+                            .select('id, delivery, cliente, f_horario, status, data')
+                            .eq('sr', srNum)
+                            .order('id', { ascending: false });
+                        
                         if (exatoSR && exatoSR.length > 0) {
-                            finalizavelId = exatoSR[0].id;
-                            finalizavelDelivery = exatoSR[0].delivery || `SR-${srNum}`;
-                            finalizavelCliente = exatoSR[0].cliente || clienteLimpo;
-                            console.log(`[WPP-GRUPO] ✅ Carga encontrada pela SR: ${srNum} | Cliente: ${finalizavelCliente}`);
+                            // Prioriza coleta NÃO concluída e RECENTE (últimos 7 dias)
+                            const matchPendente = exatoSR.find(r => {
+                                const isRecent = datasRecentes.some(dr => (r.data || '').includes(dr));
+                                const isConcluido = r.status === 'CONCLUIDO' || (r.f_horario && r.f_horario.trim() !== '' && r.f_horario !== '-');
+                                return isRecent && !isConcluido;
+                            });
+                            
+                            const alvoSR = matchPendente || exatoSR.find(r => datasRecentes.some(dr => (r.data || '').includes(dr)));
+                            if (alvoSR) {
+                                finalizavelId = alvoSR.id;
+                                finalizavelDelivery = alvoSR.delivery || `SR-${srNum}`;
+                                finalizavelCliente = alvoSR.cliente || clienteLimpo;
+                                console.log(`[WPP-GRUPO] ✅ Carga encontrada pela SR: ${srNum} | Cliente: ${finalizavelCliente} (ID: ${alvoSR.id}, Data: ${alvoSR.data})`);
+                            }
                         }
                     }
                 }
@@ -801,58 +847,67 @@ async function startWhatsApp() {
                     }
                     
                     for (const num of candidatos10) {
-                        const { data: exato } = await supabase.from('deliveries').select('id, delivery, cliente').eq('delivery', num).limit(1);
-                        if (exato && exato.length > 0) {
-                            finalizavelId = exato[0].id;
-                            finalizavelDelivery = exato[0].delivery;
-                            finalizavelCliente = exato[0].cliente || clienteLimpo;
-                            console.log(`[WPP-GRUPO] ✅ Delivery encontrado pelo numero: ${num} | Cliente: ${finalizavelCliente}`);
-                            break;
+                        const { data: exatos } = await supabase.from('deliveries')
+                            .select('id, delivery, cliente, f_horario, status, data')
+                            .eq('delivery', num)
+                            .order('id', { ascending: false });
+                        
+                        if (exatos && exatos.length > 0) {
+                            // Prioriza coleta NÃO concluída e RECENTE
+                            const alvoDev = exatos.find(r => {
+                                const isRecent = datasRecentes.some(dr => (r.data || '').includes(dr));
+                                const isConcluido = r.status === 'CONCLUIDO' || (r.f_horario && r.f_horario.trim() !== '' && r.f_horario !== '-');
+                                return isRecent && !isConcluido;
+                            }) || exatos.find(r => datasRecentes.some(dr => (r.data || '').includes(dr)));
+
+                            if (alvoDev) {
+                                finalizavelId = alvoDev.id;
+                                finalizavelDelivery = alvoDev.delivery;
+                                finalizavelCliente = alvoDev.cliente || clienteLimpo;
+                                console.log(`[WPP-GRUPO] ✅ Delivery encontrado pelo numero: ${num} | Cliente: ${finalizavelCliente}`);
+                                break;
+                            }
                         }
                     }
                 }
-                // Estrategia 2 (Fallback Inteligente): Busca pelas cargas do motorista e cruza com o NOME DO CLIENTE lido
+                
+                // Estrategia 2 (Fallback): Cruza RIGOROSAMENTE com o NOME DO CLIENTE lido nas cargas recentes do motorista
                 if (!finalizavelId) {
-                    console.log(`[WPP-GRUPO] Delivery não encontrado. Tentando FALLBACK INTELIGENTE cruzando cliente para motorista=${motoristaPrimeiroNome}...`);
+                    console.log(`[WPP-GRUPO] Delivery não encontrado. Tentando FALLBACK seguro cruzando cliente para motorista=${motoristaPrimeiroNome}...`);
                     
-                    // Busca coletas do motorista (sem filtro neq que exclui NULL no PostgREST)
                     const { data: allMotoristaLoads } = await supabase.from('deliveries')
                         .select('id, delivery, cliente, f_horario, status, data')
                         .ilike('motorista', `%${motoristaPrimeiroNome}%`)
                         .order('id', { ascending: false });
 
-                    // Filtra em memória todas as que NÃO estão concluídas
+                    // Filtra APENAS coletas RECENTES e que NÃO estão concluídas
                     const pendentes = (allMotoristaLoads || []).filter(p => {
+                        const isRecent = datasRecentes.some(dr => (p.data || '').includes(dr));
                         const isConcluido = p.status === 'CONCLUIDO' || (p.f_horario && p.f_horario.trim() !== '' && p.f_horario !== '-');
-                        return !isConcluido;
+                        return isRecent && !isConcluido;
                     });
 
-                    if (pendentes && pendentes.length > 0) {
+                    if (pendentes && pendentes.length > 0 && clienteLimpo && clienteLimpo.length >= 3) {
                         const norm = str => (str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
                         const clienteIANorm = norm(clienteLimpo);
-                        const palavrasIA = clienteIANorm.split(/\s+/).filter(w => w.length > 2);
+                        const palavrasIA = clienteIANorm.split(/\s+/).filter(w => w.length > 3);
                         
                         let alvo = null;
                         for (const p of pendentes) {
                             const pNorm = norm(p.cliente);
                             if (palavrasIA.some(w => pNorm.includes(w)) || (pNorm && clienteIANorm.includes(pNorm))) {
                                 alvo = p;
-                                console.log(`[WPP-GRUPO] Match de cliente encontrado no Fallback! Banco: ${p.cliente} | IA: ${clienteLimpo}`);
+                                console.log(`[WPP-GRUPO] Match seguro de cliente encontrado! Banco: ${p.cliente} | IA: ${clienteLimpo}`);
                                 break;
                             }
                         }
                         
-                        // Se o motorista tem apenas 1 entrega pendente, vincula a ela diretamente
-                        if (!alvo && pendentes.length === 1) {
-                            alvo = pendentes[0];
-                            console.log(`[WPP-GRUPO] Fallback de entrega única para ${motoristaPrimeiroNome}: ${alvo.cliente} (${alvo.delivery || alvo.id})`);
-                        }
-                        
+                        // REGRA FUNDAMENTAL: NUNCA vincula a uma entrega aleatória se o nome do cliente não coincidir!
                         if (alvo) {
                             finalizavelId = alvo.id;
                             finalizavelDelivery = alvo.delivery || "N/A";
                             finalizavelCliente = alvo.cliente || "Desconhecido";
-                            console.log(`[WPP-GRUPO] Fallback Inteligente definiu: ${finalizavelCliente} | Delivery: ${finalizavelDelivery}`);
+                            console.log(`[WPP-GRUPO] Fallback Seguro definiu: ${finalizavelCliente} | Delivery: ${finalizavelDelivery}`);
                         }
                     }
                 }
