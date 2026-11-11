@@ -177,6 +177,11 @@ async function startWhatsApp() {
     
     const txtMsg = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
     const captionMsg = msg.message.imageMessage?.caption || "";
+    
+    // Trava Anti-Eco: ignora respostas automáticas geradas pelo próprio robô (evita loop infinito)
+    if (txtMsg.includes("registrados para") || txtMsg.includes("H_COLETADO") || txtMsg.includes("registrado com sucesso") || txtMsg.startsWith("✅") || txtMsg.startsWith("❌")) {
+        return;
+    }
     const textoCompleto = (txtMsg + " " + captionMsg).toLowerCase();
     const quotedMsg = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
     
@@ -423,7 +428,11 @@ async function startWhatsApp() {
     // ==========================================
     // LOGICA DE SR / GLID ENVIADA PELO ADMIN OU NO GRUPO
     // ==========================================
-    const isSRMsg = (isAdmin || isFromGroup) && (txtMsg.toUpperCase().includes('SR') || txtMsg.toUpperCase().includes('GLID'));
+    const isSRMsg = (isAdmin || isFromGroup) && 
+                    (txtMsg.toUpperCase().includes('SR') || txtMsg.toUpperCase().includes('GLID')) &&
+                    !txtMsg.includes("registrados para") &&
+                    !txtMsg.includes("H_COLETADO") &&
+                    !txtMsg.startsWith("✅");
     if (isSRMsg) {
         const srMatch = txtMsg.match(/\b\d{8}\b/);
         if (srMatch) {
