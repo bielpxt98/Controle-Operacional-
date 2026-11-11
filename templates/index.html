@@ -1020,6 +1020,7 @@
                         <button class="btn" id="btnCopiarTodosSR" onclick="copiarTodosSRsFiltrados()" style="background: #ea580c; color: #fff; font-weight: 600; display: none;" title="Copiar todas as linhas com SR formatadas para a planilha Excel"><i class="fa-solid fa-file-excel"></i> Copiar SRs (Excel)</button>
                         <button class="btn" id="btnFrotaModal" onclick="openDriverModal()" style="background: #2563eb; color: #fff; font-weight: 600;" title="Gerenciar motoristas e trocar placas"><i class="fa-solid fa-truck"></i> Frotas & Motoristas</button>
                         <button class="btn" id="btnRelatoriosModal" onclick="openRelatoriosModal()" style="background: #059669; color: #fff; font-weight: 600;" title="Relatórios por Motorista, Semanais e Mensais"><i class="fa-solid fa-chart-pie"></i> Relatórios</button>
+                        <button class="btn" id="btnBackupsModal" onclick="openBackupsModal()" style="background: #4f46e5; color: #fff; font-weight: 600;" title="Histórico de Backups e Pontos de Restauração"><i class="fa-solid fa-clock-rotate-left"></i> Backups</button>
                         <div style="position: relative; display: inline-block;">
                     <button class="export-btn" id="exportMenuBtn"><i class="fa-solid fa-file-excel"></i> Baixar Excel ▼</button>
                     <div id="exportDropdown" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 5px; background-color: #1e293b; min-width: 195px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5); z-index: 100; border-radius: 8px; overflow: hidden; border: 1px solid #334155;">
@@ -2109,6 +2110,7 @@
         }
 
         async function fetchDayDataFromSupabase(dateStr) {
+            window.isLoadingDayData = true;
             window.isEmAbertoActive = false;
             const tbody = document.getElementById('tableBody');
             const mobileCards = document.getElementById('mobileCards');
@@ -2144,6 +2146,8 @@
             } catch (err) {
                 console.error("Erro ao carregar dados do Supabase:", err);
                 tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2rem; color: #ef4444;">Erro ao carregar coletas do Supabase.</td></tr>`;
+            } finally {
+                window.isLoadingDayData = false;
             }
         }
 
@@ -2704,7 +2708,7 @@
 
         let _autoSaveTimer = null;
         function saveCurrentDayColetasSilent() {
-            if (isSearchActive()) return;
+            if (isSearchActive() || window.isLoadingDayData) return;
             const coletas = collectRowsFromUI();
             saveLocalBackupForDay(activeDateStr, coletas);
             
@@ -2716,7 +2720,7 @@
         }
 
         function saveCurrentDayColetasDirectAsync(dateForSave) {
-            if (isSearchActive() || window.isEmAbertoActive) return;
+            if (isSearchActive() || window.isEmAbertoActive || window.isLoadingDayData) return;
             const coletas = collectRowsFromUI();
             if (coletas.length === 0) return;
 
@@ -4529,6 +4533,174 @@
                     alert(`✅ ${lines.length} linhas de SR copiadas com sucesso! Cole no Excel.`);
                 }
             });
+        }
+    </script>
+
+
+    <!-- MODAL DE HISTÓRICO DE BACKUPS E RESTAURAÇÃO -->
+    <div id="modalBackupsHistorico" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.85); z-index: 10001; align-items: center; justify-content: center; backdrop-filter: blur(5px);">
+        <div style="background: #1e293b; border: 1px solid #4f46e5; border-radius: 16px; width: 95%; max-width: 950px; max-height: 90vh; overflow-y: auto; padding: 24px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8); color: #f8fafc; font-family: inherit;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 14px; margin-bottom: 16px;">
+                <div>
+                    <h3 style="margin: 0; font-size: 1.3rem; color: #818cf8; display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-clock-rotate-left"></i> Histórico de Backups e Pontos de Restauração
+                    </h3>
+                    <p style="margin: 4px 0 0 0; font-size: 0.85rem; color: #94a3b8;">
+                        Snapshots automáticos salvos em Excel (.xlsx) e JSON a cada alteração. Baixe planilhas de segurança ou restaure coletas em 1 clique.
+                    </p>
+                </div>
+                <button onclick="closeBackupsModal()" style="background: none; border: none; color: #94a3b8; font-size: 1.8rem; cursor: pointer; padding: 0 6px; line-height: 1;" title="Fechar">&times;</button>
+            </div>
+
+            <!-- Barra de Ações Rápidas -->
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 12px 16px; margin-bottom: 18px; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn" onclick="gerarBackupManual()" id="btnCriarBackupManual" style="background: #4f46e5; color: #fff; font-weight: 600; padding: 8px 14px; font-size: 0.85rem; border-radius: 6px; border: none; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        <i class="fa-solid fa-cloud-arrow-up"></i> Salvar Ponto Agora
+                    </button>
+                    <button class="btn" onclick="carregarListaBackups()" style="background: #334155; color: #e2e8f0; font-weight: 600; padding: 8px 14px; font-size: 0.85rem; border-radius: 6px; border: none; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        <i class="fa-solid fa-rotate"></i> Atualizar Lista
+                    </button>
+                </div>
+                <div style="font-size: 0.8rem; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
+                    <i class="fa-solid fa-shield-halved"></i> Blindagem de Data Ativa: Datas nunca são sobrescritas por engano.
+                </div>
+            </div>
+
+            <!-- Tabela de Backups -->
+            <div style="background: #0f172a; border: 1px solid #334155; border-radius: 10px; overflow: hidden;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left;">
+                    <thead>
+                        <tr style="background: #1e293b; color: #94a3b8; border-bottom: 1px solid #334155;">
+                            <th style="padding: 12px 14px;">Data / Horário do Ponto</th>
+                            <th style="padding: 12px 14px; text-align: center;">Total Coletas</th>
+                            <th style="padding: 12px 14px; text-align: right;">Ações de Segurança</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaBackupsBody">
+                        <tr>
+                            <td colspan="3" style="text-align: center; padding: 2rem; color: #94a3b8;">
+                                <i class="fa-solid fa-spinner fa-spin"></i> Carregando backups salvos...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openBackupsModal() {
+            const modal = document.getElementById('modalBackupsHistorico');
+            if (modal) {
+                modal.style.display = 'flex';
+                carregarListaBackups();
+            }
+        }
+
+        function closeBackupsModal() {
+            const modal = document.getElementById('modalBackupsHistorico');
+            if (modal) modal.style.display = 'none';
+        }
+
+        async function carregarListaBackups() {
+            const tbody = document.getElementById('listaBackupsBody');
+            if (!tbody) return;
+            tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 2rem; color: #818cf8;"><i class="fa-solid fa-spinner fa-spin"></i> Carregando lista de backups...</td></tr>`;
+
+            try {
+                const res = await fetch('/api/backups?_t=' + Date.now());
+                const json = await res.json();
+                if (!json || json.status !== 'success' || !Array.isArray(json.backups) || json.backups.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 2rem; color: #94a3b8;"><i class="fa-regular fa-folder-open"></i> Nenhum snapshot de backup registrado ainda.</td></tr>`;
+                    return;
+                }
+
+                let html = '';
+                json.backups.forEach(b => {
+                    const excelBtn = b.has_excel ? `
+                        <a href="/api/backups/download/${encodeURIComponent(b.excel_file)}" target="_blank" style="display: inline-flex; align-items: center; gap: 5px; background: #059669; color: #fff; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 0.8rem; margin-right: 8px;" title="Baixar Planilha Excel (.xlsx) deste ponto">
+                            <i class="fa-solid fa-file-excel"></i> Baixar Excel
+                        </a>
+                    ` : '';
+
+                    html += `
+                        <tr style="border-bottom: 1px solid #1e293b; transition: background 0.2s;" onmouseover="this.style.background='#1e293b'" onmouseout="this.style.background='transparent'">
+                            <td style="padding: 12px 14px; font-weight: 600; color: #f8fafc;">
+                                <i class="fa-regular fa-clock" style="color: #818cf8; margin-right: 8px;"></i>${b.data_formatada || b.timestamp}
+                            </td>
+                            <td style="padding: 12px 14px; text-align: center; color: #38bdf8; font-weight: 700;">
+                                <span style="background: rgba(56, 189, 248, 0.15); padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(56, 189, 248, 0.3);">
+                                    ${b.total_coletas} coletas
+                                </span>
+                            </td>
+                            <td style="padding: 12px 14px; text-align: right;">
+                                ${excelBtn}
+                                <button onclick="restaurarBackupPonto('${b.json_file}', '${b.data_formatada || b.timestamp}')" style="background: #dc2626; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 0.8rem; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;" title="Restaurar todas as coletas exatamente para como estavam neste instante">
+                                    <i class="fa-solid fa-rotate-left"></i> Restaurar Coletas
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+                tbody.innerHTML = html;
+            } catch (err) {
+                console.error("Erro ao buscar backups:", err);
+                tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 2rem; color: #ef4444;">Erro ao carregar backups do servidor.</td></tr>`;
+            }
+        }
+
+        async function gerarBackupManual() {
+            const btn = document.getElementById('btnCriarBackupManual');
+            const origHtml = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Salvando...`;
+                btn.disabled = true;
+            }
+
+            try {
+                const res = await fetch('/api/backups/criar', { method: 'POST' });
+                const json = await res.json();
+                if (json && json.status === 'success') {
+                    await carregarListaBackups();
+                    if (btn) {
+                        btn.innerHTML = `<i class="fa-solid fa-check"></i> Salvo com Sucesso!`;
+                        setTimeout(() => {
+                            btn.innerHTML = origHtml;
+                            btn.disabled = false;
+                        }, 2000);
+                    }
+                } else {
+                    alert("Aviso: " + (json.message || "Não foi possível criar o backup."));
+                    if (btn) { btn.innerHTML = origHtml; btn.disabled = false; }
+                }
+            } catch (err) {
+                alert("Erro ao criar ponto de restauração: " + err.message);
+                if (btn) { btn.innerHTML = origHtml; btn.disabled = false; }
+            }
+        }
+
+        async function restaurarBackupPonto(filename, dataHoraFormatada) {
+            const confirmMsg = `ATENÇÃO: Deseja restaurar as coletas para o ponto de [${dataHoraFormatada}]?\n\nTodas as coletas, datas, clientes, motoristas, paletes, horas e valores voltarão exatamente para o estado salvo neste arquivo.\n\nDeseja continuar?`;
+            if (!confirm(confirmMsg)) return;
+
+            try {
+                const res = await fetch('/api/backups/restaurar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file: filename })
+                });
+                const json = await res.json();
+                if (json && json.status === 'success') {
+                    alert(`✅ ${json.message}`);
+                    closeBackupsModal();
+                    fetchDayDataFromSupabase(activeDateStr);
+                } else {
+                    alert("Erro ao restaurar: " + (json.message || "Erro desconhecido."));
+                }
+            } catch (err) {
+                alert("Erro de conexão ao restaurar backup: " + err.message);
+            }
         }
     </script>
 

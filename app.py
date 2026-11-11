@@ -1,5 +1,6 @@
 import os
 import json
+import time
 from flask import Flask, render_template, request, jsonify, send_file
 import requests
 import pandas as pd
@@ -524,6 +525,11 @@ def move_delivery():
         res_get = requests.get(url + "&select=*", headers=get_headers(), timeout=5)
         updated_record = res_get.json()[0] if (res_get.status_code in [200, 206] and res_get.json()) else patch_data
 
+        try:
+            create_coletas_snapshot("move")
+        except Exception:
+            pass
+
         return jsonify({
             "status": "success",
             "message": f"Coleta transferida para {new_date} com sucesso",
@@ -531,6 +537,212 @@ def move_delivery():
         })
     except Exception as e:
         print(f"Erro em move_delivery: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ==============================================================================
+# SISTEMA DE SNAPSHOTS, BACKUPS ROTATIVOS EM EXCEL/JSON E RESTAURAÇÃO
+# ==============================================================================
+BACKUP_DIR = os.path.join(BASE_DIR, "backups_coletas")
+try:
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+except Exception:
+    pass
+
+_last_snapshot_time = 0
+
+def create_coletas_snapshot(trigger="auto"):
+    global _last_snapshot_time
+    now = time.time()
+    # Throttling de snapshot automático a cada 60s
+    if trigger == "auto" and (now - _last_snapshot_time < 60):
+        return None
+    _last_snapshot_time = now
+
+    try:
+        all_data = db_select_all()
+        if not all_data:
+            return None
+
+        timestamp_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        json_file = os.path.join(BACKUP_DIR, f"snapshot_{timestamp_str}.json")
+        xlsx_file = os.path.join(BACKUP_DIR, f"snapshot_{timestamp_str}.xlsx")
+
+        # 1. Salva JSON completo com todos os campos
+        with open(json_file, "w", encoding="utf-8") as f:
+            json.dump({
+                "timestamp": timestamp_str,
+                "data_formatada": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                "total": len(all_data),
+                "coletas": all_data
+            }, f, ensure_ascii=False, indent=2)
+
+        # 2. Salva Planilha Excel organizada
+        try:
+            df_rows = []
+            for item in all_data:
+                df_rows.append({
+                    "ID": item.get("id"),
+                    "Data": item.get("data"),
+                    "Delivery": item.get("delivery"),
+                    "Cliente": item.get("cliente"),
+                    "Motorista": item.get("motorista"),
+                    "Paletes Agendados": item.get("paletes"),
+                    "Paletes Coletados (PC)": item.get("pc"),
+                    "Valor Frete": item.get("valor_frete"),
+                    "Valor Final": item.get("valor_final"),
+                    "H_Local": item.get("l_horario"),
+                    "H_Coletado": item.get("c_horario"),
+                    "H_Finalizado": item.get("f_horario"),
+                    "DF": item.get("data_finalizacao") or item.get("df"),
+                    "SR": item.get("sr"),
+                    "Observações/Motivo": item.get("observacoes") or item.get("motivo"),
+                    "Cavalo": item.get("cavalo"),
+                    "Carreta": item.get("carreta"),
+                    "Status": item.get("status")
+                })
+            df = pd.DataFrame(df_rows)
+            with pd.ExcelWriter(xlsx_file, engine="openpyxl") as writer:
+                df.to_excel(writer, index=False, sheet_name="Coletas")
+                ws = writer.sheets["Coletas"]
+                for idx, col in enumerate(df.columns):
+                    col_letter = chr(65 + idx) if idx < 26 else f"A{chr(65 + idx - 26)}"
+                    ws.column_dimensions[col_letter].width = 20
+        except Exception as e_xlsx:
+            print("Aviso ao salvar Excel do snapshot:", e_xlsx)
+
+        # 3. Limpeza automática (mantém os últimos 20 snapshots)
+        try:
+            json_files = sorted([f for f in os.listdir(BACKUP_DIR) if f.startswith("snapshot_") and f.endswith(".json")])
+            if len(json_files) > 20:
+                for old_f in json_files[:-20]:
+                    try:
+                        os.remove(os.path.join(BACKUP_DIR, old_f))
+                        xlsx_old = os.path.join(BACKUP_DIR, old_f.replace(".json", ".xlsx"))
+                        if os.path.exists(xlsx_old):
+                            os.remove(xlsx_old)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        return timestamp_str
+    except Exception as e:
+        print("Erro ao gerar snapshot de coletas:", e)
+        return None
+
+@app.route("/api/backups", methods=["GET"])
+def list_backups():
+    try:
+        snapshots = []
+        if os.path.exists(BACKUP_DIR):
+            files = sorted([f for f in os.listdir(BACKUP_DIR) if f.startswith("snapshot_") and f.endswith(".json")], reverse=True)
+            for f in files[:15]:
+                try:
+                    p = os.path.join(BACKUP_DIR, f)
+                    with open(p, "r", encoding="utf-8") as fp:
+                        meta = json.load(fp)
+                    xlsx_name = f.replace(".json", ".xlsx")
+                    has_xlsx = os.path.exists(os.path.join(BACKUP_DIR, xlsx_name))
+                    snapshots.append({
+                        "file": f,
+                        "xlsx_file": xlsx_name if has_xlsx else None,
+                        "timestamp": meta.get("timestamp"),
+                        "data_formatada": meta.get("data_formatada"),
+                        "total": meta.get("total", 0)
+                    })
+                except Exception:
+                    pass
+        return jsonify({"status": "success", "backups": snapshots})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/backups/download/<filename>", methods=["GET"])
+def download_backup(filename):
+    try:
+        safe_name = os.path.basename(filename)
+        path = os.path.join(BACKUP_DIR, safe_name)
+        if not os.path.exists(path):
+            return jsonify({"status": "error", "message": "Arquivo de backup nao encontrado"}), 404
+        return send_file(path, as_attachment=True)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/backups/criar", methods=["POST"])
+def manual_backup():
+    try:
+        ts = create_coletas_snapshot(trigger="manual")
+        return jsonify({"status": "success", "message": "Backup manual gerado com sucesso!", "timestamp": ts})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/backups/restaurar", methods=["POST"])
+def restore_backup():
+    try:
+        payload = request.get_json(force=True) or {}
+        filename = payload.get("file")
+        if not filename:
+            files = sorted([f for f in os.listdir(BACKUP_DIR) if f.startswith("snapshot_") and f.endswith(".json")], reverse=True)
+            if not files:
+                return jsonify({"status": "error", "message": "Nenhum snapshot de backup disponivel para restaurar"}), 400
+            filename = files[0]
+
+        safe_name = os.path.basename(filename)
+        path = os.path.join(BACKUP_DIR, safe_name)
+        if not os.path.exists(path):
+            return jsonify({"status": "error", "message": f"Arquivo {safe_name} nao encontrado"}), 404
+
+        with open(path, "r", encoding="utf-8") as fp:
+            data = json.load(fp)
+
+        coletas_backup = data.get("coletas", [])
+        if not coletas_backup:
+            return jsonify({"status": "error", "message": "Snapshot vazio"}), 400
+
+        restauradas = 0
+        real_cols = get_real_deliveries_columns()
+        for c in coletas_backup:
+            cid = c.get("id")
+            if not cid:
+                continue
+
+            raw_update = {
+                "data": c.get("data"),
+                "delivery": c.get("delivery"),
+                "cliente": c.get("cliente"),
+                "motorista": c.get("motorista"),
+                "paletes": c.get("paletes"),
+                "pc": c.get("pc"),
+                "valor_frete": c.get("valor_frete"),
+                "valor_final": c.get("valor_final"),
+                "l_horario": c.get("l_horario"),
+                "c_horario": c.get("c_horario"),
+                "f_horario": c.get("f_horario"),
+                "data_finalizacao": c.get("data_finalizacao") or c.get("df"),
+                "sr": c.get("sr"),
+                "observacoes": c.get("observacoes") or c.get("motivo"),
+                "cpf": c.get("cpf"),
+                "cavalo": c.get("cavalo"),
+                "carreta": c.get("carreta"),
+                "status": c.get("status")
+            }
+            if real_cols:
+                final_upd = {k: v for k, v in raw_update.items() if k in real_cols and k != "id"}
+            else:
+                final_upd = raw_update
+
+            final_upd["atualizado_em"] = datetime.utcnow().isoformat()
+            url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?id=eq.{cid}"
+            res = requests.patch(url, headers=get_headers(), json=final_upd, timeout=8)
+            if res.status_code in [200, 204]:
+                restauradas += 1
+
+        return jsonify({
+            "status": "success",
+            "message": f"Backup restaurado com sucesso! {restauradas} coletas recuperadas exatamente para o estado do snapshot de {data.get('data_formatada')}.",
+            "total_restauradas": restauradas
+        })
+    except Exception as e:
+        print(f"Erro em /api/backups/restaurar: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/coletas", methods=["GET"])
@@ -687,6 +899,10 @@ def save_coletas():
             is_valid_id = rec_id is not None and str(rec_id).isdigit() and int(rec_id) > 0
 
             if is_valid_id:
+                # TRAVA DE FERRO: Coletas existentes NUNCA têm a data alterada na tela comum
+                # A data é estritamente imutável na rota normal (apenas /api/move_delivery pode alterar)
+                registro_final.pop("data", None)
+
                 old_m = str(existing.get("motorista") or "").strip().upper()
                 new_m = str(registro_final.get("motorista") or "").strip().upper()
                 old_cav = str(existing.get("cavalo") or "").strip().upper()
@@ -703,6 +919,11 @@ def save_coletas():
                 res = db_insert_new(registro_final)
 
             saved_items.extend(res if isinstance(res, list) else [res])
+
+        try:
+            create_coletas_snapshot("auto")
+        except Exception:
+            pass
 
         return jsonify({"status": "success", "message": "Coletas salvas com sucesso no Supabase!", "saved": saved_items})
     except Exception as e:
