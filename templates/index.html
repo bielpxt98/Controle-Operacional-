@@ -1902,6 +1902,14 @@
                     if (document.activeElement) document.activeElement.blur();
                     if (_autoSaveTimer) { clearTimeout(_autoSaveTimer); _autoSaveTimer = null; }
 
+                    if (fullDateStr === activeDateStr) return;
+
+                    // Limpa imediatamente a tabela para nunca misturar dados de dias diferentes no DOM
+                    const curTbody = document.getElementById('tableBody');
+                    if (curTbody) curTbody.innerHTML = '';
+                    const curCards = document.getElementById('mobileCards');
+                    if (curCards) curCards.innerHTML = '';
+
                     document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active'));
                     pill.classList.add('active');
                     
@@ -2366,7 +2374,8 @@
             const tr = document.createElement('tr');
             if (rec.id) tr.setAttribute('data-id', rec.id);
             tr.setAttribute('data-temp-id', tempId);
-            if (rec.data) tr.setAttribute('data-original-date', rec.data);
+            const rowDateVal = rec.data || activeDateStr;
+            tr.setAttribute('data-original-date', rowDateVal);
 
             const deliveryVal = escapeAttr(rec.delivery || '');
             const clienteVal = escapeAttr(rec.cliente || '');
@@ -2501,7 +2510,8 @@
             card.className = 'coleta-card';
             if (rec.id) card.setAttribute('data-id', rec.id);
             card.setAttribute('data-temp-id', tempId);
-            if (rec.data) card.setAttribute('data-original-date', rec.data);
+            const cardDateVal = rec.data || activeDateStr;
+            card.setAttribute('data-original-date', cardDateVal);
             const mobileDateBadge = isSearchMode && rec.data ? `<div style="font-size: 0.85rem; color: #fbbf24; text-align: center; font-weight: bold; padding: 4px; background: rgba(251, 191, 36, 0.1); border-radius: 4px; margin-bottom: 8px;">Data da Coleta: ${rec.data}</div>` : '';
 
             card.innerHTML = `
@@ -2836,12 +2846,16 @@
 
         function saveCurrentDayColetasDirectAsync(dateForSave) {
             if (isSearchActive() || window.isEmAbertoActive || window.isLoadingDayData) return;
+            const targetDate = dateForSave || activeDateStr;
             const coletas = collectRowsFromUI();
             if (coletas.length === 0) return;
 
-            // Filtra: só envia coletas que já possuem ID OU que já têm delivery preenchida
-            // (evita criar linhas fantasmas vazias no Supabase enquanto o usuário digita)
-            const validColetas = coletas.filter(c => c.id || (c.delivery && c.delivery.trim() !== ''));
+            // Filtro rígido de data: NUNCA envia coletas que pertençam a uma data diferente de targetDate
+            const validColetas = coletas.filter(c => {
+                const hasInfo = c.id || (c.delivery && c.delivery.trim() !== '');
+                const matchesDate = !c.data || c.data === targetDate;
+                return hasInfo && matchesDate;
+            });
             if (validColetas.length === 0) return;
 
             // Envia em segundo plano sem travar a interface (0ms delay no clique)
@@ -3028,6 +3042,13 @@
             if (_autoSaveTimer) { clearTimeout(_autoSaveTimer); _autoSaveTimer = null; }
             if (document.activeElement) document.activeElement.blur();
             if (_autoSaveTimer) { clearTimeout(_autoSaveTimer); _autoSaveTimer = null; }
+
+            // Limpa imediatamente a tabela ao trocar de dia
+            const curTbody = document.getElementById('tableBody');
+            if (curTbody) curTbody.innerHTML = '';
+            const curCards = document.getElementById('mobileCards');
+            if (curCards) curCards.innerHTML = '';
+
             currentSelectedYear = dateObj.getFullYear();
             currentSelectedMonthIndex = dateObj.getMonth();
             const dStr = String(dateObj.getDate()).padStart(2, '0') + '/' + String(dateObj.getMonth() + 1).padStart(2, '0') + '/' + currentSelectedYear;
@@ -3199,6 +3220,7 @@
             const tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8);
 
             appendRowFromData({
+                data: activeDateStr,
                 _tempId: tempId,
                 motorista: "",
                 delivery: "", cliente: "", paletes: "", pc: "", valor: "",
