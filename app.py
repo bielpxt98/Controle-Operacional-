@@ -750,9 +750,13 @@ def get_coletas():
     data_filtro = request.args.get("data")
     try:
         if data_filtro:
-            variants = format_date_variants(data_filtro)
+            raw_dates = [d.strip() for d in data_filtro.split(",") if d.strip()]
+            all_variants = []
+            for rd in raw_dates:
+                all_variants.extend(format_date_variants(rd))
+            variants = list(dict.fromkeys(all_variants))
             try:
-                # Busca direta ultra-rápida no Supabase indexada por data
+                # Busca direta ultra-rápida no Supabase indexada por data (suporta 1 data ou lote de datas)
                 quoted_variants = ",".join([f'"{v}"' for v in variants])
                 headers = get_headers()
                 headers["Range"] = "0-999"

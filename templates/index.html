@@ -2109,45 +2109,159 @@
             }
         }
 
-        async function fetchDayDataFromSupabase(dateStr) {
-            window.isLoadingDayData = true;
+        window.daysCache = window.daysCache || {};
+        window.daysCacheTimestamps = window.daysCacheTimestamps || {};
+        let _prefetchTimer = null;
+
+        function renderDayRecords(records, targetDateStr) {
+            const tbody = document.getElementById('tableBody');
+            const mobileCards = document.getElementById('mobileCards');
+            if (!tbody) return;
+
+            tbody.innerHTML = '';
+            if (mobileCards) mobileCards.innerHTML = '';
+
+            if (!records || records.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="17" class="empty-day-message">
+                            <i class="fa-regular fa-folder-open"></i>
+                            Nenhuma coleta registrada para o dia ${targetDateStr}.<br>
+                            <span style="font-size: 0.8rem; color: #64748b">Clique no botão "<strong>+ Adicionar Coleta</strong>" acima para incluir um novo registro.</span>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            const cloned = JSON.parse(JSON.stringify(records));
+            stableSortRecords(cloned);
+            cloned.forEach(rec => appendRowFromData(rec));
+            checkAndHighlightCSDrivers(targetDateStr);
+        }
+
+        async function fetchDayDataFromSupabase(dateStr, isSilentRevalidate = false) {
             window.isEmAbertoActive = false;
             const tbody = document.getElementById('tableBody');
             const mobileCards = document.getElementById('mobileCards');
-            
-            // Exibe indicador visual de carregamento para nunca manter linhas do dia anterior
-            tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2.5rem; color: #60a5fa;"><i class="fa-solid fa-spinner fa-spin" style="margin-right: 8px;"></i> Carregando coletas de ${dateStr}...</td></tr>`;
-            if (mobileCards) mobileCards.innerHTML = `<div style="text-align:center;padding:2rem;color:#60a5fa"><i class="fa-solid fa-spinner fa-spin"></i> Carregando...</div>`;
-            
+
+            // 1. CHECAGEM DE CACHE EM MEMÓRIA: Renderização Instantânea (0ms)
+            const hasCache = Array.isArray(window.daysCache[dateStr]);
+            if (hasCache && !isSilentRevalidate) {
+                window.isLoadingDayData = false;
+                renderDayRecords(window.daysCache[dateStr], dateStr);
+
+                // Dispara pré-carregamento dos dias vizinhos
+                schedulePrefetchWindow(dateStr);
+
+                // Revalidação em segundo plano sem travar a interface
+                setTimeout(() => {
+                    if (activeDateStr === dateStr) {
+                        fetchDayDataFromSupabase(dateStr, true);
+                    }
+                }, 150);
+                return;
+            }
+
+            if (!isSilentRevalidate) {
+                window.isLoadingDayData = true;
+                tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2.5rem; color: #60a5fa;"><i class="fa-solid fa-spinner fa-spin" style="margin-right: 8px;"></i> Carregando coletas de ${dateStr}...</td></tr>`;
+                if (mobileCards) mobileCards.innerHTML = `<div style="text-align:center;padding:2rem;color:#60a5fa"><i class="fa-solid fa-spinner fa-spin"></i> Carregando...</div>`;
+            }
+
             try {
                 const res = await fetch(`/api/coletas?data=${encodeURIComponent(dateStr)}&_t=${Date.now()}`, { cache: "no-store" });
                 const json = await res.json();
                 let records = json.data || [];
 
+                window.daysCache[dateStr] = records;
+                window.daysCacheTimestamps[dateStr] = Date.now();
+
                 if (activeDateStr === dateStr) {
-                    tbody.innerHTML = '';
-                    if (mobileCards) mobileCards.innerHTML = '';
-                    if (records.length === 0) {
-                        tbody.innerHTML = `
-                            <tr>
-                                <td colspan="17" class="empty-day-message">
-                                    <i class="fa-regular fa-folder-open"></i>
-                                    Nenhuma coleta registrada para o dia ${dateStr}.<br>
-                                    <span style="font-size: 0.8rem; color: #64748b">Clique no botão "<strong>+ Adicionar Coleta</strong>" acima para incluir um novo registro.</span>
-                                </td>
-                            </tr>
-                        `;
-                        return;
+                    if (isSilentRevalidate) {
+                        // Não atrapalha o usuário se ele estiver ativamente digitando
+                        const isTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT');
+                        if (!isTyping) {
+                            renderDayRecords(records, dateStr);
+                        }
+                    } else {
+                        renderDayRecords(records, dateStr);
                     }
-                    stableSortRecords(records);
-                    records.forEach(rec => appendRowFromData(rec));
-                    checkAndHighlightCSDrivers(dateStr);
                 }
+
+                // Inicia pré-carregamento dos dias vizinhos
+                schedulePrefetchWindow(dateStr);
             } catch (err) {
                 console.error("Erro ao carregar dados do Supabase:", err);
-                tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2rem; color: #ef4444;">Erro ao carregar coletas do Supabase.</td></tr>`;
+                if (!isSilentRevalidate && !hasCache) {
+                    tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2rem; color: #ef4444;">Erro ao carregar coletas do Supabase.</td></tr>`;
+                }
             } finally {
                 window.isLoadingDayData = false;
+            }
+        }
+
+        function schedulePrefetchWindow(centerDateStr) {
+            if (_prefetchTimer) clearTimeout(_prefetchTimer);
+            _prefetchTimer = setTimeout(() => {
+                prefetchSurroundingDays(centerDateStr, 6);
+            }, 300);
+        }
+
+        async function prefetchSurroundingDays(centerDateStr, marginDays = 6) {
+            try {
+                const parts = centerDateStr.split('/');
+                if (parts.length !== 3) return;
+                const centerDate = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+                if (isNaN(centerDate.getTime())) return;
+
+                const datesToFetch = [];
+                for (let i = -marginDays; i <= marginDays; i++) {
+                    if (i === 0) continue;
+                    const d = new Date(centerDate);
+                    d.setDate(d.getDate() + i);
+                    const dd = String(d.getDate()).padStart(2, '0');
+                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                    const yyyy = d.getFullYear();
+                    const dStr = `${dd}/${mm}/${yyyy}`;
+                    if (!window.daysCache[dStr]) {
+                        datesToFetch.push(dStr);
+                    }
+                }
+
+                if (datesToFetch.length === 0) return;
+
+                // Busca todos os dias da margem em lote em uma ÚNICA chamada de rede
+                const res = await fetch(`/api/coletas?data=${encodeURIComponent(datesToFetch.join(','))}&_t=${Date.now()}`);
+                const json = await res.json();
+                const allItems = json.data || [];
+
+                // Agrupa as coletas retornadas por data no cache
+                const grouped = {};
+                datesToFetch.forEach(ds => { grouped[ds] = []; });
+                allItems.forEach(item => {
+                    const itemData = String(item.data || '').trim();
+                    let normData = itemData;
+                    if (itemData.includes('-')) {
+                        const dp = itemData.split('-');
+                        if (dp.length === 3) normData = `${dp[2].padStart(2, '0')}/${dp[1].padStart(2, '0')}/${dp[0]}`;
+                    } else if (itemData.includes('/')) {
+                        const dp = itemData.split('/');
+                        if (dp.length === 3) normData = `${dp[0].padStart(2, '0')}/${dp[1].padStart(2, '0')}/${dp[2]}`;
+                    }
+                    if (grouped[normData]) {
+                        grouped[normData].push(item);
+                    } else if (datesToFetch.includes(normData)) {
+                        grouped[normData] = [item];
+                    }
+                });
+
+                Object.keys(grouped).forEach(ds => {
+                    window.daysCache[ds] = grouped[ds];
+                    window.daysCacheTimestamps[ds] = Date.now();
+                });
+            } catch (e) {
+                console.warn("Pré-carregamento em segundo plano finalizado:", e);
             }
         }
 
@@ -2710,6 +2824,7 @@
         function saveCurrentDayColetasSilent() {
             if (isSearchActive() || window.isLoadingDayData) return;
             const coletas = collectRowsFromUI();
+            if (window.daysCache) window.daysCache[activeDateStr] = coletas;
             saveLocalBackupForDay(activeDateStr, coletas);
             
             // Auto-salva no Supabase em segundo plano com debounce de 400ms
@@ -2760,6 +2875,7 @@
                             });
                         }
                     });
+                    if (window.daysCache) window.daysCache[dateForSave || activeDateStr] = collectRowsFromUI();
                 }
             })
             .catch(err => console.error("Auto-salvamento em background:", err));
@@ -3090,6 +3206,7 @@
             });
 
             window._lastUserActivityTime = Date.now();
+            if (window.daysCache) window.daysCache[activeDateStr] = collectRowsFromUI();
 
             // Foca imediatamente no campo de motorista ou delivery da nova coleta
             setTimeout(() => {
@@ -3197,6 +3314,10 @@
                                 });
                                 const moveJson = await moveRes.json();
                                 if (moveJson && moveJson.status === 'success') {
+                                    if (window.daysCache) {
+                                        delete window.daysCache[match.data];
+                                        delete window.daysCache[activeDateStr];
+                                    }
                                     tr.setAttribute('data-id', match.id);
 
                                     const driverKey = (match.motorista || '').toLowerCase();
