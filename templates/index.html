@@ -1074,6 +1074,16 @@
     </main>
 
     <script>
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
         let driverDatabase = {
             "argemiro_borges": { name: "ARGEMIRO BORGES", cpf: "041.604.865-09", cavalo: "PEG7666", carreta: "DTD8506" },
             "ariel_nascimento": { name: "ARIEL NASCIMENTO", cpf: "050.153.565-95", cavalo: "JVL8A44", carreta: "-" },
@@ -1083,17 +1093,52 @@
             "leandro_de_andrade": { name: "LEANDRO DE ANDRADE", cpf: "017.793.835.84", cavalo: "NZP7012", carreta: "-" },
             "luis_carlos": { name: "LUIS CARLOS", cpf: "830.317.905-53", cavalo: "KLB5018", carreta: "NKZ6545" },
             "romilson_damasceno": { name: "ROMILSON DAMASCENO", cpf: "615.715.635-04", cavalo: "KJY3204", carreta: "KGG1152" },
-            "valdemir_de_jesus": { name: "VALDEMIR DE JESUS", cpf: "044.327.095-37", cavalo: "HWB9F22", carreta: "-" }
+            "valdemir_de_jesus": { name: "VALDEMIR DE JESUS", cpf: "044.327.095-37", cavalo: "HWB9F22", carreta: "KJY3204" },
+            "marcio_souza": { name: "MARCIO SOUZA", cpf: "822.008.155-49", cavalo: "JNZ8068", carreta: "-" }
         };
 
         function buildDriverSelectHtml(selectedKey, isArrow = true) {
-            let html = `<option value="" ${(!selectedKey || selectedKey === '') ? 'selected' : ''}>-- SELECIONE --</option>`;
+            const emptyLabel = isArrow ? '-- SELECIONE --' : '-- SELECIONE MOTORISTA --';
+            let html = `<option value="" ${(!selectedKey || selectedKey === '') ? 'selected' : ''}>${emptyLabel}</option>`;
             for (const [key, d] of Object.entries(driverDatabase)) {
                 const isSel = (selectedKey && (selectedKey === key || selectedKey.includes(key.split('_')[0])));
                 const suffix = isArrow ? ' ▼' : '';
                 html += `<option value="${key}" ${isSel ? 'selected' : ''}>${escapeHtml(d.name)}${suffix}</option>`;
             }
             return html;
+        }
+
+        function refreshAllDriverSelects() {
+            // Atualiza selects da tabela desktop
+            document.querySelectorAll('#tableBody .driver-select').forEach(sel => {
+                const currentVal = sel.value;
+                sel.innerHTML = buildDriverSelectHtml(currentVal, true);
+                if (currentVal && sel.value !== currentVal) {
+                    sel.value = currentVal;
+                }
+            });
+            // Atualiza selects dos cards mobile
+            document.querySelectorAll('#mobileCards .driver-select').forEach(sel => {
+                const currentVal = sel.value;
+                sel.innerHTML = buildDriverSelectHtml(currentVal, false);
+                if (currentVal && sel.value !== currentVal) {
+                    sel.value = currentVal;
+                }
+            });
+            // Atualiza dropdown no modal de relatórios se existir
+            const selRelatorio = document.getElementById('relatorioMotorista');
+            if (selRelatorio) {
+                const currRelVal = selRelatorio.value;
+                selRelatorio.innerHTML = '<option value="">TODOS OS MOTORISTAS</option>';
+                const driversList = Object.values(driverDatabase).map(d => d.name).sort();
+                driversList.forEach(name => {
+                    const opt = document.createElement('option');
+                    opt.value = name;
+                    opt.textContent = name;
+                    if (currRelVal === name) opt.selected = true;
+                    selRelatorio.appendChild(opt);
+                });
+            }
         }
 
         async function loadDriversFromApi() {
@@ -1107,6 +1152,7 @@
                         newDb[k] = { name: d.name, cpf: d.cpf, cavalo: d.cavalo, carreta: d.carreta };
                     });
                     driverDatabase = newDb;
+                    refreshAllDriverSelects();
                 }
             } catch(e) {
                 console.warn('Usando base local de motoristas:', e);
@@ -2212,11 +2258,11 @@
         function schedulePrefetchWindow(centerDateStr) {
             if (_prefetchTimer) clearTimeout(_prefetchTimer);
             _prefetchTimer = setTimeout(() => {
-                prefetchSurroundingDays(centerDateStr, 6);
+                prefetchSurroundingDays(centerDateStr, 1);
             }, 300);
         }
 
-        async function prefetchSurroundingDays(centerDateStr, marginDays = 6) {
+        async function prefetchSurroundingDays(centerDateStr, marginDays = 1) {
             try {
                 const parts = centerDateStr.split('/');
                 if (parts.length !== 3) return;
@@ -2239,7 +2285,7 @@
 
                 if (datesToFetch.length === 0) return;
 
-                // Busca todos os dias da margem em lote em uma ÚNICA chamada de rede
+                // Busca todos os dias da margem (ontem e amanhã) em lote em uma ÚNICA chamada de rede
                 const res = await fetch(`/api/coletas?data=${encodeURIComponent(datesToFetch.join(','))}&_t=${Date.now()}`);
                 const json = await res.json();
                 const allItems = json.data || [];
@@ -2267,6 +2313,15 @@
                 Object.keys(grouped).forEach(ds => {
                     window.daysCache[ds] = grouped[ds];
                     window.daysCacheTimestamps[ds] = Date.now();
+                });
+
+                // Mantém o cache leve podando datas fora da margem ativa (somente ontem, hoje e amanhã)
+                const allowedDates = new Set([centerDateStr, ...datesToFetch]);
+                Object.keys(window.daysCache).forEach(k => {
+                    if (!allowedDates.has(k)) {
+                        delete window.daysCache[k];
+                        if (window.daysCacheTimestamps) delete window.daysCacheTimestamps[k];
+                    }
                 });
             } catch (e) {
                 console.warn("Pré-carregamento em segundo plano finalizado:", e);
@@ -2416,16 +2471,7 @@
                     ${dateBadge}
                     <div class="driver-cell-container">
                         <select class="driver-select" onchange="updateDriverData(this); updateWppMessage(this.closest('tr')); saveCurrentDayColetasSilent();">
-                            <option value="" ${(!driverKey || driverKey === '')?'selected':''}>-- SELECIONE --</option>
-                            <option value="argemiro_borges" ${driverKey.includes('argemiro')?'selected':''}>ARGEMIRO BORGES ▼</option>
-                            <option value="ariel_nascimento" ${driverKey.includes('ariel')?'selected':''}>ARIEL NASCIMENTO ▼</option>
-                            <option value="fabio_souza" ${driverKey.includes('fabio')?'selected':''}>FABIO SOUZA ▼</option>
-                            <option value="gabriel_borges" ${driverKey.includes('gabriel')?'selected':''}>GABRIEL BORGES ▼</option>
-                            <option value="jones_rosario" ${driverKey.includes('jones')?'selected':''}>JONES ROSARIO ▼</option>
-                            <option value="leandro_de_andrade" ${driverKey.includes('leandro')?'selected':''}>LEANDRO DE ANDRADE ▼</option>
-                            <option value="luis_carlos" ${(driverKey.includes('luis') || driverKey.includes('luiz') || driverKey.startsWith('luz'))?'selected':''}>LUIS CARLOS ▼</option>
-                            <option value="romilson_damasceno" ${driverKey.includes('romilson')?'selected':''}>ROMILSON DAMASCENO ▼</option>
-                            <option value="valdemir_de_jesus" ${driverKey.includes('valdemir')?'selected':''}>VALDEMIR DE JESUS ▼</option>
+                            ${buildDriverSelectHtml(driverKey, true)}
                         </select>
                     </div>
                 </td>
@@ -2519,16 +2565,7 @@
                 <div class="coleta-card-header">
                     <div class="driver-cell-container" style="flex: 1; margin-right: 8px;">
                         <select class="card-driver-select driver-select" onchange="updateCardDriverData(this); updateCardWpp(this.closest('.coleta-card')); saveCurrentDayColetasSilent();">
-                            <option value="" ${(!driverKey || driverKey === '')?'selected':''}>-- SELECIONE MOTORISTA --</option>
-                            <option value="argemiro_borges" ${driverKey.includes('argemiro')?'selected':''}>ARGEMIRO BORGES</option>
-                            <option value="ariel_nascimento" ${driverKey.includes('ariel')?'selected':''}>ARIEL NASCIMENTO</option>
-                            <option value="fabio_souza" ${driverKey.includes('fabio')?'selected':''}>FABIO SOUZA</option>
-                            <option value="gabriel_borges" ${driverKey.includes('gabriel')?'selected':''}>GABRIEL BORGES</option>
-                            <option value="jones_rosario" ${driverKey.includes('jones')?'selected':''}>JONES ROSARIO</option>
-                            <option value="leandro_de_andrade" ${driverKey.includes('leandro')?'selected':''}>LEANDRO DE ANDRADE</option>
-                            <option value="luis_carlos" ${(driverKey.includes('luis') || driverKey.includes('luiz') || driverKey.startsWith('luz'))?'selected':''}>LUIS CARLOS</option>
-                            <option value="romilson_damasceno" ${driverKey.includes('romilson')?'selected':''}>ROMILSON DAMASCENO</option>
-                            <option value="valdemir_de_jesus" ${driverKey.includes('valdemir')?'selected':''}>VALDEMIR DE JESUS</option>
+                            ${buildDriverSelectHtml(driverKey, false)}
                         </select>
                     </div>
                     <div class="status-badge" style="font-weight: 700; font-size: 0.65rem; border-radius: 4px; padding: 4px 8px; display: inline-block; margin-right: 8px;">PENDENTE</div>
@@ -3909,6 +3946,7 @@
                         newDb[d.id] = { name: d.name, cpf: d.cpf, cavalo: d.cavalo, carreta: d.carreta };
                     });
                     driverDatabase = newDb;
+                    refreshAllDriverSelects();
 
                     setTimeout(() => {
                         btn.innerHTML = origHtml;
