@@ -27,7 +27,7 @@ RUN pip install -r requirements.txt
 
 # Instala dependencias Node (Robos WPP e CHEP)
 COPY whatsapp-bot/package*.json ./whatsapp-bot/
-RUN cd whatsapp-bot && npm ci && npx playwright install chromium
+RUN cd whatsapp-bot && npm install --no-audit && npx playwright install chromium
 
 # Copia todo o projeto
 COPY . .
