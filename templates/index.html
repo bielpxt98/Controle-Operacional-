@@ -4241,8 +4241,16 @@
 
                 const pAgend = kpis.paletes_agendados ?? 0;
                 const pColet = kpis.paletes_coletados ?? 0;
-                document.getElementById('kpiPaletesRatio').innerText = `${pColet} / ${pAgend}`;
-                document.getElementById('kpiPaletesEficacia').innerText = `${kpis.eficacia_pct ?? 0}%`;
+                const elPRatio = document.getElementById('kpiPaletesRatio');
+                if (elPRatio) elPRatio.innerText = pColet.toLocaleString('pt-BR');
+                const elPAgend = document.getElementById('kpiPaletesAgendados');
+                if (elPAgend) elPAgend.innerText = pAgend.toLocaleString('pt-BR');
+                const elPEficacia = document.getElementById('kpiPaletesEficacia');
+                if (elPEficacia) {
+                    const ef = kpis.eficacia_pct ?? 0;
+                    elPEficacia.innerText = `${ef}%`;
+                    elPEficacia.style.color = ef >= 100 ? '#34d399' : (ef >= 80 ? '#38bdf8' : '#f59e0b');
+                }
 
                 document.getElementById('kpiValorFinal').innerText = formatBRL(kpis.valor_final);
                 document.getElementById('kpiValorPrevisto').innerText = formatBRL(kpis.valor_previsto);
@@ -4471,12 +4479,13 @@
                 <!-- Card 2: Paletes -->
                 <div style="background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 14px; border-left: 4px solid #10b981;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Paletes (Agend. vs Real)</span>
+                        <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Paletes Coletados</span>
                         <i class="fa-solid fa-boxes-stacked" style="color: #34d399;"></i>
                     </div>
                     <div id="kpiPaletesRatio" style="font-size: 1.6rem; font-weight: 800; color: #34d399; margin-bottom: 6px;">-</div>
-                    <div style="font-size: 0.75rem; color: #94a3b8;">
-                        Taxa de eficácia: <strong id="kpiPaletesEficacia" style="color: #fff;">0%</strong>
+                    <div style="font-size: 0.75rem; color: #94a3b8; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                        <span>Meta Agendada: <strong id="kpiPaletesAgendados" style="color: #cbd5e1;">0</strong></span>
+                        <span>Eficácia: <strong id="kpiPaletesEficacia" style="color: #fff;">0%</strong></span>
                     </div>
                 </div>
 
