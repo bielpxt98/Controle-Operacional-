@@ -1182,7 +1182,11 @@ def api_relatorios():
             dt_start = datetime.min
             dt_end = datetime.max
 
-        filtered = []
+        today_date = now.date()
+
+        filtered_realizadas = []
+        filtered_futuras = []
+
         for item in all_data:
             idt = parse_date_for_sort(item.get("data", ""))
             if dt_start and dt_end:
@@ -1191,26 +1195,48 @@ def api_relatorios():
             if motorista_filtro and motorista_filtro not in ["TODOS", "TODOS OS MOTORISTAS"]:
                 if motorista_filtro not in str(item.get("motorista") or "").upper():
                     continue
-            filtered.append(item)
 
-        total_coletas = len(filtered)
-        finalizadas = sum(1 for d in filtered if d.get("status_operacional") == "FINALIZADO")
-        bloqueios = sum(1 for d in filtered if d.get("status_operacional") == "BLOQUEIO")
-        deslocamentos = sum(1 for d in filtered if d.get("status_operacional") == "DESLOCAMENTO")
+            # Classifica se é coleta futura que ainda não iniciou
+            item_dt = parse_date_to_dt(item.get("data"))
+            item_d = item_dt.date() if item_dt else None
+            is_future = bool(item_d and item_d > today_date)
+            st = item.get("status_operacional")
+            pc = sanitize_number(item.get("pc")) or 0
+            c_h = str(item.get("c_horario") or "").strip()
+            has_started = (st in ["FINALIZADO", "BLOQUEIO", "DESLOCAMENTO"]) or (pc > 0) or (c_h and c_h not in ["", "-", "00:00"])
+
+            if is_future and not has_started:
+                item["is_futura"] = True
+                filtered_futuras.append(item)
+            else:
+                item["is_futura"] = False
+                filtered_realizadas.append(item)
+
+        # As métricas de execução realizada consideram apenas as coletas até hoje (dias operados)
+        total_coletas = len(filtered_realizadas)
+        finalizadas = sum(1 for d in filtered_realizadas if d.get("status_operacional") == "FINALIZADO")
+        bloqueios = sum(1 for d in filtered_realizadas if d.get("status_operacional") == "BLOQUEIO")
+        deslocamentos = sum(1 for d in filtered_realizadas if d.get("status_operacional") == "DESLOCAMENTO")
         pendentes = total_coletas - (finalizadas + bloqueios + deslocamentos)
 
-        paletes_agendados = sum(sanitize_number(d.get("paletes")) or 0 for d in filtered)
-        paletes_coletados = sum(sanitize_number(d.get("pc")) or 0 for d in filtered)
+        paletes_agendados = sum(sanitize_number(d.get("paletes")) or 0 for d in filtered_realizadas)
+        paletes_coletados = sum(sanitize_number(d.get("pc")) or 0 for d in filtered_realizadas)
         eficacia_pct = round((paletes_coletados / paletes_agendados * 100), 1) if paletes_agendados > 0 else 0.0
 
-        valor_previsto = sum(parse_valor_numeric(d.get("valor") or d.get("valor_frete")) or 0 for d in filtered)
-        valor_final = sum(d.get("valor_final") or 0 for d in filtered)
+        valor_previsto = sum(parse_valor_numeric(d.get("valor") or d.get("valor_frete")) or 0 for d in filtered_realizadas)
+        valor_final = sum(d.get("valor_final") or 0 for d in filtered_realizadas)
+        saldo_frete = round(valor_final - valor_previsto, 2)
 
-        dias_unicos = set(d.get("data") for d in filtered if d.get("data"))
-        motoristas_unicos = set(str(d.get("motorista")).strip().upper() for d in filtered if d.get("motorista") and str(d.get("motorista")).strip() not in ["-", "", "NONE", "NULL"])
+        # Métricas de Programação Futura (coletas agendadas de amanhã em diante)
+        total_futuras = len(filtered_futuras)
+        paletes_futuros = sum(sanitize_number(d.get("paletes")) or 0 for d in filtered_futuras)
+        valor_futuro = sum(parse_valor_numeric(d.get("valor") or d.get("valor_frete")) or 0 for d in filtered_futuras)
+
+        dias_unicos = set(d.get("data") for d in filtered_realizadas if d.get("data"))
+        motoristas_unicos = set(str(d.get("motorista")).strip().upper() for d in filtered_realizadas if d.get("motorista") and str(d.get("motorista")).strip() not in ["-", "", "NONE", "NULL"])
 
         drivers_map = {}
-        for d in filtered:
+        for d in filtered_realizadas:
             m_name = str(d.get("motorista") or "").strip().upper()
             if not m_name or m_name in ["-", "NONE", "NULL", "-- SELECIONE --", "-- SELECIONE MOTORISTA --"]:
                 m_name = "SEM MOTORISTA"
@@ -1258,6 +1284,9 @@ def api_relatorios():
             tot_p = grp["paletes_agendados"]
             tot_pc = grp["paletes_coletados"]
             ef = round((tot_pc / tot_p * 100), 1) if tot_p > 0 else 0.0
+            v_prev = round(grp["valor_previsto"], 2)
+            v_fin = round(grp["valor_final"], 2)
+            saldo = round(v_fin - v_prev, 2)
             por_motorista.append({
                 "motorista": m_name,
                 "coletas": grp["coletas"],
@@ -1268,14 +1297,16 @@ def api_relatorios():
                 "paletes_agendados": tot_p,
                 "paletes_coletados": tot_pc,
                 "eficacia_pct": ef,
-                "valor_previsto": round(grp["valor_previsto"], 2),
-                "valor_final": round(grp["valor_final"], 2),
+                "valor_previsto": v_prev,
+                "valor_final": v_fin,
+                "saldo_frete": saldo,
                 "dias_operados": len(grp["dias"]),
                 "veiculos": list(grp["placas"])
             })
 
         por_motorista.sort(key=lambda x: x["coletas"], reverse=True)
-        filtered.sort(key=lambda x: parse_date_for_sort(x.get("data", "")), reverse=True)
+        all_filtered = filtered_realizadas + filtered_futuras
+        all_filtered.sort(key=lambda x: parse_date_for_sort(x.get("data", "")), reverse=True)
 
         return jsonify({
             "status": "success",
@@ -1293,12 +1324,16 @@ def api_relatorios():
                 "eficacia_pct": eficacia_pct,
                 "valor_previsto": round(valor_previsto, 2),
                 "valor_final": round(valor_final, 2),
+                "saldo_frete": saldo_frete,
+                "total_futuras": total_futuras,
+                "paletes_futuros": paletes_futuros,
+                "valor_futuro": round(valor_futuro, 2),
                 "dias_operados": len(dias_unicos),
                 "total_motoristas": len(motoristas_unicos)
             },
             "por_motorista": por_motorista,
-            "total_registros": len(filtered),
-            "coletas": filtered[:150]
+            "total_registros": len(all_filtered),
+            "coletas": all_filtered[:200]
         })
     except Exception as e:
         print(f"Erro em api_relatorios: {e}")

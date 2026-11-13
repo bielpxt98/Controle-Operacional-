@@ -4228,6 +4228,17 @@
                 document.getElementById('kpiDeslocamentos').innerText = kpis.deslocamentos ?? 0;
                 document.getElementById('kpiBloqueios').innerText = kpis.bloqueios ?? 0;
 
+                const kpiFutBadge = document.getElementById('kpiFuturasBadge');
+                if (kpiFutBadge) {
+                    if (kpis.total_futuras && kpis.total_futuras > 0) {
+                        kpiFutBadge.style.display = 'inline-flex';
+                        const elTotF = document.getElementById('kpiTotalFuturas');
+                        if (elTotF) elTotF.innerText = kpis.total_futuras;
+                    } else {
+                        kpiFutBadge.style.display = 'none';
+                    }
+                }
+
                 const pAgend = kpis.paletes_agendados ?? 0;
                 const pColet = kpis.paletes_coletados ?? 0;
                 document.getElementById('kpiPaletesRatio').innerText = `${pColet} / ${pAgend}`;
@@ -4235,6 +4246,13 @@
 
                 document.getElementById('kpiValorFinal').innerText = formatBRL(kpis.valor_final);
                 document.getElementById('kpiValorPrevisto').innerText = formatBRL(kpis.valor_previsto);
+                const kpiSaldoEl = document.getElementById('kpiSaldoFrete');
+                if (kpiSaldoEl) {
+                    const s = kpis.saldo_frete ?? 0;
+                    const sign = s > 0 ? '+' : '';
+                    kpiSaldoEl.innerText = `${sign}${formatBRL(s)}`;
+                    kpiSaldoEl.style.color = s >= 0 ? '#34d399' : '#f87171';
+                }
 
                 document.getElementById('kpiDiasOperados').innerText = `${kpis.dias_operados ?? 0} dias`;
                 document.getElementById('kpiMotoristasAtivos').innerText = kpis.total_motoristas ?? 0;
@@ -4242,13 +4260,16 @@
                 const motoristasList = json.por_motorista || [];
                 if (tbodyM) {
                     if (motoristasList.length === 0) {
-                        tbodyM.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 20px; color:#94a3b8;">Nenhum registro encontrado para este filtro.</td></tr>';
+                        tbodyM.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 20px; color:#94a3b8;">Nenhum registro encontrado para este filtro.</td></tr>';
                     } else {
                         tbodyM.innerHTML = '';
                         motoristasList.forEach(m => {
                             const tr = document.createElement('tr');
                             tr.style.borderBottom = '1px solid #334155';
                             const efColor = m.eficacia_pct >= 95 ? '#10b981' : (m.eficacia_pct >= 80 ? '#38bdf8' : '#f59e0b');
+                            const saldo = m.saldo_frete ?? 0;
+                            const saldoColor = saldo > 0 ? '#34d399' : (saldo < 0 ? '#f87171' : '#94a3b8');
+                            const saldoPrefix = saldo > 0 ? '+' : '';
                             tr.innerHTML = `
                                 <td style="padding: 10px 12px; font-weight: 700; color: #f8fafc;">
                                     ${escapeAttr(m.motorista)}
@@ -4261,8 +4282,9 @@
                                 <td style="padding: 10px 10px; text-align: right;">${m.paletes_agendados}</td>
                                 <td style="padding: 10px 10px; text-align: right; color: #34d399; font-weight: 700;">${m.paletes_coletados}</td>
                                 <td style="padding: 10px 10px; text-align: center; color: ${efColor}; font-weight: 700;">${m.eficacia_pct}%</td>
-                                <td style="padding: 10px 12px; text-align: right; color: #cbd5e1;">${formatBRL(m.valor_previsto)}</td>
+                                <td style="padding: 10px 12px; text-align: right; color: #94a3b8;">${formatBRL(m.valor_previsto)}</td>
                                 <td style="padding: 10px 12px; text-align: right; color: #38bdf8; font-weight: 700;">${formatBRL(m.valor_final)}</td>
+                                <td style="padding: 10px 12px; text-align: right; color: ${saldoColor}; font-weight: 700;">${saldoPrefix}${formatBRL(saldo)}</td>
                                 <td style="padding: 10px 10px; text-align: center; color: #a78bfa;">${m.dias_operados}d</td>
                                 <td style="padding: 10px 10px; text-align: center;">
                                     <button onclick="baixarExcelMotorista('${escapeAttr(m.motorista)}')" style="background: none; border: none; color: #10b981; cursor: pointer; font-size: 1.05rem;" title="Baixar Excel deste motorista"><i class="fa-solid fa-file-excel"></i></button>
@@ -4276,20 +4298,37 @@
                 const coletasList = json.coletas || [];
                 if (tbodyC) {
                     if (coletasList.length === 0) {
-                        tbodyC.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 20px; color:#94a3b8;">Nenhuma coleta encontrada no período.</td></tr>';
+                        tbodyC.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 20px; color:#94a3b8;">Nenhuma coleta encontrada no período.</td></tr>';
                     } else {
                         tbodyC.innerHTML = '';
                         coletasList.forEach(c => {
                             const tr = document.createElement('tr');
                             tr.style.borderBottom = '1px solid #334155';
+                            if (c.is_futura) {
+                                tr.style.background = 'rgba(59, 130, 246, 0.05)';
+                            }
+
                             const st = c.status_operacional || 'PENDENTE';
-                            let stColor = '#64748b';
-                            if (st === 'FINALIZADO') stColor = '#10b981';
-                            else if (st === 'DESLOCAMENTO') stColor = '#f59e0b';
-                            else if (st === 'BLOQUEIO') stColor = '#ef4444';
+                            let statusBadge = '';
+                            if (c.is_futura) {
+                                statusBadge = `<span style="color: #60a5fa; font-weight: 700; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(96, 165, 250, 0.4); background: rgba(59, 130, 246, 0.15);"><i class="fa-solid fa-clock"></i> AGENDADA (AMANHÃ)</span>`;
+                            } else {
+                                let stColor = '#64748b';
+                                if (st === 'FINALIZADO') stColor = '#10b981';
+                                else if (st === 'DESLOCAMENTO') stColor = '#f59e0b';
+                                else if (st === 'BLOQUEIO') stColor = '#ef4444';
+                                statusBadge = `<span style="color: ${stColor}; font-weight: 700; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; border: 1px solid ${stColor}40;">${st}</span>`;
+                            }
 
                             const valPrev = c.valor || c.valor_frete || 0;
                             const valFin = c.valor_final || 0;
+                            const diff = (valFin > 0 && valPrev > 0) ? (valFin - valPrev) : 0;
+                            let diffDisplay = '-';
+                            if (diff > 0) {
+                                diffDisplay = `<span style="color: #34d399; font-weight: 700;">+${formatBRL(diff)}</span>`;
+                            } else if (diff < 0) {
+                                diffDisplay = `<span style="color: #f87171; font-weight: 700;">${formatBRL(diff)}</span>`;
+                            }
 
                             tr.innerHTML = `
                                 <td style="padding: 8px 10px; color: #fbbf24; font-weight: 600;">${escapeAttr(c.data || '')}</td>
@@ -4298,9 +4337,10 @@
                                 <td style="padding: 8px 12px; font-weight: 600;">${escapeAttr(c.motorista || '-')}</td>
                                 <td style="padding: 8px 8px; text-align: right;">${c.paletes ?? '-'}</td>
                                 <td style="padding: 8px 8px; text-align: right; color: #34d399; font-weight: 700;">${c.pc ?? '-'}</td>
-                                <td style="padding: 8px 10px; text-align: right;">${formatBRL(valPrev)}</td>
+                                <td style="padding: 8px 10px; text-align: right; color: #94a3b8;">${formatBRL(valPrev)}</td>
                                 <td style="padding: 8px 10px; text-align: right; color: #38bdf8; font-weight: 700;">${formatBRL(valFin)}</td>
-                                <td style="padding: 8px 10px; text-align: center;"><span style="color: ${stColor}; font-weight: 700; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; border: 1px solid ${stColor}40;">${st}</span></td>
+                                <td style="padding: 8px 10px; text-align: right;">${diffDisplay}</td>
+                                <td style="padding: 8px 10px; text-align: center;">${statusBadge}</td>
                             `;
                             tbodyC.appendChild(tr);
                         });
@@ -4415,7 +4455,12 @@
                         <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Total de Coletas</span>
                         <i class="fa-solid fa-truck-moving" style="color: #60a5fa;"></i>
                     </div>
-                    <div id="kpiTotalColetas" style="font-size: 1.6rem; font-weight: 800; color: #f8fafc; margin-bottom: 6px;">-</div>
+                    <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px;">
+                        <div id="kpiTotalColetas" style="font-size: 1.6rem; font-weight: 800; color: #f8fafc;">-</div>
+                        <span id="kpiFuturasBadge" style="display: none; background: rgba(59, 130, 246, 0.15); color: #60a5fa; font-weight: 600; padding: 2px 7px; border-radius: 6px; font-size: 0.72rem; border: 1px solid rgba(59, 130, 246, 0.3); align-items: center; gap: 4px;">
+                            <i class="fa-solid fa-clock"></i> <span id="kpiTotalFuturas">0</span> Agendadas (Amanhã)
+                        </span>
+                    </div>
                     <div style="font-size: 0.75rem; color: #cbd5e1; display: flex; gap: 8px; flex-wrap: wrap;">
                         <span style="color:#10b981; font-weight:600;"><i class="fa-solid fa-check"></i> <span id="kpiFinalizadas">0</span> Ok</span>
                         <span style="color:#f59e0b; font-weight:600;"><i class="fa-solid fa-location-arrow"></i> <span id="kpiDeslocamentos">0</span> Desl.</span>
@@ -4438,12 +4483,13 @@
                 <!-- Card 3: Frete Previsto vs Final -->
                 <div style="background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 14px; border-left: 4px solid #38bdf8;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Valor Final Realizado</span>
+                        <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Frete Recebido (Final)</span>
                         <i class="fa-solid fa-brazilian-real-sign" style="color: #38bdf8;"></i>
                     </div>
                     <div id="kpiValorFinal" style="font-size: 1.6rem; font-weight: 800; color: #38bdf8; margin-bottom: 6px;">-</div>
-                    <div style="font-size: 0.75rem; color: #94a3b8;">
-                        Previsto: <span id="kpiValorPrevisto" style="color: #cbd5e1;">R$ 0,00</span>
+                    <div style="font-size: 0.75rem; color: #94a3b8; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                        <span>Previsto Base: <strong id="kpiValorPrevisto" style="color: #cbd5e1;">R$ 0,00</strong></span>
+                        <span>Saldo: <strong id="kpiSaldoFrete" style="color: #34d399;">R$ 0,00</strong></span>
                     </div>
                 </div>
 
@@ -4484,14 +4530,15 @@
                                 <th style="padding: 10px 10px; text-align: right;">Paletes Agend.</th>
                                 <th style="padding: 10px 10px; text-align: right; color:#34d399;">P. Coletados</th>
                                 <th style="padding: 10px 10px; text-align: center;">Eficácia</th>
-                                <th style="padding: 10px 12px; text-align: right;">Frete Previsto</th>
+                                <th style="padding: 10px 12px; text-align: right; color:#94a3b8;">Frete Previsto</th>
                                 <th style="padding: 10px 12px; text-align: right; color:#38bdf8; font-weight:bold;">Frete Final</th>
+                                <th style="padding: 10px 12px; text-align: right; color:#34d399; font-weight:bold;">Saldo / Upgrade</th>
                                 <th style="padding: 10px 10px; text-align: center;">Dias</th>
                                 <th style="padding: 10px 10px; text-align: center;">Excel</th>
                             </tr>
                         </thead>
                         <tbody id="relatorioMotoristasBody">
-                            <tr><td colspan="12" style="text-align: center; padding: 25px; color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i> Carregando dados...</td></tr>
+                            <tr><td colspan="13" style="text-align: center; padding: 25px; color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i> Carregando dados...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -4509,8 +4556,9 @@
                                 <th style="padding: 9px 12px;">Motorista</th>
                                 <th style="padding: 9px 8px; text-align: right;">Paletes</th>
                                 <th style="padding: 9px 8px; text-align: right; color:#34d399;">P. Colet.</th>
-                                <th style="padding: 9px 10px; text-align: right;">Valor</th>
+                                <th style="padding: 9px 10px; text-align: right; color:#94a3b8;">Valor Agend.</th>
                                 <th style="padding: 9px 10px; text-align: right; color:#38bdf8;">V. Final</th>
+                                <th style="padding: 9px 10px; text-align: right; color:#34d399;">Saldo</th>
                                 <th style="padding: 9px 10px; text-align: center;">Status</th>
                             </tr>
                         </thead>
