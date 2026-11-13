@@ -287,7 +287,7 @@ def db_select_all():
     try:
         headers = get_headers()
         headers["Range"] = "0-9999"
-        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=*&order=id.desc"
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=*&delivery=neq.SYS_WPP_SESSION&order=id.desc"
         res = requests.get(url, headers=headers, timeout=12)
         if res.status_code in [200, 201, 206]:
             return res.json()

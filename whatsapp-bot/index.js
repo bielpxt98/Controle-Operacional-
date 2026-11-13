@@ -130,21 +130,143 @@ function getDatasRecentesFormatadas(diasAtras = 5) {
     return list;
 }
 
+// ============================================================
+// PERSISTÊNCIA DE SESSÃO WHATSAPP NO SUPABASE (SOBREVIVE A DEPLOYS E REINÍCIOS DO RENDER)
+// ============================================================
+const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
+
+async function restoreSessionFromSupabase() {
+    try {
+        if (!fs.existsSync(AUTH_DIR)) {
+            fs.mkdirSync(AUTH_DIR, { recursive: true });
+        }
+        if (fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) {
+            console.log('[WPP-AUTH] Credenciais locais encontradas em disco.');
+            return;
+        }
+
+        console.log('[WPP-AUTH] Verificando sessão salva no Supabase para sobreviver ao deploy...');
+        const { data, error } = await supabase
+            .from('deliveries')
+            .select('observacoes_sistema')
+            .eq('delivery', 'SYS_WPP_SESSION')
+            .limit(1);
+
+        if (error || !data || data.length === 0 || !data[0].observacoes_sistema) {
+            console.log('[WPP-AUTH] Nenhuma sessão prévia encontrada no Supabase.');
+            return;
+        }
+
+        let sessionMap;
+        try {
+            sessionMap = JSON.parse(data[0].observacoes_sistema);
+        } catch (e) {
+            console.error('[WPP-AUTH] Erro ao deserializar sessão do Supabase:', e);
+            return;
+        }
+
+        if (sessionMap && typeof sessionMap === 'object' && Object.keys(sessionMap).length > 0) {
+            let restoredCount = 0;
+            for (const [filename, contentBase64] of Object.entries(sessionMap)) {
+                const filePath = path.join(AUTH_DIR, filename);
+                fs.writeFileSync(filePath, Buffer.from(contentBase64, 'base64'));
+                restoredCount++;
+            }
+            console.log(`[WPP-AUTH] ✅ Sessão recuperada do Supabase com sucesso! (${restoredCount} arquivos restaurados). Conectando sem QR Code...`);
+        }
+    } catch (e) {
+        console.error('[WPP-AUTH] Erro ao restaurar sessão do Supabase:', e);
+    }
+}
+
+let _saveSessionTimeout = null;
+function scheduleSessionBackupToSupabase() {
+    clearTimeout(_saveSessionTimeout);
+    _saveSessionTimeout = setTimeout(async () => {
+        try {
+            if (!fs.existsSync(AUTH_DIR) || !fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) {
+                return;
+            }
+            const files = fs.readdirSync(AUTH_DIR);
+            const sessionMap = {};
+            for (const file of files) {
+                const filePath = path.join(AUTH_DIR, file);
+                if (fs.statSync(filePath).isFile()) {
+                    sessionMap[file] = fs.readFileSync(filePath).toString('base64');
+                }
+            }
+
+            const payloadStr = JSON.stringify(sessionMap);
+            const { data: exist } = await supabase
+                .from('deliveries')
+                .select('id')
+                .eq('delivery', 'SYS_WPP_SESSION')
+                .limit(1);
+
+            if (exist && exist.length > 0) {
+                await supabase
+                    .from('deliveries')
+                    .update({
+                        observacoes_sistema: payloadStr,
+                        atualizado_em: new Date().toISOString()
+                    })
+                    .eq('id', exist[0].id);
+            } else {
+                await supabase
+                    .from('deliveries')
+                    .insert({
+                        delivery: 'SYS_WPP_SESSION',
+                        cliente: 'SISTEMA_WHATSAPP_SESSION',
+                        tipo: 'SYSTEM',
+                        data: '01/01/2000',
+                        observacoes_sistema: payloadStr
+                    });
+            }
+            console.log(`[WPP-AUTH] 💾 Sessão salva no Supabase com sucesso! Blindada contra deploys futuros.`);
+        } catch (e) {
+            console.error('[WPP-AUTH] Erro ao salvar sessão no Supabase:', e);
+        }
+    }, 2000);
+}
+
+async function clearSessionInSupabase() {
+    try {
+        await supabase
+            .from('deliveries')
+            .update({ observacoes_sistema: null })
+            .eq('delivery', 'SYS_WPP_SESSION');
+        console.log('[WPP-AUTH] Sessão limpa no Supabase.');
+    } catch (e) {
+        console.error('[WPP-AUTH] Erro ao limpar sessão no Supabase:', e);
+    }
+}
+
 async function startWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+    await restoreSessionFromSupabase();
+    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const sock = makeWASocket({ auth: state, printQRInTerminal: false, logger: pino({ level: "silent" }), browser: ["Controle CHEP", "Chrome", "10.0.0"] });
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
         if (qr) { await qrcode.toFile(qrPath, qr); console.log("[WPP] QR Code gerado."); }
         if (connection === 'close') {
             if (fs.existsSync(qrPath)) fs.unlinkSync(qrPath);
-            if (lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut) startWhatsApp();
+            if (lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut) {
+                startWhatsApp();
+            } else {
+                console.log("[WPP] Desconectado permanentemente (loggedOut). Limpando sessão...");
+                await clearSessionInSupabase();
+                startWhatsApp();
+            }
         } else if (connection === 'open') {
             if (fs.existsSync(qrPath)) fs.unlinkSync(qrPath);
             console.log('[WPP] Conectado e pronto!');
+            scheduleSessionBackupToSupabase();
         }
     });
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', async () => {
+        await saveCreds();
+        scheduleSessionBackupToSupabase();
+    });
     sock.ev.on('messages.upsert', async (m) => {
         if (m.type !== 'notify') return; // Apenas notificações em tempo real, descarta append/histórico
         const msg = m.messages?.[0];
