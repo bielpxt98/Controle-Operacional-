@@ -580,8 +580,7 @@ async function buscarPendentesChep() {
         .select('*')
         .or(`data.ilike.%${dataHoje}%,data.ilike.%${dataAmanha}%`)
         .not('motorista', 'is', null)
-        .not('motorista', 'ilike', '%SELECIONE%')
-        .is('status_chep', null);
+        .not('motorista', 'ilike', '%SELECIONE%');
 
     if (error) {
         console.error("[CHEP-BUSCA] Erro ao buscar entregas no Supabase:", error);
@@ -590,7 +589,8 @@ async function buscarPendentesChep() {
 
     const validas = (data || []).filter(d => {
         const mot = (d.motorista || '').trim();
-        return mot && mot !== '-' && !mot.toUpperCase().includes('SELECIONE');
+        const statusChep = String(d.status_chep || '').trim().toUpperCase();
+        return mot && mot !== '-' && !mot.includes('SELECIONE') && statusChep !== 'PREENCHIDO';
     });
 
     return validas;
