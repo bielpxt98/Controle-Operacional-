@@ -833,8 +833,30 @@ def save_coletas():
     try:
         # A sincronizacao de exclusoes automatica foi removida para seguranca.
 
-        existing_data = db_select_all()
-        existing_items = {str(r.get("id")): r for r in existing_data}
+        # Busca cirúrgica ultra-rápida apenas das coletas envolvidas no salvamento (elimina o peso de baixar o banco todo)
+        ids_to_check = [str(item.get("id")) for item in coletas if item.get("id") and str(item.get("id")).isdigit()]
+        existing_items = {}
+        if ids_to_check:
+            try:
+                quoted_ids = ",".join(ids_to_check)
+                headers = get_headers()
+                url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?id=in.({quoted_ids})"
+                res = requests.get(url, headers=headers, timeout=8)
+                if res.status_code in [200, 206]:
+                    for r in res.json():
+                        existing_items[str(r.get("id"))] = r
+            except Exception as e_ids:
+                print(f"Fallback busca cirúrgica de IDs: {e_ids}")
+                if data_operacao:
+                    try:
+                        headers = get_headers()
+                        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?data=eq.{data_operacao}"
+                        res = requests.get(url, headers=headers, timeout=8)
+                        if res.status_code in [200, 206]:
+                            for r in res.json():
+                                existing_items[str(r.get("id"))] = r
+                    except Exception:
+                        pass
         
         saved_items = []
         for item in coletas:
