@@ -276,6 +276,31 @@ def db_select_all():
         print(f"Erro em db_select_all: {e}")
         return []
 
+# ===== CACHE INTELIGENTE EM MEMÓRIA RAM (TTL = 60s) =====
+_DATA_CACHE = {
+    "all_data": None,
+    "timestamp": 0
+}
+
+def invalidate_data_cache():
+    """Limpa o cache imediatamente quando ocorrem inserções, atualizações ou exclusões."""
+    global _DATA_CACHE
+    _DATA_CACHE["all_data"] = None
+    _DATA_CACHE["timestamp"] = 0
+
+def get_cached_all_data(ttl_seconds=60):
+    """Retorna dados da memória RAM instantaneamente (1ms), renovando com Supabase a cada 60s ou sob demanda."""
+    global _DATA_CACHE
+    now_ts = time.time()
+    if _DATA_CACHE["all_data"] is not None and (now_ts - _DATA_CACHE["timestamp"]) < ttl_seconds:
+        return [dict(d) for d in _DATA_CACHE["all_data"]]
+
+    data = db_select_all()
+    if data:
+        _DATA_CACHE["all_data"] = [dict(d) for d in data]
+        _DATA_CACHE["timestamp"] = now_ts
+    return [dict(d) for d in data]
+
 
 def db_update_by_id(rec_id, registro):
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?id=eq.{rec_id}"
@@ -996,6 +1021,8 @@ def save_coletas():
         except Exception:
             pass
 
+        invalidate_data_cache()
+
         return jsonify({"status": "success", "message": "Coletas salvas com sucesso no Supabase!", "saved": saved_items})
     except Exception as e:
         print(f"Erro em POST /api/coletas: {e}")
@@ -1005,6 +1032,7 @@ def save_coletas():
 def delete_coleta(id_coleta):
     try:
         db_delete(id_coleta)
+        invalidate_data_cache()
         return jsonify({"status": "success", "message": "Coleta excluída com sucesso."})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -1042,7 +1070,7 @@ def export_excel():
     all_str = request.args.get("all")
 
     try:
-        all_data = db_select_all()
+        all_data = get_cached_all_data(ttl_seconds=60)
         for d in all_data:
             d["valor_final"] = extract_valor_final(d)
             d["status_operacional"] = compute_operational_status(d)
@@ -1169,7 +1197,7 @@ def api_relatorios():
     motorista_filtro = request.args.get("motorista", "").strip().upper()
 
     try:
-        all_data = db_select_all()
+        all_data = get_cached_all_data(ttl_seconds=60)
         for d in all_data:
             d["valor_final"] = extract_valor_final(d)
             d["status_operacional"] = compute_operational_status(d)
