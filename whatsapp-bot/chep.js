@@ -561,4 +561,64 @@ async function runChepProgramacaoAmanha(deliveries) {
     console.log("[WEB] Fim de todas as contas.");
 }
 
-module.exports = { runChepProgramacaoAmanha };
+async function buscarPendentesChep() {
+    const hoje = new Date();
+    const diaHoje = hoje.getDate().toString().padStart(2, '0');
+    const mesAtualStr = (hoje.getMonth() + 1).toString().padStart(2, '0');
+    const dataHoje = diaHoje + '/' + mesAtualStr;
+
+    const amanha = new Date();
+    amanha.setDate(amanha.getDate() + 1);
+    const diaAmanha = amanha.getDate().toString().padStart(2, '0');
+    const mesAmanha = (amanha.getMonth() + 1).toString().padStart(2, '0');
+    const dataAmanha = diaAmanha + '/' + mesAmanha;
+
+    console.log(`[CHEP-BUSCA] Buscando coletas prontas para hoje (${dataHoje}) e amanha (${dataAmanha})...`);
+
+    const { data, error } = await supabase
+        .from('deliveries')
+        .select('*')
+        .or(`data.ilike.%${dataHoje}%,data.ilike.%${dataAmanha}%`)
+        .not('motorista', 'is', null)
+        .not('motorista', 'ilike', '%SELECIONE%')
+        .is('status_chep', null);
+
+    if (error) {
+        console.error("[CHEP-BUSCA] Erro ao buscar entregas no Supabase:", error);
+        return [];
+    }
+
+    const validas = (data || []).filter(d => {
+        const mot = (d.motorista || '').trim();
+        return mot && mot !== '-' && !mot.toUpperCase().includes('SELECIONE');
+    });
+
+    return validas;
+}
+
+async function mainChep() {
+    console.log("[CHEP-STANDALONE] Iniciando verificacao de coletas...");
+    try {
+        const pendentes = await buscarPendentesChep();
+        if (pendentes.length === 0) {
+            console.log("[CHEP-STANDALONE] Nenhuma coleta pendente com motorista atribuido para hoje ou amanha.");
+            return;
+        }
+        console.log(`[CHEP-STANDALONE] Encontradas ${pendentes.length} coletas pendentes para preencher na CHEP!`);
+        await runChepProgramacaoAmanha(pendentes);
+        console.log("[CHEP-STANDALONE] Processamento finalizado!");
+    } catch (err) {
+        console.error("[CHEP-STANDALONE] Erro durante o processamento:", err);
+    }
+}
+
+if (require.main === module) {
+    mainChep().then(() => {
+        setTimeout(() => process.exit(0), 300);
+    }).catch(err => {
+        console.error("Erro fatal no robo CHEP:", err);
+        setTimeout(() => process.exit(1), 300);
+    });
+}
+
+module.exports = { runChepProgramacaoAmanha, buscarPendentesChep, mainChep };

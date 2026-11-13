@@ -3,7 +3,7 @@ set -e
 
 if [ -d "whatsapp-bot" ] && command -v node >/dev/null 2>&1; then
     echo "Iniciando whatsapp-bot..."
-    (cd whatsapp-bot && node index.js) &
+    (cd whatsapp-bot && node index.js >> /app/bot.log 2>&1) &
 fi
 
 PORT="${PORT:-10000}"

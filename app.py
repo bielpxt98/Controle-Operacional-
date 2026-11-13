@@ -124,6 +124,35 @@ def compute_operational_status(item):
         return "FINALIZADO"
     return "PENDENTE"
 
+# Tabela oficial de upgrade Truck -> Carreta
+# Camaçari 1007.33 -> 1249.70 | Feira 1468.13 -> 2189.60 | Lauro 992.17 -> 1229.73 | Salvador 1021.05 -> 1256.30 | Simões Filho 664.22 -> 899.64
+FRETE_UPGRADE_MAP = {
+    1007.33: 1249.70,
+    1468.13: 2189.60,
+    992.17:  1229.73,
+    1021.05: 1256.30,
+    664.22:  899.64
+}
+
+def compute_frete_upgrade(base_val, cliente_str=""):
+    if not base_val:
+        return None
+    for k, v in FRETE_UPGRADE_MAP.items():
+        if abs(base_val - k) < 0.15:
+            return v
+    cli = (cliente_str or "").lower()
+    if "simoes" in cli or "simões" in cli:
+        return 899.64
+    if "feira" in cli:
+        return 2189.60
+    if "lauro" in cli:
+        return 1229.73
+    if "camaçari" in cli or "camacari" in cli:
+        return 1249.70
+    if "salvador" in cli or "paripe" in cli or "bonocô" in cli or "bonoco" in cli:
+        return 1256.30
+    return None
+
 def extract_valor_final(item):
     if not item or not isinstance(item, dict):
         return None
@@ -178,6 +207,13 @@ def extract_valor_final(item):
 
     if manual_val is not None:
         return manual_val
+
+    # Se agendado até 272 e coletado > 272, aplica a regra de upgrade (nunca abaixa)
+    paletes_val = sanitize_number(item.get("paletes"))
+    if paletes_val is not None and paletes_val <= 272 and pc_val is not None and pc_val > 272:
+        up = compute_frete_upgrade(valor, item.get("cliente"))
+        if up and (valor is None or up >= valor):
+            return up
 
     # 3. O resto: Fica o mesmo valor integral!
     if valor is not None:
@@ -830,9 +866,15 @@ def save_coletas():
             elif is_deslocamento:
                 valor_final_num = round(valor_num / 2.0, 2) if valor_num else 0.0
             elif not (has_h and has_p):
-                valor_final_num = None
+                # Se o usuário digitou manualmente um valor_final, preserva!
+                pass
             else:
-                if valor_final_num is not None and valor_num and valor_final_num > valor_num * 5:
+                # Regra oficial: se agendado até 272 e coletado > 272, aplica a regra de upgrade (nunca abaixa)
+                if paletes_num is not None and paletes_num <= 272 and pc_num is not None and pc_num > 272:
+                    up = compute_frete_upgrade(valor_num, cliente_raw)
+                    if up and (valor_final_num is None or valor_final_num == valor_num or valor_final_num < up):
+                        valor_final_num = up
+                if valor_final_num is not None and valor_num and valor_final_num > valor_num * 10:
                     valor_final_num = valor_num
 
             # Ignora inserção de linhas completamente vazias
@@ -883,8 +925,10 @@ def save_coletas():
                         obs_sis_dict = {}
                 if valor_final_num is not None:
                     obs_sis_dict["valor_final"] = valor_final_num
+                    obs_sis_dict["manual_edit"] = True
                 else:
                     obs_sis_dict.pop("valor_final", None)
+                    obs_sis_dict.pop("manual_edit", None)
                 raw_registro["observacoes_sistema"] = json.dumps(obs_sis_dict) if obs_sis_dict else None
 
             if real_cols:
@@ -1317,13 +1361,69 @@ def whatsapp_qr():
 </html>'''
 
 
+_chep_process = None
+
+@app.route("/api/chep/disparar", methods=["POST", "GET"])
+def disparar_chep():
+    global _chep_process
+    import subprocess
+    if _chep_process is not None and _chep_process.poll() is None:
+        return jsonify({
+            "status": "running",
+            "message": "O Robô CHEP já está em execução no momento. Aguarde a finalização."
+        }), 200
+
+    try:
+        chep_script = os.path.join(BASE_DIR, "whatsapp-bot", "chep.js")
+        if not os.path.exists(chep_script):
+            return jsonify({"status": "error", "message": "Script chep.js não encontrado."}), 404
+        
+        log_file = open(os.path.join(BASE_DIR, "bot.log"), "a", encoding="utf-8")
+        _chep_process = subprocess.Popen(["node", chep_script], cwd=os.path.join(BASE_DIR, "whatsapp-bot"), stdout=log_file, stderr=subprocess.STDOUT)
+        return jsonify({
+            "status": "success",
+            "message": "Robô CHEP iniciado na nuvem com sucesso! Ele preencherá as coletas no portal da CHEP em segundo plano."
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Erro ao disparar robô CHEP: {str(e)}"}), 500
+
+@app.route("/api/chep/status", methods=["GET"])
+def status_chep():
+    global _chep_process
+    if _chep_process is not None and _chep_process.poll() is None:
+        return jsonify({"status": "running", "running": True, "message": "Robô CHEP executando..."})
+    return jsonify({"status": "idle", "running": False, "message": "Robô CHEP em Standby."})
+
 @app.route("/logs")
 def view_logs():
-    import subprocess
-    try:
-        log_out = subprocess.check_output(["pm2", "logs", "RoboWPP", "--lines", "120", "--nostream", "--out"], text=True, stderr=subprocess.STDOUT, timeout=8)
-    except Exception as e:
-        log_out = f"Erro ao ler logs via PM2: {str(e)}"
+    log_out = ""
+    # 1. Tenta ler o arquivo bot.log (Docker no Render ou Windows local)
+    possible_log_paths = [
+        os.path.join(BASE_DIR, "bot.log"),
+        "/app/bot.log",
+        os.path.join(BASE_DIR, "whatsapp-bot", "bot.log")
+    ]
+    for p in possible_log_paths:
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                    lines = f.readlines()
+                    log_out = "".join(lines[-150:])
+                if log_out.strip():
+                    break
+            except Exception as e:
+                log_out = f"Erro ao ler {p}: {e}"
+
+    # 2. Se não achou arquivo de log, tenta PM2 como fallback
+    if not log_out.strip():
+        import subprocess
+        try:
+            log_out = subprocess.check_output(["pm2", "logs", "RoboWPP", "--lines", "120", "--nostream", "--out"], text=True, stderr=subprocess.STDOUT, timeout=4)
+        except Exception:
+            pass
+
+    if not log_out.strip():
+        log_out = "Nenhum log registrado ainda. O robô está inicializando ou pronto para conexões."
 
     html = f"""
     <!DOCTYPE html>
@@ -1343,7 +1443,7 @@ def view_logs():
     <body>
         <h2>📋 Logs do Robo (WhatsApp + CHEP)</h2>
         <p>Atualizando automaticamente a cada 5 segundos...</p>
-        <a href="/api/limpar-logs" class="btn-clean" onclick="return confirm('Deseja limpar todos os logs e reiniciar os robôs?')">🧹 Limpar Logs e Reiniciar PM2</a>
+        <a href="/api/limpar-logs" class="btn-clean" onclick="return confirm('Deseja limpar todos os logs?')">🧹 Limpar Logs</a>
         <pre>{log_out}</pre>
     </body>
     </html>
@@ -1352,23 +1452,27 @@ def view_logs():
 
 @app.route("/api/limpar-logs", methods=["GET", "POST"])
 def limpar_logs():
-    import subprocess
     msg = []
-    try:
-        subprocess.run("pm2 flush", shell=True, timeout=5)
-        msg.append("Logs do PM2 limpos.")
-    except Exception as e:
-        msg.append(f"Erro no flush: {e}")
+    # Limpa bot.log se existir
+    for p in [os.path.join(BASE_DIR, "bot.log"), "/app/bot.log", os.path.join(BASE_DIR, "whatsapp-bot", "bot.log")]:
+        if os.path.exists(p):
+            try:
+                with open(p, "w", encoding="utf-8") as f:
+                    f.write(f"--- Logs limpos em {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} ---\n")
+                msg.append(f"Arquivo de log limpo: {p}")
+            except Exception as e:
+                msg.append(f"Erro ao limpar {p}: {e}")
+    
+    import subprocess
     try:
         subprocess.run("pkill -f chrome || true; pkill -f chromium || true", shell=True, timeout=5)
         msg.append("Processos de navegador encerrados.")
     except Exception as e:
         msg.append(f"Erro no pkill: {e}")
     try:
-        subprocess.run("pm2 restart all", shell=True, timeout=10)
-        msg.append("PM2 reiniciado com sucesso.")
-    except Exception as e:
-        msg.append(f"Erro no restart: {e}")
+        subprocess.run("pm2 flush || true", shell=True, timeout=5)
+    except Exception:
+        pass
     
     return jsonify({"status": "success", "details": msg}), 200
 

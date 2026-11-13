@@ -1020,6 +1020,7 @@
                         <button class="btn" id="btnCopiarTodosSR" onclick="copiarTodosSRsFiltrados()" style="background: #ea580c; color: #fff; font-weight: 600; display: none;" title="Copiar todas as linhas com SR formatadas para a planilha Excel"><i class="fa-solid fa-file-excel"></i> Copiar SRs (Excel)</button>
                         <button class="btn" id="btnFrotaModal" onclick="openDriverModal()" style="background: #2563eb; color: #fff; font-weight: 600;" title="Gerenciar motoristas e trocar placas"><i class="fa-solid fa-truck"></i> Frotas & Motoristas</button>
                         <button class="btn" id="btnRelatoriosModal" onclick="openRelatoriosModal()" style="background: #059669; color: #fff; font-weight: 600;" title="Relatórios por Motorista, Semanais e Mensais"><i class="fa-solid fa-chart-pie"></i> Relatórios</button>
+                        <button class="btn" id="btnRodarChep" onclick="dispararChep()" style="background: #ea580c; color: #fff; font-weight: 600;" title="Disparar Robô CHEP na nuvem para preencher as coletas agendadas"><i class="fa-solid fa-robot"></i> Rodar CHEP</button>
                         <button class="btn" id="btnBackupsModal" onclick="openBackupsModal()" style="background: #4f46e5; color: #fff; font-weight: 600;" title="Histórico de Backups e Pontos de Restauração"><i class="fa-solid fa-clock-rotate-left"></i> Backups</button>
                         <div style="position: relative; display: inline-block;">
                     <button class="export-btn" id="exportMenuBtn"><i class="fa-solid fa-file-excel"></i> Baixar Excel ▼</button>
@@ -1805,6 +1806,8 @@
 
             // Se for container DOM (linha da tabela ou card móvel):
             if (container) {
+                const paletesInput = container.querySelector('.input-paletes');
+                const pVal = paletesInput ? parseInt(paletesInput.value.trim(), 10) : NaN;
                 const pcInput = container.querySelector('.input-pc');
                 const pcVal = pcInput ? pcInput.value.trim() : '';
                 const chInput = container.querySelector('.input-chorario');
@@ -1818,6 +1821,31 @@
                 // OS VALORES DE COLETADO SÓ DEVEM APARECER QUANDO TIVER O HORARIO E A QUANTIDADE DE PALETES!
                 if (!hasHorario || !hasPc) {
                     return '';
+                }
+
+                // Regra oficial de upgrade de frete Truck -> Carreta
+                // Camaçari 1007.33 -> 1249.70 | Feira 1468.13 -> 2189.60 | Lauro 992.17 -> 1229.73 | Salvador 1021.05 -> 1256.30 | Simões Filho 664.22 -> 899.64
+                const pcNum = parseInt(pcVal, 10);
+                if (!isNaN(pVal) && pVal <= 272 && !isNaN(pcNum) && pcNum > 272) {
+                    const FRETE_UPGRADE_JS = {
+                        1007.33: 1249.70,
+                        1468.13: 2189.60,
+                        992.17:  1229.73,
+                        1021.05: 1256.30,
+                        664.22:  899.64
+                    };
+                    for (const [k, v] of Object.entries(FRETE_UPGRADE_JS)) {
+                        if (Math.abs(valorNum - parseFloat(k)) < 0.15) {
+                            return formatValorForDisplay(v);
+                        }
+                    }
+                    const cliInput = container.querySelector('.input-cliente');
+                    const cliText = (cliInput ? cliInput.value : '').toLowerCase();
+                    if (cliText.includes('simoes') || cliText.includes('simões')) return formatValorForDisplay(899.64);
+                    if (cliText.includes('feira')) return formatValorForDisplay(2189.60);
+                    if (cliText.includes('lauro')) return formatValorForDisplay(1229.73);
+                    if (cliText.includes('camaçari') || cliText.includes('camacari')) return formatValorForDisplay(1249.70);
+                    if (cliText.includes('salvador') || cliText.includes('paripe') || cliText.includes('bonocô') || cliText.includes('bonoco')) return formatValorForDisplay(1256.30);
                 }
             }
 
@@ -1834,6 +1862,7 @@
             const statusBadge = container.querySelector('.status-badge');
             if (!vfInput || !vInput) return;
 
+            // Se o usuário digitou manualmente ou foi fixado, NUNCA sobrescreve
             if (vfInput.getAttribute('data-manual-edit') === 'true' && vfInput.value.trim() !== '') return;
 
             const st = statusBadge ? statusBadge.innerText.trim() : '';
@@ -2480,7 +2509,7 @@
                 <td><input type="number" min="0" class="input-paletes" value="${escapeAttr(rec.paletes ?? '')}" oninput="if(this.value<0)this.value=0; handleAutoValorFinal(this)" onblur="handleAutoValorFinal(this); saveCurrentDayColetasSilent()"></td>
                 <td><input type="number" min="0" class="input-pc" value="${rec.pc === null || rec.pc === undefined ? '' : rec.pc}" style="color: #34d399; font-weight: 700;" onblur="updateRowStatus(this.closest('tr')); handleAutoValorFinal(this); saveCurrentDayColetasSilent()" oninput="if(this.value<0)this.value=0; updateRowStatus(this.closest('tr')); handleAutoValorFinal(this)"></td>
                 <td><input type="text" class="input-valor" value="${valorVal}" onblur="formatValorInput(this); handleAutoValorFinal(this)" onchange="formatValorInput(this); handleAutoValorFinal(this)"></td>
-                <td><input type="text" class="input-valor-final" value="${valorFinalVal}" placeholder="R$ 0,00" style="color: #38bdf8; font-weight: 700;" oninput="this.setAttribute('data-manual-edit', 'true')" onblur="formatValorInput(this); saveCurrentDayColetasSilent()" onchange="formatValorInput(this); saveCurrentDayColetasSilent()"></td>
+                <td><input type="text" class="input-valor-final" value="${valorFinalVal}" placeholder="R$ 0,00" style="color: #38bdf8; font-weight: 700;" ${valorFinalRaw ? 'data-manual-edit="true"' : ''} oninput="this.setAttribute('data-manual-edit', 'true')" onblur="formatValorInput(this); saveCurrentDayColetasSilent()" onchange="formatValorInput(this); saveCurrentDayColetasSilent()"></td>
                 <td><input type="text" class="input-lhorario" value="${escapeAttr(rec.l_horario || rec.h_local || '')}" placeholder="HH:MM" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="updateRowStatus(this.closest('tr'))"></td>
                 <td><input type="text" class="input-chorario" value="${escapeAttr(rec.c_horario || rec.h_coletado || '')}" placeholder="HH:MM" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="updateRowStatus(this.closest('tr'))"></td>
                 <td><input type="text" class="input-fhorario" value="${fHorarioVal}" placeholder="HH:MM" onblur="formatHoraInput(this)" onchange="formatHoraInput(this)" oninput="updateRowStatus(this.closest('tr'))"></td>
@@ -2594,7 +2623,7 @@
                     </div>
                     <div class="card-field">
                         <span class="card-label" style="color:#38bdf8">V. Final</span>
-                        <input type="text" class="card-input input-valor-final" value="${valorFinalVal}" placeholder="R$ 0,00" style="color:#38bdf8;font-weight:700" oninput="this.setAttribute('data-manual-edit', 'true')" onblur="formatValorInput(this); saveCurrentDayColetasSilent()" onchange="formatValorInput(this); saveCurrentDayColetasSilent()">
+                        <input type="text" class="card-input input-valor-final" value="${valorFinalVal}" placeholder="R$ 0,00" style="color:#38bdf8;font-weight:700" ${valorFinalRaw ? 'data-manual-edit="true"' : ''} oninput="this.setAttribute('data-manual-edit', 'true')" onblur="formatValorInput(this); saveCurrentDayColetasSilent()" onchange="formatValorInput(this); saveCurrentDayColetasSilent()">
                     </div>
                     <div class="card-field">
                         <span class="card-label">H_Local</span>
@@ -3489,7 +3518,10 @@
             }
 
             if (typeof handleAutoValorFinal === 'function') {
-                handleAutoValorFinal(tr);
+                const vfInput = tr.querySelector('.input-valor-final');
+                if (!vfInput || vfInput.getAttribute('data-manual-edit') !== 'true' || vfInput.value.trim() === '') {
+                    handleAutoValorFinal(tr);
+                }
             }
         }
     
@@ -3780,6 +3812,28 @@
                 fallbackCopyText(textToCopy);
             }
             alert('Texto copiado novamente para a Área de Transferência!');
+        }
+
+        async function dispararChep() {
+            if (!confirm("Deseja disparar o Robô CHEP na nuvem para preencher as coletas agendadas agora?")) return;
+            const btn = document.getElementById('btnRodarChep');
+            let orig = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Disparando...';
+                btn.disabled = true;
+            }
+            try {
+                const res = await fetch('/api/chep/disparar', { method: 'POST' });
+                const data = await res.json();
+                alert(data.message || 'Robô CHEP disparado com sucesso!');
+            } catch(e) {
+                alert('Erro ao disparar CHEP: ' + e);
+            } finally {
+                if (btn) {
+                    btn.innerHTML = orig;
+                    btn.disabled = false;
+                }
+            }
         }
 
 </script>

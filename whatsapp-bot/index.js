@@ -993,8 +993,12 @@ async function iniciarLoopCHEP() {
 }
 startWhatsApp();
 
-// INICIA O LOOP DA CHEP DE FORMA INDEPENDENTE DO WPP
-iniciarLoopCHEP();
+// Robô CHEP em modo Standby (para economizar memória na nuvem e permitir disparo manual pelo site ou localmente)
+if (process.env.ENABLE_CHEP_LOOP === 'true') {
+    iniciarLoopCHEP();
+} else {
+    console.log("[CHEP] Modo Standby ativado. Pronto para disparo manual via site ou local.");
+}
 
 
 // ==========================================
