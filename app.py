@@ -10,11 +10,32 @@ from datetime import datetime, timedelta
 app = Flask(__name__, static_folder="static", template_folder="templates")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+import gzip
+
 @app.after_request
-def add_no_cache_headers(response):
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
+def add_optimization_headers(response):
+    # 1. Cache inteligente: estáticos ficam em cache local por 24h; APIs mantêm no-cache estrito
+    if request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        response.headers.pop("Pragma", None)
+        response.headers.pop("Expires", None)
+    elif request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+
+    # 2. Compressão Gzip nativa de alto desempenho (reduz index.html de 270KB para ~55KB)
+    accept_encoding = request.headers.get("Accept-Encoding", "")
+    if "gzip" in accept_encoding.lower() and response.status_code < 300 and not response.direct_passthrough:
+        content_type = response.headers.get("Content-Type", "").lower()
+        if any(ct in content_type for ct in ["text/html", "application/json", "text/css", "application/javascript"]):
+            data = response.get_data()
+            if len(data) > 500:
+                compressed = gzip.compress(data, compresslevel=6)
+                response.set_data(compressed)
+                response.headers["Content-Encoding"] = "gzip"
+                response.headers["Content-Length"] = len(compressed)
+
     return response
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://zkqzejnflpzknuuirlav.supabase.co")
@@ -761,7 +782,7 @@ def restore_backup():
             return jsonify({"status": "error", "message": "Snapshot vazio"}), 400
 
         restauradas = 0
-        real_cols = get_real_deliveries_columns()
+        real_cols = get_real_table_columns()
         for c in coletas_backup:
             cid = c.get("id")
             if not cid:
@@ -794,9 +815,20 @@ def restore_backup():
 
             final_upd["atualizado_em"] = datetime.utcnow().isoformat()
             url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?id=eq.{cid}"
-            res = requests.patch(url, headers=get_headers(), json=final_upd, timeout=8)
-            if res.status_code in [200, 204]:
+            headers = get_headers()
+            headers["Prefer"] = "return=representation"
+            res = requests.patch(url, headers=headers, json=final_upd, timeout=8)
+            if res.status_code in [200, 204] and (not res.content or (isinstance(res.json(), list) and len(res.json()) > 0)):
                 restauradas += 1
+            else:
+                # Se a linha havia sido excluída do Supabase, recria a linha com o ID do backup
+                try:
+                    db_insert_new({"id": cid, **final_upd})
+                    restauradas += 1
+                except Exception:
+                    pass
+
+        invalidate_data_cache()
 
         return jsonify({
             "status": "success",
@@ -998,6 +1030,14 @@ def save_coletas():
                 # TRAVA DE FERRO: Coletas existentes NUNCA têm a data alterada na tela comum
                 # A data é estritamente imutável na rota normal (apenas /api/move_delivery pode alterar)
                 registro_final.pop("data", None)
+
+                # BLINDAGEM DE DADOS CRÍTICOS (ROBÔ WPP / CHEP / CONCORRÊNCIA):
+                # Se o robô ou outro usuário preencheu campos operacionais no banco (c_horario, pc, sr, etc.)
+                # e a tela do usuário ainda não havia sincronizado (vindo nulo no autosave), PRESERVA o valor do banco!
+                critical_fields = ["c_horario", "pc", "sr", "f_horario", "l_horario", "data_finalizacao", "df"]
+                for cf in critical_fields:
+                    if registro_final.get(cf) is None and existing.get(cf) not in [None, "", "-", "00:00"]:
+                        registro_final[cf] = existing[cf]
 
                 old_m = str(existing.get("motorista") or "").strip().upper()
                 new_m = str(registro_final.get("motorista") or "").strip().upper()
@@ -1510,7 +1550,10 @@ def view_logs():
     if not log_out.strip():
         log_out = "Nenhum log registrado ainda. O robô está inicializando ou pronto para conexões."
 
-    html = f"""
+    import html
+    safe_log = html.escape(log_out)
+
+    html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
@@ -1520,7 +1563,7 @@ def view_logs():
             body {{ background: #0d1117; color: #c9d1d9; font-family: monospace; padding: 20px; }}
             h2 {{ color: #58a6ff; margin-bottom: 5px; }}
             p {{ color: #8b949e; margin-top: 0; font-size: 14px; }}
-            .btn-clean {{ display: inline-block; background: #238636; color: #fff; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-bottom: 15px; border: 1px solid rgba(240,246,252,0.1); }}
+            .btn-clean {{ display: inline-block; background: #238636; color: #fff; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-bottom: 15px; border: 1px solid rgba(240,246,252,0.1); cursor: pointer; }}
             .btn-clean:hover {{ background: #2ea043; }}
             pre {{ background: #161b22; padding: 15px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; font-size: 13px; line-height: 1.5; border: 1px solid #30363d; }}
         </style>
@@ -1528,14 +1571,16 @@ def view_logs():
     <body>
         <h2>📋 Logs do Robo (WhatsApp + CHEP)</h2>
         <p>Atualizando automaticamente a cada 5 segundos...</p>
-        <a href="/api/limpar-logs" class="btn-clean" onclick="return confirm('Deseja limpar todos os logs?')">🧹 Limpar Logs</a>
-        <pre>{log_out}</pre>
+        <form method="POST" action="/api/limpar-logs" style="display:inline;" onsubmit="return confirm('Deseja limpar todos os logs?')">
+            <button type="submit" class="btn-clean">🧹 Limpar Logs</button>
+        </form>
+        <pre>{safe_log}</pre>
     </body>
     </html>
     """
-    return html
+    return html_content
 
-@app.route("/api/limpar-logs", methods=["GET", "POST"])
+@app.route("/api/limpar-logs", methods=["POST"])
 def limpar_logs():
     msg = []
     # Limpa bot.log se existir
@@ -1549,11 +1594,6 @@ def limpar_logs():
                 msg.append(f"Erro ao limpar {p}: {e}")
     
     import subprocess
-    try:
-        subprocess.run("pkill -f chrome || true; pkill -f chromium || true", shell=True, timeout=5)
-        msg.append("Processos de navegador encerrados.")
-    except Exception as e:
-        msg.append(f"Erro no pkill: {e}")
     try:
         subprocess.run("pm2 flush || true", shell=True, timeout=5)
     except Exception:

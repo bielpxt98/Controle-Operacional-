@@ -1667,61 +1667,85 @@
             document.querySelectorAll('#mobileCards .coleta-card').forEach(card => applyCSHighlightToCard(card));
         }
 
+        let _lastCSCheckTime = 0;
+        let _lastCSCheckPromise = null;
+
         async function checkAndHighlightCSDrivers(currentDateStr) {
-            try {
-                const res = await fetch(`/api/coletas?_t=${Date.now()}`);
-                const json = await res.json();
-                if (json && json.data) {
+            const now = Date.now();
+            // Cache em memória de 45 segundos: evita requisições redundantes a cada troca de dia ou clique
+            if (window.pendingCSDriversMap && (now - _lastCSCheckTime < 45000)) {
+                applyCSHighlights();
+                return;
+            }
+            if (_lastCSCheckPromise) {
+                return _lastCSCheckPromise;
+            }
+
+            _lastCSCheckPromise = (async () => {
+                try {
                     const currentDt = parseDateBR(currentDateStr);
                     if (!currentDt) return;
 
-                    const map = {};
-                    json.data.forEach(item => {
-                        if (!item.data || !item.motorista) return;
-                        const dt = parseDateBR(item.data);
-                        // Filtra qualquer coleta realizada em data ANTERIOR à data visualizada
-                        if (!dt || dt >= currentDt) return;
+                    // Busca cirúrgica apenas dos últimos 15 dias (evita baixar o banco todo)
+                    const datesToQuery = [];
+                    for (let i = 1; i <= 15; i++) {
+                        const d = new Date(currentDt);
+                        d.setDate(d.getDate() - i);
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                        const yyyy = d.getFullYear();
+                        datesToQuery.push(`${dd}/${mm}/${yyyy}`);
+                    }
 
-                        // Limite prudente de até 15 dias anteriores (evita lixo de meses antigos)
-                        const diffDays = Math.round((currentDt - dt) / (1000 * 60 * 60 * 24));
-                        if (diffDays > 15) return;
+                    const res = await fetch(`/api/coletas?data=${encodeURIComponent(datesToQuery.join(','))}&_t=${Date.now()}`);
+                    const json = await res.json();
+                    if (json && json.data) {
+                        const map = {};
+                        json.data.forEach(item => {
+                            if (!item.data || !item.motorista) return;
+                            const dt = parseDateBR(item.data);
+                            if (!dt || dt >= currentDt) return;
 
-                        const fHorario = (item.f_horario || item.h_finalizado || '').trim();
-                        const isFinalizado = fHorario !== '' && fHorario !== '-';
-                        
-                        // Coleta realizada que ainda não teve descarga finalizada no CS
-                        const temHorarioColeta = item.c_horario && String(item.c_horario).trim() !== '' && String(item.c_horario).trim() !== '-';
-                        const temPaletesColetados = item.pc !== null && item.pc !== undefined && String(item.pc).trim() !== '' && Number(item.pc) > 0;
-                        const temHorarioLocal = item.l_horario && String(item.l_horario).trim() !== '' && String(item.l_horario).trim() !== '-';
+                            const fHorario = (item.f_horario || item.h_finalizado || '').trim();
+                            const isFinalizado = fHorario !== '' && fHorario !== '-';
+                            
+                            const temHorarioColeta = item.c_horario && String(item.c_horario).trim() !== '' && String(item.c_horario).trim() !== '-';
+                            const temPaletesColetados = item.pc !== null && item.pc !== undefined && String(item.pc).trim() !== '' && Number(item.pc) > 0;
+                            const temHorarioLocal = item.l_horario && String(item.l_horario).trim() !== '' && String(item.l_horario).trim() !== '-';
 
-                        const isPendenteNoCS = !isFinalizado && (temHorarioColeta || temPaletesColetados || temHorarioLocal);
+                            const isPendenteNoCS = !isFinalizado && (temHorarioColeta || temPaletesColetados || temHorarioLocal);
 
-                        if (isPendenteNoCS) {
-                            const dKey = getDriverKeyFromName(item.motorista);
-                            if (dKey) {
-                                if (!map[dKey]) map[dKey] = [];
-                                map[dKey].push({
-                                    data: item.data.trim(),
-                                    dt: dt,
-                                    cliente: item.cliente || 'Cliente',
-                                    delivery: item.delivery || '',
-                                    pc: item.pc
-                                });
+                            if (isPendenteNoCS) {
+                                const dKey = getDriverKeyFromName(item.motorista);
+                                if (dKey) {
+                                    if (!map[dKey]) map[dKey] = [];
+                                    map[dKey].push({
+                                        data: item.data.trim(),
+                                        dt: dt,
+                                        cliente: item.cliente || 'Cliente',
+                                        delivery: item.delivery || '',
+                                        pc: item.pc
+                                    });
+                                }
                             }
-                        }
-                    });
+                        });
 
-                    // Ordena da mais recente para a mais antiga por motorista
-                    Object.keys(map).forEach(k => {
-                        map[k].sort((a, b) => b.dt - a.dt);
-                    });
+                        Object.keys(map).forEach(k => {
+                            map[k].sort((a, b) => b.dt - a.dt);
+                        });
 
-                    window.pendingCSDriversMap = map;
-                    applyCSHighlights();
+                        window.pendingCSDriversMap = map;
+                        _lastCSCheckTime = Date.now();
+                        applyCSHighlights();
+                    }
+                } catch (e) {
+                    console.warn("Aviso ao buscar pendências do CS:", e);
+                } finally {
+                    _lastCSCheckPromise = null;
                 }
-            } catch (e) {
-                console.warn("Aviso ao buscar pendências do CS:", e);
-            }
+            })();
+
+            return _lastCSCheckPromise;
         }
 
         function formatValorForDisplay(val) {
@@ -3193,7 +3217,6 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            try { localStorage.removeItem('controle_coletas_backup'); } catch(e) {}
             loadColumnWidths();
             updateMonthLabels();
             document.getElementById('currentDateText').innerText = activeDateStr;
