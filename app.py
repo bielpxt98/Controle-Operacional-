@@ -8,6 +8,7 @@ from io import BytesIO
 from datetime import datetime, timedelta
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 @app.after_request
 def add_no_cache_headers(response):
