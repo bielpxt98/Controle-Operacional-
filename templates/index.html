@@ -2504,7 +2504,7 @@
                         </select>
                     </div>
                 </td>
-                <td><input type="text" class="input-delivery" value="${deliveryVal}" style="font-weight: 700; color: #60a5fa;" oninput="updateWppMessage(this.closest('tr'))" onblur="checkDuplicateDelivery(this); saveCurrentDayColetasSilent()"></td>
+                <td><input type="text" class="input-delivery" value="${deliveryVal}" style="font-weight: 700; color: #60a5fa;" oninput="updateWppMessage(this.closest('tr'))" onblur="checkDuplicateDelivery(this)"></td>
                 <td><input type="text" class="input-cliente" value="${clienteVal}" title="${clienteVal}" onblur="autoExpandCliente(this)" onchange="autoExpandCliente(this)" oninput="updateWppMessage(this.closest('tr'))"></td>
                 <td><input type="number" min="0" class="input-paletes" value="${escapeAttr(rec.paletes ?? '')}" oninput="if(this.value<0)this.value=0; handleAutoValorFinal(this)" onblur="handleAutoValorFinal(this); saveCurrentDayColetasSilent()"></td>
                 <td><input type="number" min="0" class="input-pc" value="${rec.pc === null || rec.pc === undefined ? '' : rec.pc}" style="color: #34d399; font-weight: 700;" onblur="updateRowStatus(this.closest('tr')); handleAutoValorFinal(this); saveCurrentDayColetasSilent()" oninput="if(this.value<0)this.value=0; updateRowStatus(this.closest('tr')); handleAutoValorFinal(this)"></td>
@@ -2603,7 +2603,7 @@
                 <div class="card-grid">
                     <div class="card-field">
                         <span class="card-label">Delivery</span>
-                        <input type="text" class="card-input input-delivery" value="${deliveryVal}" style="color:#60a5fa;font-weight:700" oninput="updateCardWpp(this.closest('.coleta-card'))" onblur="checkDuplicateDelivery(this); saveCurrentDayColetasSilent()">
+                        <input type="text" class="card-input input-delivery" value="${deliveryVal}" style="color:#60a5fa;font-weight:700" oninput="updateCardWpp(this.closest('.coleta-card'))" onblur="checkDuplicateDelivery(this)">
                     </div>
                     <div class="card-field">
                         <span class="card-label">Paletes</span>
@@ -3381,7 +3381,10 @@
 
         async function checkDuplicateDelivery(inputElement) {
             const deliveryVal = inputElement.value.trim();
-            if (!deliveryVal) return;
+            if (!deliveryVal) {
+                saveCurrentDayColetasSilent();
+                return;
+            }
             const tr = inputElement.closest('tr') || inputElement.closest('.coleta-card');
             const idAttr = tr.getAttribute('data-id');
             
@@ -3407,6 +3410,12 @@
                                         delete window.daysCache[activeDateStr];
                                     }
                                     tr.setAttribute('data-id', match.id);
+                                    tr.setAttribute('data-original-date', activeDateStr);
+                                    const twinTr = findTwinElement(tr);
+                                    if (twinTr) {
+                                        twinTr.setAttribute('data-id', match.id);
+                                        twinTr.setAttribute('data-original-date', activeDateStr);
+                                    }
 
                                     const driverKey = (match.motorista || '').toLowerCase();
                                     const driverSel = tr.querySelector('.driver-select');
@@ -3432,6 +3441,22 @@
                                     if(tr.querySelector('.input-sr')) tr.querySelector('.input-sr').value = match.sr || '';
                                     if(tr.querySelector('.input-observacao')) tr.querySelector('.input-observacao').value = match.observacao || match.observacoes || match.motivo || '';
                                     
+                                    // Sincroniza espelho mobile/desktop
+                                    if (twinTr) {
+                                        const twinDriverSel = twinTr.querySelector('.driver-select');
+                                        if (twinDriverSel) {
+                                            twinDriverSel.selectedIndex = driverSel ? driverSel.selectedIndex : 0;
+                                            if (twinTr.classList.contains('coleta-card')) updateCardDriverData(twinDriverSel);
+                                            else updateDriverData(twinDriverSel);
+                                        }
+                                        ['input-delivery', 'input-cliente', 'input-paletes', 'input-pc', 'input-valor', 'input-valor-final', 'input-lhorario', 'input-chorario', 'input-fhorario', 'input-df', 'input-sr', 'input-observacao'].forEach(cls => {
+                                            const fromInp = tr.querySelector('.' + cls);
+                                            const toInp = twinTr.querySelector('.' + cls);
+                                            if (fromInp && toInp) toInp.value = fromInp.value;
+                                        });
+                                        updateRowStatus(twinTr);
+                                    }
+
                                     if(tr.classList.contains('coleta-card')) updateCardWpp(tr);
                                     else updateWppMessage(tr);
 
@@ -3443,7 +3468,7 @@
                                     tr.style.backgroundColor = 'rgba(16, 185, 129, 0.25)';
                                     setTimeout(() => { tr.style.backgroundColor = origBg; }, 1800);
 
-                                    saveCurrentDayColetasSilent();
+                                    saveCurrentDayColetasDirectAsync(activeDateStr);
                                 } else {
                                     alert('Erro ao transferir coleta: ' + (moveJson.message || 'Falha no servidor'));
                                 }
@@ -3453,11 +3478,48 @@
                             } finally {
                                 inputElement.disabled = false;
                             }
+                        } else {
+                            // Se NÃO/CANCELAR: a coleta original permanece intacta em match.data
+                            // e a linha que estava sendo criada no dia atual é excluída/limpa imediatamente
+                            const twin = findTwinElement(tr);
+                            const allTrs = document.querySelectorAll('#tableBody tr');
+                            const allCards = document.querySelectorAll('.coleta-card');
+                            const totalRows = Math.max(allTrs.length, allCards.length);
+
+                            if (totalRows > 1) {
+                                tr.remove();
+                                if (twin) twin.remove();
+                            } else {
+                                tr.removeAttribute('data-id');
+                                tr.removeAttribute('data-original-date');
+                                if (twin) {
+                                    twin.removeAttribute('data-id');
+                                    twin.removeAttribute('data-original-date');
+                                }
+                                tr.querySelectorAll('input').forEach(inp => { inp.value = ''; });
+                                tr.querySelectorAll('select').forEach(sel => { sel.selectedIndex = 0; });
+                                if (twin) {
+                                    twin.querySelectorAll('input').forEach(inp => { inp.value = ''; });
+                                    twin.querySelectorAll('select').forEach(sel => { sel.selectedIndex = 0; });
+                                }
+                                updateRowStatus(tr);
+                            }
+
+                            if (window.daysCache) {
+                                delete window.daysCache[activeDateStr];
+                            }
+                            saveCurrentDayColetasSilent();
+                            return;
                         }
+                    } else {
+                        saveCurrentDayColetasSilent();
                     }
+                } else {
+                    saveCurrentDayColetasSilent();
                 }
             } catch (e) {
                 console.error("Erro ao verificar delivery duplo:", e);
+                saveCurrentDayColetasSilent();
             }
         }
 
