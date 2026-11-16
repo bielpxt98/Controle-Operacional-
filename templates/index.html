@@ -795,11 +795,15 @@
             border-radius: 10px;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.75), 0 0 15px rgba(249, 115, 22, 0.4);
             padding: 12px 14px;
-            width: 320px;
-            max-width: 90vw;
+            width: 330px;
+            max-width: 92vw;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
             color: #f8fafc;
             font-family: inherit;
             animation: csPopoutFadeIn 0.15s ease-out;
+            box-sizing: border-box;
         }
         @keyframes csPopoutFadeIn {
             from { opacity: 0; transform: translateY(-6px); }
@@ -815,6 +819,7 @@
             font-weight: 800;
             font-size: 0.85rem;
             color: #fb923c;
+            flex-shrink: 0;
         }
         .cs-popout-close-btn {
             background: transparent;
@@ -829,11 +834,19 @@
             color: #fff;
         }
         .cs-popout-body {
-            max-height: 260px;
+            max-height: calc(85vh - 75px);
             overflow-y: auto;
             display: flex;
             flex-direction: column;
             gap: 8px;
+            padding-right: 3px;
+        }
+        .cs-popout-body::-webkit-scrollbar {
+            width: 5px;
+        }
+        .cs-popout-body::-webkit-scrollbar-thumb {
+            background: #f97316;
+            border-radius: 4px;
         }
         .cs-popout-item {
             background: #1e293b;
@@ -845,6 +858,18 @@
         }
         .cs-popout-item strong {
             color: #e2e8f0;
+        }
+
+        @keyframes targetRowPulse {
+            0% { background-color: rgba(249, 115, 22, 0.65) !important; outline: 3px solid #f97316 !important; }
+            35% { background-color: rgba(249, 115, 22, 0.45) !important; outline: 2px solid #f97316 !important; }
+            70% { background-color: rgba(249, 115, 22, 0.2) !important; outline: 2px solid rgba(249, 115, 22, 0.4) !important; }
+            100% { background-color: transparent !important; outline: none !important; }
+        }
+        .highlight-target-row {
+            animation: targetRowPulse 3s cubic-bezier(0.25, 1, 0.5, 1) forwards !important;
+            z-index: 10;
+            position: relative;
         }
 
         .auto-tag {
@@ -1460,6 +1485,122 @@
             }
         }
 
+        window.irParaColetaPendenteCS = async function(dataAlvo, deliveryAlvo) {
+            const activePopout = document.getElementById('csActivePopout');
+            if (activePopout) activePopout.remove();
+
+            if (!dataAlvo) return;
+            dataAlvo = String(dataAlvo).trim();
+            deliveryAlvo = String(deliveryAlvo || '').trim();
+
+            // 1. Desativa busca ou modo "em aberto" caso ativos
+            if (window.isEmAbertoActive) {
+                window.isEmAbertoActive = false;
+                const btnAberto = document.getElementById('btnEmAberto');
+                if (btnAberto) btnAberto.classList.remove('active');
+            }
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput && searchInput.value) {
+                searchInput.value = '';
+            }
+
+            // 2. Se a coleta for de outro dia, navega diretamente para o dia correspondente
+            if (activeDateStr !== dataAlvo) {
+                const parts = dataAlvo.split('/');
+                if (parts.length === 3) {
+                    const d = parseInt(parts[0], 10);
+                    const m = parseInt(parts[1], 10) - 1;
+                    const y = parseInt(parts[2], 10);
+                    if (!isNaN(m) && !isNaN(y) && (currentSelectedYear !== y || currentSelectedMonthIndex !== m)) {
+                        currentSelectedYear = y;
+                        currentSelectedMonthIndex = m;
+                        renderDaysStrip(y, m);
+                    }
+                }
+
+                // Destaca e centraliza a pílula do dia na barra
+                const strip = document.getElementById('daysStrip');
+                if (strip) {
+                    let foundPill = null;
+                    strip.querySelectorAll('.day-pill').forEach(p => {
+                        if (p.dataset?.fullDate === dataAlvo || p.innerText.includes(dataAlvo.substring(0, 5))) {
+                            p.classList.add('active');
+                            foundPill = p;
+                        } else {
+                            p.classList.remove('active');
+                        }
+                    });
+                    if (foundPill) {
+                        const scrollPos = foundPill.offsetLeft - (strip.clientWidth / 2) + (foundPill.clientWidth / 2);
+                        strip.scrollTo({ left: scrollPos, behavior: 'smooth' });
+                    }
+                }
+
+                // Limpa autosave pendente e inputs em foco do dia atual
+                if (_autoSaveTimer) { clearTimeout(_autoSaveTimer); _autoSaveTimer = null; }
+                if (document.activeElement) document.activeElement.blur();
+
+                // Limpa tabela para renderização fresca
+                const curTbody = document.getElementById('tableBody');
+                if (curTbody) curTbody.innerHTML = '';
+                const curCards = document.getElementById('mobileCards');
+                if (curCards) curCards.innerHTML = '';
+
+                activeDateStr = dataAlvo;
+                persistActiveDate(dataAlvo);
+                const curDateEl = document.getElementById('currentDateText');
+                if (curDateEl) curDateEl.innerText = dataAlvo;
+
+                const cBtn = document.getElementById('copySheetBtn'); if(cBtn) cBtn.style.display = 'none';
+                const bSR = document.getElementById('btnCopiarTodosSR'); if(bSR) bSR.style.display = 'none';
+
+                await fetchDayDataFromSupabase(dataAlvo);
+            }
+
+            // 3. Localiza e destaca a delivery com animação
+            highlightRowOrCardByDelivery(deliveryAlvo);
+        };
+
+        function highlightRowOrCardByDelivery(deliveryAlvo) {
+            if (!deliveryAlvo) return;
+            const tryHighlight = (attempts = 0) => {
+                let targetEl = null;
+                
+                // Busca na tabela Desktop
+                const rows = document.querySelectorAll('#tableBody tr');
+                for (const row of rows) {
+                    const inp = row.querySelector('.input-delivery');
+                    if (inp && inp.value.trim() === deliveryAlvo) {
+                        targetEl = row;
+                        break;
+                    }
+                }
+
+                // Busca nos cards Mobile
+                if (!targetEl) {
+                    const cards = document.querySelectorAll('#mobileCards .coleta-card');
+                    for (const card of cards) {
+                        const inp = card.querySelector('.input-delivery');
+                        if (inp && inp.value.trim() === deliveryAlvo) {
+                            targetEl = card;
+                            break;
+                        }
+                    }
+                }
+
+                if (targetEl) {
+                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    targetEl.classList.remove('highlight-target-row');
+                    void targetEl.offsetWidth; // Força reflow no navegador
+                    targetEl.classList.add('highlight-target-row');
+                } else if (attempts < 10) {
+                    setTimeout(() => tryHighlight(attempts + 1), 150);
+                }
+            };
+
+            setTimeout(() => tryHighlight(0), 100);
+        }
+
         window.openCSPopout = function(btnEl, driverName, csInfoList) {
             const existing = document.getElementById('csActivePopout');
             if (existing) {
@@ -1477,11 +1618,12 @@
             const cleanName = driverName.replace(/\s*[\uD83D\uDD04\uD83D\uDD03\u21BB\u21BA]\s*/g, '').trim();
             const itemsHtml = csInfoList.map(item => {
                 const deliv = String(item.delivery || '').trim();
+                const itemData = String(item.data || '').trim();
                 const textoOcorrencia = `Veiculo no CS aguardando descarregar a delivery ${deliv}, para seguir para proxima operação.`;
                 return `
                 <div class="cs-popout-item" style="user-select: text;">
                     <div style="font-weight: 700; color: #fbbf24; margin-bottom: 4px; font-size: 0.8rem;">
-                        📅 Coleta realizada em: ${item.data || '-'}
+                        📅 Coleta realizada em: ${itemData || '-'}
                     </div>
                     <div>🏢 <strong>Cliente:</strong> ${escapeAttr(item.cliente || '-')}</div>
                     
@@ -1501,7 +1643,10 @@
                     </div>
 
                     ${deliv && deliv !== '-' ? `
-                    <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed #334155;">
+                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #334155; display: flex; flex-direction: column; gap: 6px;">
+                        <button type="button" onclick="irParaColetaPendenteCS('${escapeAttr(itemData)}', '${escapeAttr(deliv)}')" style="width: 100%; background: linear-gradient(135deg, #ea580c, #c2410c); border: 1px solid #fdba74; color: #ffffff; border-radius: 5px; padding: 6px 8px; font-size: 0.72rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 2px 5px rgba(234, 88, 12, 0.4); transition: transform 0.1s, filter 0.15s;" onmouseover="this.style.filter='brightness(1.1)'" onmouseout="this.style.filter='none'" title="Abrir o dia desta coleta e destacá-la na tela">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i> Ir para a Coleta (${itemData || 'Abrir'})
+                        </button>
                         <button type="button" onclick="copiarTextoRapidoCS('${escapeAttr(textoOcorrencia)}', this, 'Texto Copiado!')" style="width: 100%; background: #0f172a; border: 1px solid #f97316; color: #fb923c; border-radius: 4px; padding: 4px 6px; font-size: 0.68rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;" title="Copiar texto padrão da ocorrência para colar no Robô CHEP">
                             <i class="fa-solid fa-comment-dots"></i> Copiar Texto da Ocorrência
                         </button>
@@ -1524,18 +1669,27 @@
 
             document.body.appendChild(popout);
 
-            const popWidth = 330;
+            const popWidth = Math.min(330, window.innerWidth - 20);
             let left = rect.right + 8;
             if (left + popWidth > window.innerWidth) {
                 left = Math.max(10, rect.left - popWidth - 8);
             }
+
+            // Elevação inteligente para cima quando próximo ao rodapé ou com 2+ coletas
+            const popHeight = popout.offsetHeight || 380;
             let top = rect.top - 10;
-            if (top + 280 > window.innerHeight) {
-                top = Math.max(10, window.innerHeight - 290);
+
+            if (top + popHeight > window.innerHeight - 20 || rect.top > (window.innerHeight * 0.52)) {
+                // Alinha o fundo do popout ao botão ou ancorado com margem segura do rodapé
+                const bottomAlignedTop = rect.bottom - popHeight;
+                const safeMaxTop = window.innerHeight - popHeight - 20;
+                top = Math.max(15, Math.min(bottomAlignedTop, safeMaxTop));
+            } else {
+                top = Math.max(15, Math.min(top, window.innerHeight - popHeight - 20));
             }
 
-            popout.style.top = `${Math.max(10, top)}px`;
-            popout.style.left = `${Math.max(10, left)}px`;
+            popout.style.top = `${Math.round(top)}px`;
+            popout.style.left = `${Math.round(left)}px`;
 
             const closeListener = (evt) => {
                 const cur = document.getElementById('csActivePopout');
@@ -1989,6 +2143,7 @@
 
                     const pill = document.createElement('div');
                     pill.className = 'day-pill';
+                    pill.dataset.fullDate = fullDateStr;
                     if (fullDateStr === activeDateStr) {
                         pill.classList.add('active');
                     }
