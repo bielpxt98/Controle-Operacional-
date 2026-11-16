@@ -1383,6 +1383,9 @@
                 const dfInput = tr.querySelector('.input-df');
                 if (dfInput && !dfInput.value) {
                     dfInput.value = _todayDateStr;
+                    dfInput.dataset.lastEdited = String(Date.now());
+                    registerModifiedField(dfInput);
+                    syncFieldToTwin(dfInput);
                 }
             }
 
@@ -1391,6 +1394,9 @@
                 const fInput = tr.querySelector('.input-fhorario');
                 if (fInput && fInput.value !== '-') {
                     fInput.value = '-';
+                    fInput.dataset.lastEdited = String(Date.now());
+                    registerModifiedField(fInput);
+                    syncFieldToTwin(fInput);
                 }
             }
             if (tr) {
@@ -3095,6 +3101,10 @@
         }
 
         let _autoSaveTimer = null;
+        let _isSaveInFlight = false;
+        let _pendingSaveNeeded = false;
+        let _pendingSaveDate = null;
+
         function saveCurrentDayColetasSilent() {
             if (isSearchActive() || window.isLoadingDayData) return;
             const coletas = collectRowsFromUI();
@@ -3111,6 +3121,14 @@
         function saveCurrentDayColetasDirectAsync(dateForSave) {
             if (isSearchActive() || window.isEmAbertoActive || window.isLoadingDayData) return;
             const targetDate = dateForSave || activeDateStr;
+
+            // Fila de salvamento serializada: se já houver um salvamento em trânsito, agenda o próximo
+            if (_isSaveInFlight) {
+                _pendingSaveNeeded = true;
+                _pendingSaveDate = targetDate;
+                return;
+            }
+
             const coletas = collectRowsFromUI();
             if (coletas.length === 0) return;
 
@@ -3122,11 +3140,13 @@
             });
             if (validColetas.length === 0) return;
 
+            _isSaveInFlight = true;
+
             // Envia em segundo plano sem travar a interface (0ms delay no clique)
             fetch('/api/coletas', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ data: dateForSave || activeDateStr, coletas: validColetas })
+                body: JSON.stringify({ data: targetDate, coletas: validColetas })
             })
             .then(res => res.json())
             .then(json => {
@@ -3153,10 +3173,19 @@
                             });
                         }
                     });
-                    if (window.daysCache) window.daysCache[dateForSave || activeDateStr] = collectRowsFromUI();
+                    if (window.daysCache) window.daysCache[targetDate] = collectRowsFromUI();
                 }
             })
-            .catch(err => console.error("Auto-salvamento em background:", err));
+            .catch(err => console.error("Auto-salvamento em background:", err))
+            .finally(() => {
+                _isSaveInFlight = false;
+                if (_pendingSaveNeeded) {
+                    _pendingSaveNeeded = false;
+                    const nextDate = _pendingSaveDate || activeDateStr;
+                    _pendingSaveDate = null;
+                    setTimeout(() => saveCurrentDayColetasDirectAsync(nextDate), 100);
+                }
+            });
         }
 
         async function saveCurrentDayColetasWithAuth() {
@@ -3187,6 +3216,7 @@
                 saveBtn.style.background = '#8b5cf6';
             }
 
+            _isSaveInFlight = true;
             try {
                 const res = await fetch('/api/coletas', {
                     method: 'POST',
@@ -3243,7 +3273,15 @@
                     saveBtn.innerHTML = origBtnHtml;
                     saveBtn.style.background = origBtnBg;
                 }
-                alert("Salvo no backup local! (Erro de rede no Supabase: " + err + ")");
+                alert("Erro de conexão ao salvar: " + err.message);
+            } finally {
+                _isSaveInFlight = false;
+                if (_pendingSaveNeeded) {
+                    _pendingSaveNeeded = false;
+                    const nextDate = _pendingSaveDate || activeDateStr;
+                    _pendingSaveDate = null;
+                    setTimeout(() => saveCurrentDayColetasDirectAsync(nextDate), 100);
+                }
             }
         }
 
@@ -3833,7 +3871,7 @@
         // === SYNC REAL-TIME INVISIVEL E UNIVERSAL (NÃO-DESTRUTIVO) ===
         async function syncRealTime() {
             if (document.hidden) return; // Nao polui o servidor se a aba estiver em segundo plano
-            if (isSearchActive() || window.isEmAbertoActive) return;
+            if (isSearchActive() || window.isEmAbertoActive || _isSaveInFlight) return;
             
             try {
                 const res = await fetch(`/api/coletas?data=${encodeURIComponent(activeDateStr)}&_t=${Date.now()}`);
@@ -3849,20 +3887,26 @@
                     const input = container.querySelector(selector);
                     if (!input || input === activeEl) return;
 
-                    // IMUNIDADE 1: Se o usuário editou este campo específico nos últimos 20s, NUNCA sobrescreve
+                    // IMUNIDADE 1: Se o usuário editou este campo específico nos últimos 30s, NUNCA sobrescreve
                     const lastEdited = parseInt(input.dataset.lastEdited || "0", 10);
-                    if (Date.now() - lastEdited < 20000) return;
+                    if (Date.now() - lastEdited < 30000) return;
 
-                    // IMUNIDADE 2: Se a linha/card como um todo foi editada nos últimos 6s, evita qualquer efeito colateral
+                    // IMUNIDADE 2: Se a linha/card como um todo foi editada nos últimos 15s, evita qualquer efeito colateral
                     const rowEdited = parseInt(container.getAttribute('data-row-edited') || "0", 10);
-                    if (Date.now() - rowEdited < 6000) return;
+                    if (Date.now() - rowEdited < 15000) return;
 
                     const targetVal = (serverVal === null || serverVal === undefined) ? '' : String(serverVal);
 
-                    // REGRA DE PROTEÇÃO: Se o usuário digitou algo na tela e no banco está vazio,
+                    // REGRA DE PROTEÇÃO 1: Se o usuário digitou algo na tela e no banco está vazio,
                     // NUNCA apaga o que o usuário preencheu!
                     if (input.value !== '' && targetVal.trim() === '') {
                         return;
+                    }
+
+                    // REGRA DE PROTEÇÃO 2: Se o campo local estiver marcado com '-' (indica retirada intencional ou CS em andamento)
+                    // e o servidor tiver um horário antigo, respeita o valor local
+                    if (input.value === '-' && targetVal !== '' && targetVal !== '-') {
+                        if (Date.now() - lastEdited < 45000 || Date.now() - rowEdited < 30000) return;
                     }
 
                     if (String(input.value) !== targetVal) {

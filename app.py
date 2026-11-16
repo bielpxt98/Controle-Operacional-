@@ -1040,6 +1040,10 @@ def save_coletas():
                 # Se o usuário alterou explicitamente o campo (em _modified_fields), respeita a vontade do usuário (permite apagar!).
                 # Se o usuário NÃO mexeu no campo, mas ele veio vazio por atraso no autosave, preserva o valor gravado pelo robô!
                 modified_fields = set(item.get("_modified_fields") or [])
+                # Se o usuário alterou c_horario (coleta em andamento), proíbe restaurar f_horario antigo
+                if "c_horario" in modified_fields:
+                    modified_fields.add("f_horario")
+
                 critical_fields = ["c_horario", "pc", "sr", "f_horario", "l_horario", "data_finalizacao", "df"]
                 for cf in critical_fields:
                     if cf in modified_fields or (cf in ["data_finalizacao", "df"] and "df" in modified_fields):
