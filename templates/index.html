@@ -1248,6 +1248,14 @@
                 timestamp: Date.now(),
                 coletas: coletas
             };
+            // Limita a retenção a no máximo 3 dias para evitar crescimento ilimitado do localStorage
+            const keys = Object.keys(store);
+            if (keys.length > 3) {
+                keys.sort((a, b) => (store[a]?.timestamp || 0) - (store[b]?.timestamp || 0));
+                while (keys.length > 3) {
+                    delete store[keys.shift()];
+                }
+            }
             setLocalStore(store);
         }
 
@@ -1667,13 +1675,15 @@
             document.querySelectorAll('#mobileCards .coleta-card').forEach(card => applyCSHighlightToCard(card));
         }
 
-        let _lastCSCheckTime = 0;
+        window._csCacheByDate = window._csCacheByDate || {};
         let _lastCSCheckPromise = null;
 
         async function checkAndHighlightCSDrivers(currentDateStr) {
             const now = Date.now();
-            // Cache em memória de 45 segundos: evita requisições redundantes a cada troca de dia ou clique
-            if (window.pendingCSDriversMap && (now - _lastCSCheckTime < 45000)) {
+            // Cache indexado por data de 45 segundos: garante precisão para o dia exato visualizado
+            const cached = window._csCacheByDate[currentDateStr];
+            if (cached && (now - cached.timestamp < 45000)) {
+                window.pendingCSDriversMap = cached.map;
                 applyCSHighlights();
                 return;
             }
@@ -1686,7 +1696,7 @@
                     const currentDt = parseDateBR(currentDateStr);
                     if (!currentDt) return;
 
-                    // Busca cirúrgica apenas dos últimos 15 dias (evita baixar o banco todo)
+                    // Busca cirúrgica apenas dos últimos 15 dias para a data atual
                     const datesToQuery = [];
                     for (let i = 1; i <= 15; i++) {
                         const d = new Date(currentDt);
@@ -1735,7 +1745,7 @@
                         });
 
                         window.pendingCSDriversMap = map;
-                        _lastCSCheckTime = Date.now();
+                        window._csCacheByDate[currentDateStr] = { map: map, timestamp: Date.now() };
                         applyCSHighlights();
                     }
                 } catch (e) {
@@ -2301,7 +2311,13 @@
             } catch (err) {
                 console.error("Erro ao carregar dados do Supabase:", err);
                 if (!isSilentRevalidate && !hasCache) {
-                    tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2rem; color: #ef4444;">Erro ao carregar coletas do Supabase.</td></tr>`;
+                    const localBackup = getLocalBackupForDay(dateStr);
+                    if (localBackup && localBackup.length > 0) {
+                        console.warn("Recuperando coletas do backup local para", dateStr);
+                        renderDayRecords(localBackup, dateStr);
+                    } else {
+                        tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; padding: 2rem; color: #ef4444;">Erro ao carregar coletas do Supabase.</td></tr>`;
+                    }
                 }
             } finally {
                 window.isLoadingDayData = false;
@@ -2909,6 +2925,9 @@
                 const tempId = tr.getAttribute('data-temp-id');
                 if (id) item.id = id;
                 if (tempId) item._tempId = tempId;
+                if (tr._modifiedFields && tr._modifiedFields.size > 0) {
+                    item._modified_fields = Array.from(tr._modifiedFields);
+                }
                 coletas.push(item);
             });
 
@@ -3610,12 +3629,34 @@
             }
         }
     
+        function registerModifiedField(target) {
+            const container = target.closest('tr, .coleta-card');
+            if (!container) return;
+            container.setAttribute('data-row-edited', String(Date.now()));
+            if (!container._modifiedFields) container._modifiedFields = new Set();
+            const cls = target.className || '';
+            if (cls.includes('input-sr')) container._modifiedFields.add('sr');
+            else if (cls.includes('input-chorario')) container._modifiedFields.add('c_horario');
+            else if (cls.includes('input-lhorario')) container._modifiedFields.add('l_horario');
+            else if (cls.includes('input-fhorario')) container._modifiedFields.add('f_horario');
+            else if (cls.includes('input-pc')) container._modifiedFields.add('pc');
+            else if (cls.includes('input-df')) container._modifiedFields.add('df');
+            else if (cls.includes('driver-select')) container._modifiedFields.add('motorista');
+            else if (cls.includes('input-delivery')) container._modifiedFields.add('delivery');
+            else if (cls.includes('input-cliente')) container._modifiedFields.add('cliente');
+            else if (cls.includes('input-observacao')) container._modifiedFields.add('observacao');
+            else if (cls.includes('input-paletes')) container._modifiedFields.add('paletes');
+            else if (cls.includes('input-valor-final')) container._modifiedFields.add('valor_final');
+            else if (cls.includes('input-valor')) container._modifiedFields.add('valor');
+            else if (cls.includes('input-cavalo')) container._modifiedFields.add('cavalo');
+            else if (cls.includes('input-carreta')) container._modifiedFields.add('carreta');
+        }
+
         // Rastreamento universal de edição para proteger digitação do usuário contra sobrescrita
         document.addEventListener('input', (e) => {
             if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) {
                 e.target.dataset.lastEdited = String(Date.now());
-                const container = e.target.closest('tr, .coleta-card');
-                if (container) container.setAttribute('data-row-edited', String(Date.now()));
+                registerModifiedField(e.target);
                 window._lastUserActivityTime = Date.now();
                 syncFieldToTwin(e.target);
                 // Salva silenciosamente com debounce automático
@@ -3628,8 +3669,7 @@
         document.addEventListener('change', (e) => {
             if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) {
                 e.target.dataset.lastEdited = String(Date.now());
-                const container = e.target.closest('tr, .coleta-card');
-                if (container) container.setAttribute('data-row-edited', String(Date.now()));
+                registerModifiedField(e.target);
                 window._lastUserActivityTime = Date.now();
                 syncFieldToTwin(e.target);
             }
@@ -4220,7 +4260,7 @@
             if (modal) modal.style.display = 'none';
         }
 
-        async function carregarRelatorios() {
+        async function carregarRelatorios(forceRefresh = false) {
             const period = document.getElementById('relatorioPeriodo')?.value || 'this_week';
             const startDate = document.getElementById('relatorioDataInicio')?.value?.trim() || '';
             const endDate = document.getElementById('relatorioDataFim')?.value?.trim() || '';
@@ -4228,14 +4268,15 @@
 
             const params = new URLSearchParams();
             params.append('period', period);
+            if (forceRefresh) params.append('nocache', 'true');
             if (startDate) params.append('start_date', startDate);
             if (endDate) params.append('end_date', endDate);
             if (motorista) params.append('motorista', motorista);
 
             const tbodyM = document.getElementById('relatorioMotoristasBody');
             const tbodyC = document.getElementById('relatorioColetasBody');
-            if (tbodyM) tbodyM.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 25px; color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i> Atualizando relatórios...</td></tr>';
-            if (tbodyC) tbodyC.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 25px; color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i> Atualizando...</td></tr>';
+            if (tbodyM) tbodyM.innerHTML = '<tr><td colspan="13" style="text-align: center; padding: 25px; color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i> Atualizando relatórios...</td></tr>';
+            if (tbodyC) tbodyC.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 25px; color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i> Atualizando...</td></tr>';
 
             try {
                 const res = await fetch(`/api/relatorios?${params.toString()}`);
@@ -4471,6 +4512,9 @@
                 <div style="display: flex; gap: 8px;">
                     <button type="button" onclick="carregarRelatorios()" style="background: #2563eb; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 6px;">
                         <i class="fa-solid fa-magnifying-glass"></i> Filtrar
+                    </button>
+                    <button type="button" onclick="carregarRelatorios(true)" style="background: #475569; color: #fff; border: none; padding: 8px 12px; border-radius: 6px; font-weight: 700; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 6px;" title="Atualizar dados diretamente do banco sem cache">
+                        <i class="fa-solid fa-rotate"></i>
                     </button>
                     <button type="button" onclick="baixarExcelRelatorio()" style="background: #10b981; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 6px;" title="Baixar relatório filtrado em Excel">
                         <i class="fa-solid fa-file-excel"></i> Baixar Excel

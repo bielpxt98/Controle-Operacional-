@@ -14,7 +14,7 @@ import gzip
 
 @app.after_request
 def add_optimization_headers(response):
-    # 1. Cache inteligente: estáticos ficam em cache local por 24h; APIs mantêm no-cache estrito
+    # 1. Cache inteligente: estáticos ficam em cache local por 24h; APIs e página inicial mantêm no-cache
     if request.path.startswith("/static/"):
         response.headers["Cache-Control"] = "public, max-age=86400"
         response.headers.pop("Pragma", None)
@@ -23,8 +23,11 @@ def add_optimization_headers(response):
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+    else:
+        # Página principal (/) e rotas HTML: revalidação imediata com garantia de versão fresca
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
 
-    # 2. Compressão Gzip nativa de alto desempenho (reduz index.html de 270KB para ~55KB)
+    # 2. Compressão Gzip nativa de alto desempenho (com Vary: Accept-Encoding)
     accept_encoding = request.headers.get("Accept-Encoding", "")
     if "gzip" in accept_encoding.lower() and response.status_code < 300 and not response.direct_passthrough:
         content_type = response.headers.get("Content-Type", "").lower()
@@ -35,6 +38,7 @@ def add_optimization_headers(response):
                 response.set_data(compressed)
                 response.headers["Content-Encoding"] = "gzip"
                 response.headers["Content-Length"] = len(compressed)
+                response.headers["Vary"] = "Accept-Encoding"
 
     return response
 
@@ -309,11 +313,11 @@ def invalidate_data_cache():
     _DATA_CACHE["all_data"] = None
     _DATA_CACHE["timestamp"] = 0
 
-def get_cached_all_data(ttl_seconds=60):
-    """Retorna dados da memória RAM instantaneamente (1ms), renovando com Supabase a cada 60s ou sob demanda."""
+def get_cached_all_data(ttl_seconds=15, force_refresh=False):
+    """Retorna dados da memória RAM instantaneamente (1ms), com TTL padrão de 15s ou renovação imediata."""
     global _DATA_CACHE
     now_ts = time.time()
-    if _DATA_CACHE["all_data"] is not None and (now_ts - _DATA_CACHE["timestamp"]) < ttl_seconds:
+    if not force_refresh and _DATA_CACHE["all_data"] is not None and (now_ts - _DATA_CACHE["timestamp"]) < ttl_seconds:
         return [dict(d) for d in _DATA_CACHE["all_data"]]
 
     data = db_select_all()
@@ -613,6 +617,8 @@ def move_delivery():
         except Exception:
             pass
 
+        invalidate_data_cache()
+
         return jsonify({
             "status": "success",
             "message": f"Coleta transferida para {new_date} com sucesso",
@@ -781,6 +787,12 @@ def restore_backup():
         if not coletas_backup:
             return jsonify({"status": "error", "message": "Snapshot vazio"}), 400
 
+        # Snapshot de segurança pré-restauração para permitir desfazer se necessário
+        try:
+            create_coletas_snapshot("pre_restore")
+        except Exception:
+            pass
+
         restauradas = 0
         real_cols = get_real_table_columns()
         for c in coletas_backup:
@@ -902,18 +914,11 @@ def save_coletas():
                 if res.status_code in [200, 206]:
                     for r in res.json():
                         existing_items[str(r.get("id"))] = r
+                else:
+                    return jsonify({"status": "error", "message": f"Erro de comunicação com o Supabase (HTTP {res.status_code}). Salvamento cancelado para proteger os dados."}), 502
             except Exception as e_ids:
-                print(f"Fallback busca cirúrgica de IDs: {e_ids}")
-                if data_operacao:
-                    try:
-                        headers = get_headers()
-                        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?data=eq.{data_operacao}"
-                        res = requests.get(url, headers=headers, timeout=8)
-                        if res.status_code in [200, 206]:
-                            for r in res.json():
-                                existing_items[str(r.get("id"))] = r
-                    except Exception:
-                        pass
+                print(f"Erro na busca de IDs: {e_ids}")
+                return jsonify({"status": "error", "message": f"Falha de conexão com o Supabase: {str(e_ids)}. Salvamento cancelado."}), 502
         
         saved_items = []
         for item in coletas:
@@ -1031,11 +1036,14 @@ def save_coletas():
                 # A data é estritamente imutável na rota normal (apenas /api/move_delivery pode alterar)
                 registro_final.pop("data", None)
 
-                # BLINDAGEM DE DADOS CRÍTICOS (ROBÔ WPP / CHEP / CONCORRÊNCIA):
-                # Se o robô ou outro usuário preencheu campos operacionais no banco (c_horario, pc, sr, etc.)
-                # e a tela do usuário ainda não havia sincronizado (vindo nulo no autosave), PRESERVA o valor do banco!
+                # BLINDAGEM INTELIGENTE DE DADOS (ROBÔ WPP / CHEP):
+                # Se o usuário alterou explicitamente o campo (em _modified_fields), respeita a vontade do usuário (permite apagar!).
+                # Se o usuário NÃO mexeu no campo, mas ele veio vazio por atraso no autosave, preserva o valor gravado pelo robô!
+                modified_fields = set(item.get("_modified_fields") or [])
                 critical_fields = ["c_horario", "pc", "sr", "f_horario", "l_horario", "data_finalizacao", "df"]
                 for cf in critical_fields:
+                    if cf in modified_fields or (cf in ["data_finalizacao", "df"] and "df" in modified_fields):
+                        continue
                     if registro_final.get(cf) is None and existing.get(cf) not in [None, "", "-", "00:00"]:
                         registro_final[cf] = existing[cf]
 
@@ -1079,24 +1087,7 @@ def delete_coleta(id_coleta):
 
 @app.route("/api/delete-old", methods=["POST"])
 def delete_old_records():
-    try:
-        all_data = db_select_all()
-        min_date = datetime.strptime("01/08/2026", "%d/%m/%Y")
-        deleted = 0
-        for item in all_data:
-            item_date = parse_date_for_sort(item.get("data", ""))
-            try:
-                idt = datetime.strptime(item_date, "%Y-%m-%d")
-                if idt < min_date:
-                    item_id = item.get("id")
-                    if item_id:
-                        db_delete(str(item_id))
-                        deleted += 1
-            except:
-                pass
-        return jsonify({"status": "success", "deleted": deleted})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "error", "message": "Rota desativada permanentemente por segurança operacional."}), 403
 
 @app.route("/api/export-excel", methods=["GET"])
 def export_excel():
@@ -1110,7 +1101,7 @@ def export_excel():
     all_str = request.args.get("all")
 
     try:
-        all_data = get_cached_all_data(ttl_seconds=60)
+        all_data = get_cached_all_data(ttl_seconds=15)
         for d in all_data:
             d["valor_final"] = extract_valor_final(d)
             d["status_operacional"] = compute_operational_status(d)
@@ -1235,9 +1226,10 @@ def api_relatorios():
     start_date_str = request.args.get("start_date", "").strip()
     end_date_str = request.args.get("end_date", "").strip()
     motorista_filtro = request.args.get("motorista", "").strip().upper()
+    nocache = request.args.get("nocache", "").strip().lower() in ["true", "1", "yes"]
 
     try:
-        all_data = get_cached_all_data(ttl_seconds=60)
+        all_data = get_cached_all_data(ttl_seconds=15, force_refresh=nocache)
         for d in all_data:
             d["valor_final"] = extract_valor_final(d)
             d["status_operacional"] = compute_operational_status(d)
