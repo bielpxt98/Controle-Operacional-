@@ -908,6 +908,41 @@ async function startWhatsApp() {
             return;
         }
 
+        // Reconhecimento inteligente de legenda indicando descarga concluída no CS (ex: "Finalizadas", "Finalizada", "Liberado CS", "Descarga finalizada")
+        const isLegendaFinalizadaCS = /\b(finalizad[ao]s?|liberad[ao]s?|conclu[ií]d[ao]s?|descarga\s*(?:no\s*)?cs)\b/i.test(captionMsg.trim());
+        if (isLegendaFinalizadaCS) {
+            console.log(`[WPP-GRUPO] Legenda de finalização no CS detectada ("${captionMsg.trim()}") para ${motoristaPrimeiroNome}. Buscando todas as coletas pendentes no CS...`);
+            const datasRecentesCS = getDatasRecentesFormatadas(7);
+            const dataHojeCompleta = dataHojeCurta + '/' + hojeObj.getFullYear();
+
+            const { data: pendentesMotorista } = await supabase.from('deliveries')
+                .select('id, delivery, cliente, f_horario, status, data, c_horario, pc')
+                .ilike('motorista', `%${motoristaPrimeiroNome}%`)
+                .order('id', { ascending: false });
+
+            const cargasParaBaixa = (pendentesMotorista || []).filter(p => {
+                const isRecent = datasRecentesCS.some(dr => (p.data || '').includes(dr));
+                const isConcluido = p.status === 'CONCLUIDO' || (p.f_horario && p.f_horario.trim() !== '' && p.f_horario !== '-');
+                return isRecent && !isConcluido;
+            });
+
+            if (cargasParaBaixa && cargasParaBaixa.length > 0) {
+                for (const carga of cargasParaBaixa) {
+                    await supabase.from('deliveries').update({
+                        f_horario: horaAtual,
+                        status: 'CONCLUIDO',
+                        data_finalizacao: dataHojeCompleta
+                    }).eq('id', carga.id);
+                }
+                const resumoBaixa = cargasParaBaixa.map(c => `• ${c.cliente || 'N/A'} (Delivery: ${c.delivery || 'S/D'}) - Data: ${c.data}`).join('\n');
+                await sock.sendMessage(GRUPO_TRABALHO, { 
+                    text: `✅ *${cargasParaBaixa.length} coleta(s) de ${motoristaPrimeiroNome} FINALIZADA(S) no CS!* (${horaAtual})\n\n${resumoBaixa}\n\n📅 DF: ${dataHojeCompleta}` 
+                });
+                console.log(`[WPP-GRUPO] ${cargasParaBaixa.length} coletas de ${motoristaPrimeiroNome} finalizadas via legenda CS com sucesso!`);
+                return;
+            }
+        }
+
         console.log(`[WPP-GRUPO] Foto enviada por ${motoristaPrimeiroNome}. Enfileirando na fila sequencial...`);
         enqueueMediaTask(async () => {
             console.log(`[WPP-GRUPO] Processando foto de ${motoristaPrimeiroNome}...`);
@@ -1135,22 +1170,26 @@ async function classifyImage(buffer, textCaption, isFromGroup, isTextOnly = fals
             prompt = `Você é um assistente de logística especialista em conferência de comprovantes e documentos de transporte.
 Analise a foto enviada pelo motorista no grupo de entregas.
 
+ORDEM E REGRAS DE EXTRAÇÃO:
+1. PRIORIDADE MÁXIMA - NÚMERO DE DELIVERY (10 DÍGITOS) E SR (8 DÍGITOS):
+   - Procure em primeiro lugar em toda a folha, canhotos, chave de acesso, carimbos ou anotações manuscritas qualquer sequência de 10 dígitos iniciando com 37 ou 34.
+   - Extraia o número principal no campo "delivery". Se houver mais de um número de 10 dígitos, liste todos no array "deliveries".
+   - Se houver número de SR (Service Request de 8 dígitos), preencha no campo "sr".
+   - REGRA ANTI-GLID: GLIDs (iniciando com 1000... ou 5500...) NUNCA são delivery!
+
+2. PRIORIDADE 2 - CARIMBO E ASSINATURA / VISTO DE RECEBIMENTO:
+   - Verifique se a folha possui carimbo da empresa recebedora, visto, assinatura, ticket de descarga/pesagem, ou anotações de recebimento ("recebido", "descarregado", etc.).
+   - Preencha o campo booleano "tem_carimbo": true se houver carimbo/assinatura/recebimento, ou false se a folha estiver totalmente em branco.
+
+3. PRIORIDADE 3 - NOME DO CLIENTE / DESTINATÁRIO:
+   - Depois de buscar as deliveries e carimbos, extraia a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente/destinatário da carga (ex: "MACAM", "WMS", "ASSAI", "ATACADAO", "COCA", "RAIA", "AMAZON", "JDE", "JSL", "BOOMIX", "DISTRIBUIDORA", "CABRAL", "SOLUCAO", "COMERCIAL", "MERCANTIL", "DROGARIA", "PLANETA", "ARMAZEM", "LUTAN", "DECMINAS", "CENCOSUD").
+
 CLASSIFICAÇÃO DO DOCUMENTO:
+- tipo "NF_ASSINADA": Qualquer foto de Nota Fiscal (DANFE), canhoto destacado, romaneio/folha de descarga de CS, comprovante de entrega, ticket de descarga/pesagem, espelho de NF ou declaração de devolução/SR enviada pelo motorista.
+- tipo "IRRELEVANTE": Fotos que NÃO contenham documento ou nota fiscal (selfie, rodovia, meme, comprovante pessoal, etc.).
 
-1. COMPROVANTE DE FINALIZAÇÃO (tipo: "NF_ASSINADA"):
-   - Qualquer foto de Nota Fiscal (DANFE), canhoto destacado, comprovante de entrega, ticket de descarga/pesagem, espelho de NF ou declaração de devolução/SR enviada pelo motorista para comprovar a finalização da descarga/entrega.
-   - Mesmo que o carimbo, assinatura, visto ou anotação manuscrita esteja em qualquer posição da folha, de cabeça para baixo, apagado, parcial ou na parte inferior/superior do canhoto.
-   - Se for uma Nota Fiscal / DANFE enviada pelo motorista, considere como comprovante de entrega ("NF_ASSINADA").
-
-2. FOTOS QUE NÃO SÃO DOCUMENTOS (tipo: "IRRELEVANTE"):
-   - Fotos que NÃO contenham documento ou nota fiscal (exemplo: fotos de selfie, fotos de estrada/rodovia, memes, comprovante de pix pessoal, etc.).
-
-Regras de Extração (quando for NF_ASSINADA):
-- Extraia a PRIMEIRA PALAVRA PRINCIPAL do nome do cliente/destinatário (ex: "ASSAI", "ATACADAO", "WMS", "COCA", "RAIA", "AMAZON", "JDE", "JSL", "BOOMIX", "DISTRIBUIDORA", "CABRAL", "SOLUCAO", "COMERCIAL", "MERCANTIL", "DROGARIA", "PLANETA", "ARMAZEM", "LUTAN", "DECMINAS", "CENCOSUD").
-- Identifique o número de Delivery: Sequência de 10 dígitos iniciando com 37 ou 34 (pode estar impressa no corpo da nota, na chave de acesso, ou escrita à mão pelo motorista).
-- Se houver número de SR (Service Request de 8 dígitos), preencha no campo "sr".
-- REGRA ANTI-GLID: GLIDs (iniciando com 1000... ou 5500...) NUNCA são delivery!
-- Devolva EXATAMENTE no formato JSON: {"tipo": "NF_ASSINADA", "cliente": "PRIMEIRA_PALAVRA_CLIENTE", "delivery": "NUM_10_DIGITOS", "sr": "NUM_8_DIGITOS"} (ou null onde não achar).`;
+Devolva EXATAMENTE no formato JSON estrito:
+{"tipo": "NF_ASSINADA", "delivery": "NUM_10_DIGITOS", "sr": "NUM_8_DIGITOS", "tem_carimbo": true, "cliente": "PRIMEIRA_PALAVRA_CLIENTE", "deliveries": ["NUM_10_DIGITOS"]}`;
         } else {
             prompt = `Analise a programação de cargas diárias enviada pelo usuário (pode ser uma imagem de tabela ou texto corrido como 'ArgemiroWMS Max').
 Extraia os dados em formato JSON estrito, sem formatação markdown.
@@ -1186,11 +1225,10 @@ Responda APENAS com o JSON.`;
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
-            "gemini-flash-lite-latest",
-            "gemini-3.5-flash-lite",
-            "gemini-3.1-flash-lite"
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-8b",
+            "gemini-2.0-flash",
+            "gemini-1.5-pro"
         ];
 
         let responseText = null;
@@ -1277,11 +1315,10 @@ Regras:
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
-            "gemini-flash-lite-latest",
-            "gemini-3.5-flash-lite",
-            "gemini-3.1-flash-lite"
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-8b",
+            "gemini-2.0-flash",
+            "gemini-1.5-pro"
         ];
 
         let responseText = null;
