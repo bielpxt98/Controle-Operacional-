@@ -1338,6 +1338,16 @@
             // Se o usuário apagou tudo, digitou hífen, ou digitou 0/00/00:00 para zerar/limpar:
             if (!raw || raw === '-' || raw === '0' || raw === '00' || raw === '00:00') {
                 input.value = '';
+                if (tr && input.classList.contains('input-fhorario')) {
+                    const dfInput = tr.querySelector('.input-df');
+                    if (dfInput) {
+                        const dataOrig = tr.getAttribute('data-original-date') || activeDateStr || _todayDateStr;
+                        dfInput.value = dataOrig;
+                        dfInput.dataset.lastEdited = String(Date.now());
+                        registerModifiedField(dfInput);
+                        syncFieldToTwin(dfInput);
+                    }
+                }
                 if (tr) {
                     updateRowStatus(tr);
                     handleAutoValorFinal(input);
@@ -1350,6 +1360,16 @@
             let val = raw.replace(/\D/g, '');
             if (!val || val === '0' || val === '00') {
                 input.value = '';
+                if (tr && input.classList.contains('input-fhorario')) {
+                    const dfInput = tr.querySelector('.input-df');
+                    if (dfInput) {
+                        const dataOrig = tr.getAttribute('data-original-date') || activeDateStr || _todayDateStr;
+                        dfInput.value = dataOrig;
+                        dfInput.dataset.lastEdited = String(Date.now());
+                        registerModifiedField(dfInput);
+                        syncFieldToTwin(dfInput);
+                    }
+                }
                 if (tr) {
                     updateRowStatus(tr);
                     handleAutoValorFinal(input);
@@ -1378,11 +1398,12 @@
             if (parseInt(mm, 10) > 59) mm = '59';
             input.value = `${hh}:${mm}`;
 
-            // Toda vez que o usuário digitar o H_FINALIZADO manualmente, atualiza o DF para a data real de hoje
+            // Toda vez que o usuário digitar ou alterar o H_FINALIZADO manualmente, atualiza o DF para a data ativa do relatório
             if (tr && input.classList.contains('input-fhorario')) {
                 const dfInput = tr.querySelector('.input-df');
-                if (dfInput && !dfInput.value) {
-                    dfInput.value = _todayDateStr;
+                if (dfInput) {
+                    const dataAlvo = activeDateStr || _todayDateStr;
+                    dfInput.value = dataAlvo;
                     dfInput.dataset.lastEdited = String(Date.now());
                     registerModifiedField(dfInput);
                     syncFieldToTwin(dfInput);

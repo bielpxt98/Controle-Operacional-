@@ -266,14 +266,16 @@ async function startWhatsApp() {
         const { connection, lastDisconnect, qr } = update;
         if (qr) { await qrcode.toFile(qrPath, qr); console.log("[WPP] QR Code gerado."); }
         if (connection === 'close') {
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const errorMsg = lastDisconnect?.error?.message || lastDisconnect?.error;
+            console.log(`[WPP] Conexão encerrada (código: ${statusCode || 'N/A'}). Motivo: ${errorMsg || 'desconhecido'}`);
             if (fs.existsSync(qrPath)) fs.unlinkSync(qrPath);
-            if (lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut) {
-                startWhatsApp();
-            } else {
+            if (statusCode === DisconnectReason.loggedOut) {
                 console.log("[WPP] Desconectado permanentemente (loggedOut). Limpando sessão...");
                 await clearSessionInSupabase();
-                startWhatsApp();
             }
+            console.log("[WPP] Reiniciando processo via supervisor...");
+            process.exit(0);
         } else if (connection === 'open') {
             if (fs.existsSync(qrPath)) fs.unlinkSync(qrPath);
             console.log('[WPP] Conectado e pronto!');
@@ -422,6 +424,19 @@ async function startWhatsApp() {
     const dataHojeCurta = hojeObj.getDate().toString().padStart(2, '0') + '/' + (hojeObj.getMonth() + 1).toString().padStart(2, '0');
     const formatterHora = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false });
     const horaAtual = formatterHora.format(new Date());
+
+    // ==========================================
+    // COMANDO DE TESTE / STATUS OPERACIONAL DO ROBÔ
+    // ==========================================
+    const isStatusCheck = (isAdmin || isFromGroup) && /^\s*(!?status|!?teste|!?ping|!?robo|!?robô)\s*$/i.test(txtMsg.trim());
+    if (isStatusCheck) {
+        console.log(`[WPP] Comando de STATUS recebido de ${senderName} (${remetenteNum})`);
+        const targetJid = isFromGroup ? msg.key.remoteJid : remetenteNum;
+        await sock.sendMessage(targetJid, {
+            text: `🤖 *Robô PURM Salvador ONLINE!* ✅\n\n🕒 *Horário:* ${horaAtual}\n📅 *Data:* ${dataHojeCurta}/${hojeObj.getFullYear()}\n📡 *Status:* Conectado e operando normalmente\n💡 _Pronto para leitura de deliveries, fotos de descarga e comandos operacionais._`
+        });
+        return;
+    }
 
     // ==========================================
     // CONSULTA: MOTORISTAS NO CS / PENDENTES DE DESCARGA
@@ -1181,7 +1196,7 @@ startWhatsApp();
 if (process.env.ENABLE_CHEP_LOOP === 'true') {
     iniciarLoopCHEP();
 } else {
-    console.log("[CHEP] Modo Standby ativado. Pronto para disparo manual via site ou local.");
+    console.log("[CHEP] Standby (aguardando botão 'Rodar CHEP'). Robô do WhatsApp 100% ATIVO e conectado.");
 }
 
 
