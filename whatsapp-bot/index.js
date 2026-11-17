@@ -1,5 +1,22 @@
 
 
+// ==========================================
+// ESCUDO ANTI-CRASH GLOBAL DO PROCESSO
+// Neutraliza falhas inesperadas de rede/criptografia do Baileys sem derrubar o robô
+// ==========================================
+process.on('uncaughtException', (err) => {
+    const msg = err?.message || String(err);
+    if (msg.includes('Unsupported state') || msg.includes('unable to authenticate data') || msg.includes('Decipheriv') || msg.includes('Bad MAC') || msg.includes('Session error')) {
+        console.error('[ANTI-CRASH] Erro de decifração/sessão capturado e neutralizado:', msg);
+        return;
+    }
+    console.error('[ANTI-CRASH] uncaughtException capturada:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.error('[ANTI-CRASH] unhandledRejection capturada:', reason?.message || reason);
+});
+
 // SILENCIADOR MÁXIMO DE LOGS DE CRIPTOGRAFIA
 ['log', 'info', 'warn', 'error', 'debug'].forEach(method => {
     const orig = console[method];
@@ -785,15 +802,17 @@ async function startWhatsApp() {
 
     // Se a mensagem for de SR ou GLID, NUNCA deve cair como delivery de 10 dígitos
     const isGlidOrSR = txtMsg.toUpperCase().includes('GLID') || txtMsg.toUpperCase().includes('SR');
-    const deliveryMatch = !isGlidOrSR ? txtMsg.match(/\b\d{10}\b/) : null;
-    if (deliveryMatch && quotedMsg && quotedMsg.imageMessage) {
+    const deliveryMatch = !isGlidOrSR ? txtMsg.match(/\b(37\d{8}|34\d{8})\b/) : null;
+    if (deliveryMatch && (quotedMsg || isAdmin || txtMsg.length >= 10)) {
         const numeroDelivery = deliveryMatch[0];
-        const legendaOriginal = quotedMsg.imageMessage.caption || "";
+        const legendaOriginal = (quotedMsg?.imageMessage?.caption || quotedMsg?.conversation || quotedMsg?.extendedTextMessage?.text || "");
         let paletesNumStr = "N/A";
         const updatePayload = { c_horario: horaAtual, f_horario: '-' };
         let extractedNum = null;
         
-        let matchSufixo = legendaOriginal.match(/(\d+)\s*(?:palet|un|und|p\b|cx|peca|peça)/i);
+        // 1. Tenta extrair paletes da legenda da mensagem citada ou do próprio texto enviado
+        const textoParaPaletes = (legendaOriginal + " " + txtMsg).trim();
+        let matchSufixo = textoParaPaletes.match(/(\d+)\s*(?:palet|un|und|p\b|cx|peca|peça)/i);
         if (matchSufixo) {
             extractedNum = parseInt(matchSufixo[1]);
         } else {
@@ -813,8 +832,9 @@ async function startWhatsApp() {
         
         const { data: verifJaColetado } = await supabase
             .from('deliveries')
-            .select('id, c_horario, cliente')
+            .select('id, c_horario, cliente, pc, data, motorista')
             .eq('delivery', numeroDelivery)
+            .order('id', { ascending: false })
             .limit(1);
 
         if (!verifJaColetado || verifJaColetado.length === 0) {
@@ -822,15 +842,22 @@ async function startWhatsApp() {
             return;
         }
 
-        if (verifJaColetado[0].c_horario && verifJaColetado[0].c_horario !== '-') {
-            console.log(`[WPP] Delivery ${numeroDelivery} já possui c_horario (${verifJaColetado[0].c_horario}). Ignorando disparo duplicado.`);
+        const registroAlvo = verifJaColetado[0];
+        if (registroAlvo.c_horario && registroAlvo.c_horario.trim() !== '' && registroAlvo.c_horario !== '-') {
+            console.log(`[WPP] Delivery ${numeroDelivery} já possui c_horario (${registroAlvo.c_horario}). Ignorando disparo duplicado.`);
             return;
         }
 
+        if (extractedNum === null && registroAlvo.pc) {
+            paletesNumStr = registroAlvo.pc.toString();
+        }
+
         console.log(`[WPP] H_COLETADO detectado. Delivery: ${numeroDelivery}, Paletes: ${paletesNumStr}`);
-        const { error } = await supabase.from('deliveries').update(updatePayload).eq('delivery', numeroDelivery);
+        const { error } = await supabase.from('deliveries').update(updatePayload).eq('id', registroAlvo.id);
         if (!error) {
-            await sock.sendMessage(GRUPO_TRABALHO, { text: `📦 H_COLETADO marcado! Delivery: ${numeroDelivery} | Paletes: ${paletesNumStr}` });
+            await sock.sendMessage(GRUPO_TRABALHO, { 
+                text: `📦 *H_COLETADO marcado!* (${horaAtual})\n• Delivery: *${numeroDelivery}*\n• Cliente: *${registroAlvo.cliente || 'N/A'}*\n• Motorista: *${registroAlvo.motorista || 'N/A'}*\n• Paletes: *${paletesNumStr}*` 
+            });
         }
         return;
     }
