@@ -261,7 +261,17 @@ async function clearSessionInSupabase() {
 async function startWhatsApp() {
     await restoreSessionFromSupabase();
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-    const sock = makeWASocket({ auth: state, printQRInTerminal: false, logger: pino({ level: "silent" }), browser: ["Controle CHEP", "Chrome", "10.0.0"] });
+    const sock = makeWASocket({ 
+        auth: state, 
+        printQRInTerminal: false, 
+        logger: pino({ level: "silent" }), 
+        browser: ["Controle CHEP", "Chrome", "10.0.0"],
+        syncFullHistory: false, // Impede 'deaf sessions' (travar o event loop com download de histórico antigo)
+        markOnlineOnConnect: true,
+        getMessage: async () => {
+            return { conversation: '' };
+        }
+    });
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
         if (qr) { await qrcode.toFile(qrPath, qr); console.log("[WPP] QR Code gerado."); }
@@ -287,9 +297,10 @@ async function startWhatsApp() {
         scheduleSessionBackupToSupabase();
     });
     sock.ev.on('messages.upsert', async (m) => {
-        if (m.type !== 'notify') return; // Apenas notificações em tempo real, descarta append/histórico
+        console.log(`[WPP-EVENTO] Upsert recebido: tipo=${m.type}, msgs=${m.messages?.length}`);
+        if (m.type !== 'notify' && m.type !== 'append') return; // Permite notify e append (mensagens do próprio dono)
         const msg = m.messages?.[0];
-        if (!msg || !msg.message) return; // Removida a trava fromMe para permitir que o próprio dono ative os gatilhos
+        if (!msg || !msg.message) return;
 
         // Ignora eventos de exclusão/revogação de mensagem
         if (msg.message.protocolMessage) return;
@@ -304,9 +315,11 @@ async function startWhatsApp() {
             }
         }
 
-        // Filtro de mensagens antigas (evita reexecução ao reiniciar/reconectar)
+        // Filtro de mensagens antigas: descarta se for mais antiga que 10 minutos (600s)
+        const nowSec = Math.floor(Date.now() / 1000);
         const msgTime = typeof msg.messageTimestamp === 'number' ? msg.messageTimestamp : (msg.messageTimestamp?.low || 0);
-        if (msgTime && msgTime < botStartTime - 15) {
+        if (msgTime && (nowSec - msgTime > 600)) {
+            console.log(`[WPP-DEBUG] Mensagem ignorada por ser muito antiga (${nowSec - msgTime}s atrás).`);
             return;
         }
     
