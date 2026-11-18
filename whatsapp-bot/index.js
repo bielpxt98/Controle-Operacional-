@@ -833,9 +833,9 @@ async function startWhatsApp() {
     const deliveryMatch = !isGlidOrSR ? txtMsg.match(/\b(37\d{8}|34\d{8})\b/) : null;
     if (deliveryMatch && (quotedMsg || isAdmin || txtMsg.length >= 10)) {
         const numeroDelivery = deliveryMatch[0];
+        const isRemessa340 = numeroDelivery.startsWith('340');
         const legendaOriginal = (quotedMsg?.imageMessage?.caption || quotedMsg?.conversation || quotedMsg?.extendedTextMessage?.text || "");
         let paletesNumStr = "N/A";
-        const updatePayload = { c_horario: horaAtual, f_horario: '-' };
         let extractedNum = null;
         
         // 1. Tenta extrair paletes da legenda da mensagem citada ou do próprio texto enviado
@@ -852,7 +852,43 @@ async function startWhatsApp() {
                 if (fallbackPrimeiro) extractedNum = parseInt(fallbackPrimeiro[1]);
             }
         }
+
+        // REGRA DE REMESSA (340...): O motorista pega no CS para entregar no cliente.
+        // O envio inicial da delivery representa H_LOCAL (Chegada no CS para carregar) e NÃO H_COLETADO!
+        if (isRemessa340) {
+            const { data: verifRemessa } = await supabase
+                .from('deliveries')
+                .select('id, l_horario, cliente, pc, data, motorista')
+                .eq('delivery', numeroDelivery)
+                .order('id', { ascending: false })
+                .limit(1);
+
+            if (!verifRemessa || verifRemessa.length === 0) {
+                console.log(`[WPP] Remessa ${numeroDelivery} não encontrada no banco. Ignorando.`);
+                return;
+            }
+
+            const registroAlvo = verifRemessa[0];
+            if (registroAlvo.l_horario && registroAlvo.l_horario.trim() !== '' && registroAlvo.l_horario !== '-') {
+                console.log(`[WPP] Remessa ${numeroDelivery} já possui l_horario (${registroAlvo.l_horario}). Ignorando duplicado.`);
+                return;
+            }
+
+            const updatePayload = { l_horario: horaAtual };
+            if (extractedNum !== null) updatePayload.pc = extractedNum;
+
+            console.log(`[WPP] H_LOCAL detectado para Remessa ${numeroDelivery}`);
+            const { error } = await supabase.from('deliveries').update(updatePayload).eq('id', registroAlvo.id);
+            if (!error) {
+                await sock.sendMessage(GRUPO_TRABALHO, { 
+                    text: `📍 *H_LOCAL / CHEGADA (REMESSA) marcada!* (${horaAtual})\n• Delivery: *${numeroDelivery}*\n• Cliente: *${registroAlvo.cliente || 'N/A'}*\n• Motorista: *${registroAlvo.motorista || 'N/A'}*\n📦 _Aguardando carregamento no CS_` 
+                });
+            }
+            return;
+        }
         
+        // REGRA DE COLETA NORMAL (37...): Envio da delivery marca H_COLETADO
+        const updatePayload = { c_horario: horaAtual, f_horario: '-' };
         if (extractedNum !== null) {
             updatePayload.pc = extractedNum;
             paletesNumStr = extractedNum.toString();
@@ -1125,10 +1161,32 @@ async function startWhatsApp() {
                 }
                 if (finalizavelId) {
                     const dataHojeCompleta = dataHojeCurta + '/' + hojeObj.getFullYear();
-                    const { error: updErr } = await supabase.from('deliveries').update({ f_horario: horaAtual, status: 'CONCLUIDO', data_finalizacao: dataHojeCompleta }).eq('id', finalizavelId);
-                    if (updErr) console.log('[ERRO SUPABASE]', updErr);
-                    await sock.sendMessage(GRUPO_TRABALHO, { text: `✅ H_FINALIZADO marcado! Cliente: ${finalizavelCliente} | Delivery: ${finalizavelDelivery} | Hora: ${horaAtual} | DF: ${dataHojeCompleta}` });
-                    console.log(`[WPP-GRUPO] H_FINALIZADO marcado com sucesso! ID: ${finalizavelId}`);
+                    const isRemessa = String(finalizavelDelivery || '').startsWith('340');
+
+                    if (isRemessa && !json.tem_carimbo) {
+                        // REMESSA (340...) SEM CARIMBO = Carregamento no CS concluído! Marca H_COLETADO e a caminho do cliente
+                        const { error: updErr } = await supabase.from('deliveries').update({
+                            c_horario: horaAtual,
+                            f_horario: '-'
+                        }).eq('id', finalizavelId);
+                        if (updErr) console.log('[ERRO SUPABASE]', updErr);
+                        await sock.sendMessage(GRUPO_TRABALHO, {
+                            text: `📦 *H_COLETADO marcado para REMESSA!* (${horaAtual})\n• Cliente: *${finalizavelCliente}*\n• Delivery: *${finalizavelDelivery}*\n• Motorista: *${motoristaPrimeiroNome}*\n🚛 _Carregamento concluído no CS. A caminho do cliente!_`
+                        });
+                        console.log(`[WPP-GRUPO] H_COLETADO Remessa (sem carimbo) marcado! ID: ${finalizavelId}`);
+                    } else {
+                        // Coleta normal OU Remessa com carimbo = Descarga concluída / H_FINALIZADO!
+                        const { error: updErr } = await supabase.from('deliveries').update({
+                            f_horario: horaAtual,
+                            status: 'CONCLUIDO',
+                            data_finalizacao: dataHojeCompleta
+                        }).eq('id', finalizavelId);
+                        if (updErr) console.log('[ERRO SUPABASE]', updErr);
+                        await sock.sendMessage(GRUPO_TRABALHO, {
+                            text: `✅ *H_FINALIZADO marcado!* (${horaAtual})\n• Cliente: *${finalizavelCliente}*\n• Delivery: *${finalizavelDelivery}*\n• Motorista: *${motoristaPrimeiroNome}*\n📅 DF: *${dataHojeCompleta}*`
+                        });
+                        console.log(`[WPP-GRUPO] H_FINALIZADO marcado com sucesso! ID: ${finalizavelId}`);
+                    }
                 } else {
                     console.log(`[WPP-GRUPO] Nenhuma carga encontrada para motorista=${motoristaPrimeiroNome}`);
                     // Só envia alerta no grupo se a IA de fato leu um número explícito de Delivery ou SR
