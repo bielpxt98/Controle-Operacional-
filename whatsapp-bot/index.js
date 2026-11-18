@@ -744,11 +744,20 @@ async function startWhatsApp() {
             if (srMatch) srFallbackNum = srMatch[1];
         }
         
-        // Verifica se a entrega existe
-        const { data: verif } = await supabase.from('deliveries').select('id, cliente, status, motorista').eq('delivery', numeroDeliveryStr).limit(1);
+        // Verifica se a entrega existe (na coluna delivery ou no campo MOTIVO/observacoes)
+        let { data: verif } = await supabase.from('deliveries').select('id, cliente, status, motorista, delivery, observacoes').eq('delivery', numeroDeliveryStr).limit(1);
+        if (!verif || verif.length === 0) {
+            const { data: verifMotivo } = await supabase.from('deliveries').select('id, cliente, status, motorista, delivery, observacoes').ilike('observacoes', `%${numeroDeliveryStr}%`).limit(1);
+            if (verifMotivo && verifMotivo.length > 0) {
+                verif = verifMotivo;
+                console.log(`[WPP] Delivery ${numeroDeliveryStr} localizada no campo MOTIVO (observacoes) da entrega ${verif[0].delivery}!`);
+            }
+        }
         if (verif && verif.length > 0) {
             let updateObj = {};
             let msgSucesso = "";
+            const devRef = verif[0].delivery || numeroDeliveryStr;
+            const extraMotivo = (verif[0].observacoes && String(verif[0].observacoes).includes(numeroDeliveryStr)) ? ` (Motivo: ${numeroDeliveryStr})` : '';
             
             if (isSrFallback && srFallbackNum) {
                 updateObj = {
@@ -756,14 +765,14 @@ async function startWhatsApp() {
                     c_horario: horaAtual,
                     f_horario: '-'
                 };
-                msgSucesso = `✅ *SR ${srFallbackNum} e H_COLETADO corrigidos com sucesso!*\n• Cliente: *${verif[0].cliente}*\n• Delivery: *${numeroDeliveryStr}*\n• Hora: *${horaAtual}*`;
+                msgSucesso = `✅ *SR ${srFallbackNum} e H_COLETADO corrigidos com sucesso!*\n• Cliente: *${verif[0].cliente}*\n• Delivery: *${devRef}*${extraMotivo}\n• Hora: *${horaAtual}*`;
             } else {
                 updateObj = {
                     f_horario: horaAtual,
                     status: 'CONCLUIDO',
                     data_finalizacao: dataHojeCompleta
                 };
-                msgSucesso = `✅ *H_FINALIZADO confirmado e corrigido!* (${horaAtual})\n• Cliente: *${verif[0].cliente}*\n• Delivery: *${numeroDeliveryStr}*\n• Motorista: *${verif[0].motorista || 'Identificado'}*\n• Data Feita: *${dataHojeCompleta}*`;
+                msgSucesso = `✅ *H_FINALIZADO confirmado e corrigido!* (${horaAtual})\n• Cliente: *${verif[0].cliente}*\n• Delivery: *${devRef}*${extraMotivo}\n• Motorista: *${verif[0].motorista || 'Identificado'}*\n• Data Feita: *${dataHojeCompleta}*`;
             }
             
             const { error: updErr } = await supabase.from('deliveries').update(updateObj).eq('id', verif[0].id);
@@ -874,12 +883,25 @@ async function startWhatsApp() {
         // REGRA DE REMESSA (340...): O motorista pega no CS para entregar no cliente.
         // O envio inicial da delivery representa H_LOCAL (Chegada no CS para carregar) e NÃO H_COLETADO!
         if (isRemessa340) {
-            const { data: verifRemessa } = await supabase
+            let { data: verifRemessa } = await supabase
                 .from('deliveries')
-                .select('id, l_horario, cliente, pc, data, motorista')
+                .select('id, l_horario, cliente, pc, data, motorista, delivery, observacoes')
                 .eq('delivery', numeroDelivery)
                 .order('id', { ascending: false })
                 .limit(1);
+
+            if (!verifRemessa || verifRemessa.length === 0) {
+                const { data: verifMotivo } = await supabase
+                    .from('deliveries')
+                    .select('id, l_horario, cliente, pc, data, motorista, delivery, observacoes')
+                    .ilike('observacoes', `%${numeroDelivery}%`)
+                    .order('id', { ascending: false })
+                    .limit(1);
+                if (verifMotivo && verifMotivo.length > 0) {
+                    verifRemessa = verifMotivo;
+                    console.log(`[WPP] Remessa ${numeroDelivery} encontrada no campo MOTIVO (observacoes) da linha ${verifRemessa[0].delivery}!`);
+                }
+            }
 
             if (!verifRemessa || verifRemessa.length === 0) {
                 console.log(`[WPP] Remessa ${numeroDelivery} não encontrada no banco. Ignorando.`);
@@ -898,8 +920,9 @@ async function startWhatsApp() {
             console.log(`[WPP] H_LOCAL detectado para Remessa ${numeroDelivery}`);
             const { error } = await supabase.from('deliveries').update(updatePayload).eq('id', registroAlvo.id);
             if (!error) {
+                const devExibir = registroAlvo.delivery || numeroDelivery;
                 await sock.sendMessage(GRUPO_TRABALHO, { 
-                    text: `📍 *H_LOCAL / CHEGADA (REMESSA) marcada!* (${horaAtual})\n• Delivery: *${numeroDelivery}*\n• Cliente: *${registroAlvo.cliente || 'N/A'}*\n• Motorista: *${registroAlvo.motorista || 'N/A'}*\n📦 _Aguardando carregamento no CS_` 
+                    text: `📍 *H_LOCAL / CHEGADA (REMESSA) marcada!* (${horaAtual})\n• Delivery: *${devExibir}*\n• Cliente: *${registroAlvo.cliente || 'N/A'}*\n• Motorista: *${registroAlvo.motorista || 'N/A'}*\n📦 _Aguardando carregamento no CS_` 
                 });
             }
             return;
@@ -912,12 +935,25 @@ async function startWhatsApp() {
             paletesNumStr = extractedNum.toString();
         }
         
-        const { data: verifJaColetado } = await supabase
+        let { data: verifJaColetado } = await supabase
             .from('deliveries')
-            .select('id, c_horario, cliente, pc, data, motorista')
+            .select('id, c_horario, cliente, pc, data, motorista, delivery, observacoes')
             .eq('delivery', numeroDelivery)
             .order('id', { ascending: false })
             .limit(1);
+
+        if (!verifJaColetado || verifJaColetado.length === 0) {
+            const { data: verifMotivo } = await supabase
+                .from('deliveries')
+                .select('id, c_horario, cliente, pc, data, motorista, delivery, observacoes')
+                .ilike('observacoes', `%${numeroDelivery}%`)
+                .order('id', { ascending: false })
+                .limit(1);
+            if (verifMotivo && verifMotivo.length > 0) {
+                verifJaColetado = verifMotivo;
+                console.log(`[WPP] Delivery ${numeroDelivery} encontrada no campo MOTIVO (observacoes) da coleta ${verifJaColetado[0].delivery}!`);
+            }
+        }
 
         if (!verifJaColetado || verifJaColetado.length === 0) {
             console.log(`[WPP] Delivery ${numeroDelivery} não encontrada no banco. Ignorando.`);
@@ -937,8 +973,9 @@ async function startWhatsApp() {
         console.log(`[WPP] H_COLETADO detectado. Delivery: ${numeroDelivery}, Paletes: ${paletesNumStr}`);
         const { error } = await supabase.from('deliveries').update(updatePayload).eq('id', registroAlvo.id);
         if (!error) {
+            const devExibir = registroAlvo.delivery || numeroDelivery;
             await sock.sendMessage(GRUPO_TRABALHO, { 
-                text: `📦 *H_COLETADO marcado!* (${horaAtual})\n• Delivery: *${numeroDelivery}*\n• Cliente: *${registroAlvo.cliente || 'N/A'}*\n• Motorista: *${registroAlvo.motorista || 'N/A'}*\n• Paletes: *${paletesNumStr}*` 
+                text: `📦 *H_COLETADO marcado!* (${horaAtual})\n• Delivery: *${devExibir}*\n• Cliente: *${registroAlvo.cliente || 'N/A'}*\n• Motorista: *${registroAlvo.motorista || 'N/A'}*\n• Paletes: *${paletesNumStr}*` 
             });
         }
         return;
@@ -1100,7 +1137,7 @@ async function startWhatsApp() {
                 }
 
                 if (!finalizavelId) {
-                    // Estrategia 1: Buscar SOMENTE pelo numero de delivery (mais confiavel)
+                    // Estrategia 1: Buscar pelo numero de delivery (coluna delivery E campo MOTIVO/observacoes)
                     const deliveryStr = String(deliveryLido || "");
                     const candidatos10 = [];
                     if (deliveryStr.length === 10) {
@@ -1113,10 +1150,22 @@ async function startWhatsApp() {
                     }
                     
                     for (const num of candidatos10) {
-                        const { data: exatos } = await supabase.from('deliveries')
-                            .select('id, delivery, cliente, f_horario, status, data')
+                        let { data: exatos } = await supabase.from('deliveries')
+                            .select('id, delivery, cliente, f_horario, status, data, observacoes')
                             .eq('delivery', num)
                             .order('id', { ascending: false });
+                        
+                        let achouNoMotivo = false;
+                        if (!exatos || exatos.length === 0) {
+                            const { data: noMotivo } = await supabase.from('deliveries')
+                                .select('id, delivery, cliente, f_horario, status, data, observacoes')
+                                .ilike('observacoes', `%${num}%`)
+                                .order('id', { ascending: false });
+                            if (noMotivo && noMotivo.length > 0) {
+                                exatos = noMotivo;
+                                achouNoMotivo = true;
+                            }
+                        }
                         
                         if (exatos && exatos.length > 0) {
                             // Prioriza coleta NÃO concluída e RECENTE
@@ -1130,10 +1179,56 @@ async function startWhatsApp() {
                                 finalizavelId = alvoDev.id;
                                 finalizavelDelivery = alvoDev.delivery;
                                 finalizavelCliente = alvoDev.cliente || clienteLimpo;
-                                console.log(`[WPP-GRUPO] ✅ Delivery encontrado pelo numero: ${num} | Cliente: ${finalizavelCliente}`);
+                                console.log(`[WPP-GRUPO] ✅ Delivery encontrado ${achouNoMotivo ? 'no campo MOTIVO (observacoes)' : 'pelo numero'}: ${num} | Cliente: ${finalizavelCliente}`);
                                 break;
                             }
                         }
+                    }
+                }
+
+                // Estrategia 1.5: Tolerância de OCR no campo MOTIVO para o motorista que enviou a foto
+                if (!finalizavelId && motoristaPrimeiroNome) {
+                    const { data: motoristaLoads } = await supabase.from('deliveries')
+                        .select('id, delivery, cliente, f_horario, status, data, observacoes')
+                        .ilike('motorista', `%${motoristaPrimeiroNome}%`)
+                        .order('id', { ascending: false });
+
+                    const pendentesMot = (motoristaLoads || []).filter(p => {
+                        const isRecent = datasRecentes.some(dr => (p.data || '').includes(dr));
+                        const isConcluido = p.status === 'CONCLUIDO' || (p.f_horario && p.f_horario.trim() !== '' && p.f_horario !== '-');
+                        return isRecent && !isConcluido && p.observacoes;
+                    });
+
+                    const deliveryStr = String(deliveryLido || "");
+                    const candidatosList = [];
+                    if (deliveryStr.length === 10) candidatosList.push(deliveryStr);
+                    else if (deliveryStr.length > 10) {
+                        for (let i = 0; i <= deliveryStr.length - 10; i++) {
+                            const sub = deliveryStr.slice(i, i + 10);
+                            if (/^\d{10}$/.test(sub)) candidatosList.push(sub);
+                        }
+                    }
+
+                    for (const num of candidatosList) {
+                        for (const p of pendentesMot) {
+                            const obsClean = String(p.observacoes || '');
+                            const matchObs10 = obsClean.match(/\b(37\d{8}|34\d{8})\b/);
+                            if (matchObs10) {
+                                const obsNum = matchObs10[1];
+                                let difs = 0;
+                                for (let i = 0; i < 10; i++) {
+                                    if (num[i] !== obsNum[i]) difs++;
+                                }
+                                if (difs <= 1) {
+                                    finalizavelId = p.id;
+                                    finalizavelDelivery = p.delivery;
+                                    finalizavelCliente = p.cliente || clienteLimpo;
+                                    console.log(`[WPP-GRUPO] ✅ Match inteligente no MOTIVO (${obsNum} ~ ${num}, dif=${difs}) para motorista ${motoristaPrimeiroNome}! Cliente: ${finalizavelCliente}`);
+                                    break;
+                                }
+                            }
+                        }
+                        if (finalizavelId) break;
                     }
                 }
                 
@@ -1142,7 +1237,7 @@ async function startWhatsApp() {
                     console.log(`[WPP-GRUPO] Delivery não encontrado. Tentando FALLBACK seguro cruzando cliente para motorista=${motoristaPrimeiroNome}...`);
                     
                     const { data: allMotoristaLoads } = await supabase.from('deliveries')
-                        .select('id, delivery, cliente, f_horario, status, data')
+                        .select('id, delivery, cliente, f_horario, status, data, observacoes')
                         .ilike('motorista', `%${motoristaPrimeiroNome}%`)
                         .order('id', { ascending: false });
 
