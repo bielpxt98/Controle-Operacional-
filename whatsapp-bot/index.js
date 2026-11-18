@@ -354,6 +354,15 @@ async function startWhatsApp() {
     }
     const textoCompleto = (txtMsg + " " + captionMsg).toLowerCase();
     const quotedMsg = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
+    const quotedText = (
+        quotedMsg?.conversation || 
+        quotedMsg?.extendedTextMessage?.text || 
+        quotedMsg?.ephemeralMessage?.message?.extendedTextMessage?.text || 
+        quotedMsg?.ephemeralMessage?.message?.conversation || 
+        quotedMsg?.imageMessage?.caption || 
+        msg.message.extendedTextMessage?.contextInfo?.quotedMessage?.conversation ||
+        ""
+    ).trim();
     
     const numA = "558194346196";
     const numB = "5581994346196"; 
@@ -363,6 +372,7 @@ async function startWhatsApp() {
     const numF = "557186888333"; // Gabriel Peixoto atual
     const isAdmin = msg.key.fromMe || 
         remetenteNum.includes("557181942525") || 
+        remetenteNum.includes("205428436762672") || // LID Gabriel Peixoto
         remetenteNum.includes(numA) || 
         remetenteNum.includes(numB) || 
         remetenteNum.includes(numC) || 
@@ -712,54 +722,62 @@ async function startWhatsApp() {
     }
 
     // ==========================================
-    // LÓGICA DE REVISÃO DE FINALIZAÇÃO (ADMIN MANUALLY REPLIES WITH DELIVERY NUMBER)
+    // LÓGICA DE REVISÃO DE FINALIZAÇÃO (RESPOSTA COM NÚMERO DA DELIVERY OU ADMIN)
     // ==========================================
-    if (isAdmin && txtMsg.match(/^\s*\d{10}\s*$/) && quotedMsg && !quotedMsg.imageMessage) {
-        const quotedText = quotedMsg.conversation || quotedMsg.extendedTextMessage?.text || "";
-        if (quotedText.includes("para finalizar") || quotedText.includes("Não consegui localizar") || quotedText.includes("Não consegui achar carga pendente para") || quotedText.includes("SR:")) {
-            const numeroDeliveryStr = txtMsg.match(/\d{10}/)[0];
-            const dataHojeCompleta = dataHojeCurta + '/' + hojeObj.getFullYear();
-            
-            const isSrFallback = quotedText.includes("SR:");
-            let srFallbackNum = null;
-            if (isSrFallback) {
-                const srMatch = quotedText.match(/SR:\s*(\d{8})/);
-                if (srMatch) srFallbackNum = srMatch[1];
-            }
-            
-            // Verifica se a entrega existe
-            const { data: verif } = await supabase.from('deliveries').select('id, cliente, status').eq('delivery', numeroDeliveryStr).limit(1);
-            if (verif && verif.length > 0) {
-                let updateObj = {};
-                let msgSucesso = "";
-                
-                if (isSrFallback && srFallbackNum) {
-                    updateObj = {
-                        sr: srFallbackNum,
-                        c_horario: horaAtual,
-                        f_horario: '-'
-                    };
-                    msgSucesso = `✅ SR ${srFallbackNum} e H_COLETADO corrigidos manualmente! Cliente: ${verif[0].cliente} | Delivery: ${numeroDeliveryStr} | Hora: ${horaAtual}`;
-                } else {
-                    updateObj = {
-                        f_horario: horaAtual,
-                        status: 'CONCLUIDO',
-                        data_finalizacao: dataHojeCompleta
-                    };
-                    msgSucesso = `✅ H_FINALIZADO corrigido manualmente! Cliente: ${verif[0].cliente} | Delivery: ${numeroDeliveryStr} | Hora: ${horaAtual} | DF: ${dataHojeCompleta}`;
-                }
-                
-                const { error: updErr } = await supabase.from('deliveries').update(updateObj).eq('id', verif[0].id);
-                
-                if (!updErr) {
-                    await sock.sendMessage(GRUPO_TRABALHO, { text: msgSucesso });
-                    console.log(`[WPP] Correção manual via WhatsApp para delivery ${numeroDeliveryStr} processada.`);
-                }
-            } else {
-                await sock.sendMessage(GRUPO_TRABALHO, { text: `❌ Não encontrei nenhuma entrega no banco com o delivery ${numeroDeliveryStr}.` });
-            }
-            return;
+    const matchDelivery10 = txtMsg.match(/\b(37\d{8}|34\d{8})\b/);
+    const quotedLower = (quotedText || "").toLowerCase();
+    const isQuotingFinalizacao = quotedLower.includes("finalizar") || 
+                                 quotedLower.includes("localizar") || 
+                                 quotedLower.includes("pendente") || 
+                                 quotedLower.includes("preencha manualmente") || 
+                                 quotedLower.includes("delivery lido") ||
+                                 quotedLower.includes("sr:");
+
+    if (matchDelivery10 && (isQuotingFinalizacao || (isAdmin && quotedMsg && !quotedMsg.imageMessage))) {
+        const numeroDeliveryStr = matchDelivery10[0];
+        const dataHojeCompleta = dataHojeCurta + '/' + hojeObj.getFullYear();
+        
+        const isSrFallback = quotedLower.includes("sr:");
+        let srFallbackNum = null;
+        if (isSrFallback) {
+            const srMatch = quotedText.match(/SR:\s*(\d{8})/i);
+            if (srMatch) srFallbackNum = srMatch[1];
         }
+        
+        // Verifica se a entrega existe
+        const { data: verif } = await supabase.from('deliveries').select('id, cliente, status, motorista').eq('delivery', numeroDeliveryStr).limit(1);
+        if (verif && verif.length > 0) {
+            let updateObj = {};
+            let msgSucesso = "";
+            
+            if (isSrFallback && srFallbackNum) {
+                updateObj = {
+                    sr: srFallbackNum,
+                    c_horario: horaAtual,
+                    f_horario: '-'
+                };
+                msgSucesso = `✅ *SR ${srFallbackNum} e H_COLETADO corrigidos com sucesso!*\n• Cliente: *${verif[0].cliente}*\n• Delivery: *${numeroDeliveryStr}*\n• Hora: *${horaAtual}*`;
+            } else {
+                updateObj = {
+                    f_horario: horaAtual,
+                    status: 'CONCLUIDO',
+                    data_finalizacao: dataHojeCompleta
+                };
+                msgSucesso = `✅ *H_FINALIZADO confirmado e corrigido!* (${horaAtual})\n• Cliente: *${verif[0].cliente}*\n• Delivery: *${numeroDeliveryStr}*\n• Motorista: *${verif[0].motorista || 'Identificado'}*\n• Data Feita: *${dataHojeCompleta}*`;
+            }
+            
+            const { error: updErr } = await supabase.from('deliveries').update(updateObj).eq('id', verif[0].id);
+            
+            if (!updErr) {
+                await sock.sendMessage(GRUPO_TRABALHO, { text: msgSucesso });
+                console.log(`[WPP] Finalização/Correção manual processada para delivery ${numeroDeliveryStr}!`);
+            } else {
+                console.error(`[WPP] Erro ao atualizar Supabase:`, updErr);
+            }
+        } else {
+            await sock.sendMessage(GRUPO_TRABALHO, { text: `❌ Não encontrei nenhuma entrega no banco com a delivery *${numeroDeliveryStr}*.` });
+        }
+        return;
     }
 
     // ==========================================
@@ -1136,7 +1154,12 @@ async function startWhatsApp() {
                     });
 
                     if (pendentes && pendentes.length > 0 && clienteLimpo && clienteLimpo.length >= 3) {
-                        const norm = str => (str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+                        const norm = str => (str || '')
+                            .normalize("NFD")
+                            .replace(/[\u0300-\u036f]/g, "")
+                            .toUpperCase()
+                            .replace(/\bASSAL\b/g, 'ASSAI')
+                            .replace(/\bJDE\b/g, 'JDE CAFE');
                         const clienteIANorm = norm(clienteLimpo);
                         const palavrasIA = clienteIANorm.split(/\s+/).filter(w => w.length > 3);
                         

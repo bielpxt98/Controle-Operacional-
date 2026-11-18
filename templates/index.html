@@ -19,30 +19,44 @@
 
         @media (max-width: 900px) {
             header {
-                padding: 0.6rem 1rem;
+                padding: 0.5rem 0.8rem;
                 flex-wrap: wrap;
-                gap: 8px;
+                gap: 6px;
                 justify-content: center;
                 text-align: center;
             }
             .header-title h1 {
-                font-size: 0.95rem;
+                font-size: 0.9rem;
             }
-            .header-logo-img { height: 24px; }
-            .user-menu { font-size: 0.8rem; padding: 6px 12px; width: 100%; justify-content: center; }
+            .header-logo-img { height: 22px; }
+            .user-menu { font-size: 0.75rem; padding: 4px 8px; width: 100%; justify-content: center; }
             
             .table-responsive { display: none !important; }
-            .mobile-cards { display: flex !important; flex-direction: column; gap: 16px; margin-top: 10px; }
+            .mobile-cards { display: flex !important; flex-direction: column; gap: 12px; margin-top: 10px; }
             
-            .search-bar-wrapper { padding: 10px; justify-content: center; }
+            .search-bar-wrapper { padding: 6px 10px; justify-content: center; }
             .search-container { min-width: 100%; margin: 0; }
             
-            .report-header { flex-direction: column; align-items: stretch; text-align: center; }
-            .report-actions { display: flex; flex-direction: column; width: 100%; gap: 10px; }
-            .report-actions button, .report-actions div { width: 100%; justify-content: center; }
+            .report-header { flex-direction: column; align-items: stretch; text-align: center; padding: 10px 8px; gap: 8px; }
+            .report-actions {
+                display: grid !important;
+                grid-template-columns: repeat(2, 1fr) !important;
+                gap: 6px !important;
+                width: 100% !important;
+            }
+            .report-actions button, .report-actions .export-btn, .report-actions div {
+                width: 100% !important;
+                padding: 8px 6px !important;
+                font-size: 0.78rem !important;
+                justify-content: center !important;
+                box-sizing: border-box !important;
+            }
+            .report-actions div[style*="position: relative"] {
+                grid-column: 1 / -1;
+            }
             
-            .days-strip { padding: 0.5rem; gap: 4px; }
-            .day-pill { min-width: 65px; padding: 6px 4px; }
+            .days-strip { padding: 0.4rem; gap: 4px; overflow-x: auto; }
+            .day-pill { min-width: 60px; padding: 5px 3px; font-size: 0.75rem; }
         }
 
         @media (min-width: 901px) {
