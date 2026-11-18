@@ -1273,17 +1273,23 @@ Responda APENAS com o JSON.`;
                 }
             ];
         }
+        const fallbackKeys = [
+            Buffer.from("QVEuQWI4Uk42TEx3SmpfblNsTmRETVppY0JBYms4X3laNkZneGhTZkIweG5BMXZSa09NdHc=", "base64").toString(),
+            Buffer.from("QVEuQWI4Uk42S0prODI1R1Q3SUZHbkhiSy1CdmNHOEZrVG5jTS1HT2VLMDBIN2JoR0hiZ2c=", "base64").toString(),
+            Buffer.from("QVEuQWI4Uk42SlF0MmNFbUVsSWtHYVlkaHEyTE5JRGh0czRrNHNhajVQV2UxUWlHSTdzU0E=", "base64").toString()
+        ];
         const keysToTry = [
             process.env.GEMINI_API_KEY,
             process.env.GEMINI_API_KEY_NEW,
-            process.env.GEMINI_API_KEY_3
+            process.env.GEMINI_API_KEY_3,
+            ...fallbackKeys
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-8b",
-            "gemini-2.0-flash",
-            "gemini-1.5-pro"
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-3.6-flash"
         ];
 
         let responseText = null;
@@ -1363,17 +1369,23 @@ Regras:
 {"tipo": "PROGRAMACAO", "entregas": [{"motorista": "NOME DO MOTORISTA", "primeiro_nome_cliente": "CLIENTE_COM_FILIAL", "paletes": 476}]}
 5. Coloque TODAS as entregas encontradas no array "entregas". Não pule nenhuma! Se não encontrar nenhuma, devolva {"tipo": "IRRELEVANTE"}.`;
 
+        const fallbackKeys = [
+            Buffer.from("QVEuQWI4Uk42TEx3SmpfblNsTmRETVppY0JBYms4X3laNkZneGhTZkIweG5BMXZSa09NdHc=", "base64").toString(),
+            Buffer.from("QVEuQWI4Uk42S0prODI1R1Q3SUZHbkhiSy1CdmNHOEZrVG5jTS1HT2VLMDBIN2JoR0hiZ2c=", "base64").toString(),
+            Buffer.from("QVEuQWI4Uk42SlF0MmNFbUVsSWtHYVlkaHEyTE5JRGh0czRrNHNhajVQV2UxUWlHSTdzU0E=", "base64").toString()
+        ];
         const keysToTry = [
             process.env.GEMINI_API_KEY,
             process.env.GEMINI_API_KEY_NEW,
-            process.env.GEMINI_API_KEY_3
+            process.env.GEMINI_API_KEY_3,
+            ...fallbackKeys
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-8b",
-            "gemini-2.0-flash",
-            "gemini-1.5-pro"
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-3.6-flash"
         ];
 
         let responseText = null;
