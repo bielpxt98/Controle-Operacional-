@@ -1054,41 +1054,6 @@ async function startWhatsApp() {
             return;
         }
 
-        // Reconhecimento inteligente de legenda indicando descarga concluída no CS (ex: "Finalizadas", "Finalizada", "Liberado CS", "Descarga finalizada")
-        const isLegendaFinalizadaCS = /\b(finalizad[ao]s?|liberad[ao]s?|conclu[ií]d[ao]s?|descarga\s*(?:no\s*)?cs)\b/i.test(captionMsg.trim());
-        if (isLegendaFinalizadaCS) {
-            console.log(`[WPP-GRUPO] Legenda de finalização no CS detectada ("${captionMsg.trim()}") para ${motoristaPrimeiroNome}. Buscando todas as coletas pendentes no CS...`);
-            const datasRecentesCS = getDatasRecentesFormatadas(7);
-            const dataHojeCompleta = dataHojeCurta + '/' + hojeObj.getFullYear();
-
-            const { data: pendentesMotorista } = await supabase.from('deliveries')
-                .select('id, delivery, cliente, f_horario, status, data, c_horario, pc')
-                .ilike('motorista', `%${motoristaPrimeiroNome}%`)
-                .order('id', { ascending: false });
-
-            const cargasParaBaixa = (pendentesMotorista || []).filter(p => {
-                const isRecent = datasRecentesCS.some(dr => (p.data || '').includes(dr));
-                const isConcluido = p.status === 'CONCLUIDO' || (p.f_horario && p.f_horario.trim() !== '' && p.f_horario !== '-');
-                return isRecent && !isConcluido;
-            });
-
-            if (cargasParaBaixa && cargasParaBaixa.length > 0) {
-                for (const carga of cargasParaBaixa) {
-                    await supabase.from('deliveries').update({
-                        f_horario: horaAtual,
-                        status: 'CONCLUIDO',
-                        data_finalizacao: dataHojeCompleta
-                    }).eq('id', carga.id);
-                }
-                const resumoBaixa = cargasParaBaixa.map(c => `• ${c.cliente || 'N/A'} (Delivery: ${c.delivery || 'S/D'}) - Data: ${c.data}`).join('\n');
-                await sock.sendMessage(GRUPO_TRABALHO, { 
-                    text: `✅ *${cargasParaBaixa.length} coleta(s) de ${motoristaPrimeiroNome} FINALIZADA(S) no CS!* (${horaAtual})\n\n${resumoBaixa}\n\n📅 DF: ${dataHojeCompleta}` 
-                });
-                console.log(`[WPP-GRUPO] ${cargasParaBaixa.length} coletas de ${motoristaPrimeiroNome} finalizadas via legenda CS com sucesso!`);
-                return;
-            }
-        }
-
         console.log(`[WPP-GRUPO] Foto enviada por ${motoristaPrimeiroNome}. Enfileirando na fila sequencial...`);
         enqueueMediaTask(async () => {
             console.log(`[WPP-GRUPO] Processando foto de ${motoristaPrimeiroNome}...`);
