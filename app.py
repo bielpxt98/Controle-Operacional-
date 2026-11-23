@@ -732,12 +732,21 @@ def list_backups():
                         meta = json.load(fp)
                     xlsx_name = f.replace(".json", ".xlsx")
                     has_xlsx = os.path.exists(os.path.join(BACKUP_DIR, xlsx_name))
+                    total_count = meta.get("total")
+                    if total_count is None and isinstance(meta.get("coletas"), list):
+                        total_count = len(meta.get("coletas"))
+                    elif total_count is None:
+                        total_count = 0
                     snapshots.append({
                         "file": f,
+                        "json_file": f,
                         "xlsx_file": xlsx_name if has_xlsx else None,
+                        "excel_file": xlsx_name if has_xlsx else None,
+                        "has_excel": has_xlsx,
                         "timestamp": meta.get("timestamp"),
-                        "data_formatada": meta.get("data_formatada"),
-                        "total": meta.get("total", 0)
+                        "data_formatada": meta.get("data_formatada") or meta.get("timestamp"),
+                        "total": total_count,
+                        "total_coletas": total_count
                     })
                 except Exception:
                     pass
@@ -769,7 +778,7 @@ def restore_backup():
     try:
         payload = request.get_json(force=True) or {}
         filename = payload.get("file")
-        if not filename:
+        if not filename or filename == "undefined" or filename == "null":
             files = sorted([f for f in os.listdir(BACKUP_DIR) if f.startswith("snapshot_") and f.endswith(".json")], reverse=True)
             if not files:
                 return jsonify({"status": "error", "message": "Nenhum snapshot de backup disponivel para restaurar"}), 400

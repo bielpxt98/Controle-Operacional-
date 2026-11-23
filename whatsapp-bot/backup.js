@@ -106,9 +106,10 @@ async function executarBackupDiario() {
             }
         });
         
+        const emailTo = process.env.EMAIL_TO || emailUser;
         const mailOptions = {
             from: emailUser,
-            to: 'gabrielpxt98@gmail.com',
+            to: emailTo,
             subject: `Backup Diário de Operações (CHEP) - ${hoje.toLocaleDateString('pt-BR')}`,
             text: 'Olá Gabriel,\n\nSegue em anexo a planilha com o backup de todas as entregas registradas no seu sistema até o momento.\n\nAtenciosamente,\nSeu Robô Gerente 🤖',
             attachments: [
@@ -120,7 +121,7 @@ async function executarBackupDiario() {
         };
         
         await transporter.sendMail(mailOptions);
-        console.log("[BACKUP] Email enviado com sucesso para gabrielpxt98@gmail.com!");
+        console.log(`[BACKUP] Email enviado com sucesso para ${emailTo}!`);
         
         // Apaga do servidor pra não lotar
         fs.unlinkSync(filePath);
