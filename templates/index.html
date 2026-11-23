@@ -2740,7 +2740,7 @@
                         </select>
                     </div>
                 </td>
-                <td><input type="text" class="input-delivery" value="${deliveryVal}" style="font-weight: 700; color: #60a5fa;" oninput="updateWppMessage(this.closest('tr'))" onblur="checkDuplicateDelivery(this)"></td>
+                <td><input type="text" class="input-delivery" value="${deliveryVal}" style="font-weight: 700; color: #60a5fa;" onfocus="this.setAttribute('data-prev-val', this.value.trim())" oninput="updateWppMessage(this.closest('tr'))" onblur="checkDuplicateDelivery(this)"></td>
                 <td><input type="text" class="input-cliente" value="${clienteVal}" title="${clienteVal}" onblur="autoExpandCliente(this)" onchange="autoExpandCliente(this)" oninput="updateWppMessage(this.closest('tr'))"></td>
                 <td><input type="number" min="0" class="input-paletes" value="${escapeAttr(rec.paletes ?? '')}" oninput="if(this.value<0)this.value=0; handleAutoValorFinal(this)" onblur="handleAutoValorFinal(this); saveCurrentDayColetasSilent()"></td>
                 <td><input type="number" min="0" class="input-pc" value="${rec.pc === null || rec.pc === undefined ? '' : rec.pc}" style="color: #34d399; font-weight: 700;" onblur="updateRowStatus(this.closest('tr')); handleAutoValorFinal(this); saveCurrentDayColetasSilent()" oninput="if(this.value<0)this.value=0; updateRowStatus(this.closest('tr')); handleAutoValorFinal(this)"></td>
@@ -2839,7 +2839,7 @@
                 <div class="card-grid">
                     <div class="card-field">
                         <span class="card-label">Delivery</span>
-                        <input type="text" class="card-input input-delivery" value="${deliveryVal}" style="color:#60a5fa;font-weight:700" oninput="updateCardWpp(this.closest('.coleta-card'))" onblur="checkDuplicateDelivery(this)">
+                        <input type="text" class="card-input input-delivery" value="${deliveryVal}" style="color:#60a5fa;font-weight:700" onfocus="this.setAttribute('data-prev-val', this.value.trim())" oninput="updateCardWpp(this.closest('.coleta-card'))" onblur="checkDuplicateDelivery(this)">
                     </div>
                     <div class="card-field">
                         <span class="card-label">Paletes</span>
@@ -3141,7 +3141,7 @@
         let _pendingSaveDate = null;
 
         function saveCurrentDayColetasSilent() {
-            if (isSearchActive() || window.isLoadingDayData) return;
+            if (isSearchActive() || window.isLoadingDayData || window._isCheckingDelivery) return;
             const coletas = collectRowsFromUI();
             if (window.daysCache) window.daysCache[activeDateStr] = coletas;
             saveLocalBackupForDay(activeDateStr, coletas);
@@ -3154,7 +3154,7 @@
         }
 
         function saveCurrentDayColetasDirectAsync(dateForSave) {
-            if (isSearchActive() || window.isEmAbertoActive || window.isLoadingDayData) return;
+            if (isSearchActive() || window.isEmAbertoActive || window.isLoadingDayData || window._isCheckingDelivery) return;
             const targetDate = dateForSave || activeDateStr;
 
             // Fila de salvamento serializada: se já houver um salvamento em trânsito, agenda o próximo
@@ -3657,6 +3657,19 @@
             }
             const tr = inputElement.closest('tr') || inputElement.closest('.coleta-card');
             const idAttr = tr.getAttribute('data-id');
+            const prevVal = inputElement.getAttribute('data-prev-val') || '';
+
+            // Se o valor não mudou, não precisa re-verificar
+            if (prevVal && prevVal === deliveryVal && idAttr) {
+                return;
+            }
+
+            // Trava imediata de auto-salvamento enquanto valida a duplicidade
+            window._isCheckingDelivery = true;
+            if (_autoSaveTimer) {
+                clearTimeout(_autoSaveTimer);
+                _autoSaveTimer = null;
+            }
             
             try {
                 const res = await fetch(`/api/check_delivery?delivery=${encodeURIComponent(deliveryVal)}&exclude_id=${idAttr||''}`);
@@ -3664,7 +3677,7 @@
                 if (json.status === 'success' && json.exists) {
                     const match = json.data;
                     if (match.data !== activeDateStr) {
-                        const confirmMove = confirm(`A coleta ${deliveryVal} já existe no dia ${match.data}. Deseja transferi-la para o dia atual (${activeDateStr})?`);
+                        const confirmMove = confirm(`A coleta ${deliveryVal} já existe no dia ${match.data}.\n\nDeseja transferi-la para o dia atual (${activeDateStr})?\n\n• [OK / SIM] -> Transfere a coleta para ${activeDateStr}\n• [CANCELAR / NÃO] -> Mantém no dia ${match.data} e não transfere nada.`);
                         if (confirmMove) {
                             inputElement.disabled = true;
                             try {
@@ -3681,10 +3694,13 @@
                                     }
                                     tr.setAttribute('data-id', match.id);
                                     tr.setAttribute('data-original-date', activeDateStr);
+                                    inputElement.setAttribute('data-prev-val', deliveryVal);
                                     const twinTr = findTwinElement(tr);
                                     if (twinTr) {
                                         twinTr.setAttribute('data-id', match.id);
                                         twinTr.setAttribute('data-original-date', activeDateStr);
+                                        const twinInp = twinTr.querySelector('.input-delivery');
+                                        if (twinInp) twinInp.setAttribute('data-prev-val', deliveryVal);
                                     }
 
                                     const driverKey = (match.motorista || '').toLowerCase();
@@ -3738,6 +3754,7 @@
                                     tr.style.backgroundColor = 'rgba(16, 185, 129, 0.25)';
                                     setTimeout(() => { tr.style.backgroundColor = origBg; }, 1800);
 
+                                    window._isCheckingDelivery = false;
                                     saveCurrentDayColetasDirectAsync(activeDateStr);
                                 } else {
                                     alert('Erro ao transferir coleta: ' + (moveJson.message || 'Falha no servidor'));
@@ -3747,48 +3764,62 @@
                                 alert('Erro de conexão ao transferir coleta.');
                             } finally {
                                 inputElement.disabled = false;
+                                window._isCheckingDelivery = false;
                             }
                         } else {
                             // Se NÃO/CANCELAR: a coleta original permanece intacta em match.data
-                            // e a linha que estava sendo criada no dia atual é excluída/limpa imediatamente
+                            // e o valor digitado/colado é imediatamente desfeito
+                            inputElement.value = prevVal;
                             const twin = findTwinElement(tr);
-                            const allTrs = document.querySelectorAll('#tableBody tr');
-                            const allCards = document.querySelectorAll('.coleta-card');
-                            const totalRows = Math.max(allTrs.length, allCards.length);
+                            if (twin) {
+                                const twinDeliv = twin.querySelector('.input-delivery');
+                                if (twinDeliv) twinDeliv.value = prevVal;
+                            }
 
-                            if (totalRows > 1) {
-                                tr.remove();
-                                if (twin) twin.remove();
-                            } else {
-                                tr.removeAttribute('data-id');
-                                tr.removeAttribute('data-original-date');
-                                if (twin) {
-                                    twin.removeAttribute('data-id');
-                                    twin.removeAttribute('data-original-date');
+                            // Se a linha era nova e não tem ID nem valor anterior, limpa ou remove
+                            if (!idAttr && !prevVal) {
+                                const allTrs = document.querySelectorAll('#tableBody tr');
+                                const allCards = document.querySelectorAll('.coleta-card');
+                                const totalRows = Math.max(allTrs.length, allCards.length);
+
+                                if (totalRows > 1) {
+                                    tr.remove();
+                                    if (twin) twin.remove();
+                                } else {
+                                    tr.removeAttribute('data-id');
+                                    tr.removeAttribute('data-original-date');
+                                    if (twin) {
+                                        twin.removeAttribute('data-id');
+                                        twin.removeAttribute('data-original-date');
+                                    }
+                                    tr.querySelectorAll('input').forEach(inp => { inp.value = ''; });
+                                    tr.querySelectorAll('select').forEach(sel => { sel.selectedIndex = 0; });
+                                    if (twin) {
+                                        twin.querySelectorAll('input').forEach(inp => { inp.value = ''; });
+                                        twin.querySelectorAll('select').forEach(sel => { sel.selectedIndex = 0; });
+                                    }
+                                    updateRowStatus(tr);
                                 }
-                                tr.querySelectorAll('input').forEach(inp => { inp.value = ''; });
-                                tr.querySelectorAll('select').forEach(sel => { sel.selectedIndex = 0; });
-                                if (twin) {
-                                    twin.querySelectorAll('input').forEach(inp => { inp.value = ''; });
-                                    twin.querySelectorAll('select').forEach(sel => { sel.selectedIndex = 0; });
-                                }
-                                updateRowStatus(tr);
                             }
 
                             if (window.daysCache) {
                                 delete window.daysCache[activeDateStr];
                             }
+                            window._isCheckingDelivery = false;
                             saveCurrentDayColetasSilent();
                             return;
                         }
                     } else {
+                        window._isCheckingDelivery = false;
                         saveCurrentDayColetasSilent();
                     }
                 } else {
+                    window._isCheckingDelivery = false;
                     saveCurrentDayColetasSilent();
                 }
             } catch (e) {
                 console.error("Erro ao verificar delivery duplo:", e);
+                window._isCheckingDelivery = false;
                 saveCurrentDayColetasSilent();
             }
         }

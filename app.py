@@ -336,8 +336,8 @@ def db_update_by_id(rec_id, registro):
 
 def db_insert_new(registro):
     headers = get_headers()
-    headers["Prefer"] = "return=representation, resolution=merge-duplicates"
-    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?on_conflict=delivery"
+    headers["Prefer"] = "return=representation"
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries"
     res = requests.post(url, headers=headers, json=registro, timeout=12)
     if res.status_code in [200, 201]:
         return res.json()
@@ -1064,6 +1064,30 @@ def save_coletas():
 
                 res = db_update_by_id(int(rec_id), registro_final)
             else:
+                # TRAVA DE SEGURANÇA TOTAL PARA COLETAS NOVAS (sem ID):
+                # Se o usuário colou/digitou uma delivery que já existe no Supabase em OUTRA data,
+                # a rota normal POST /api/coletas NUNCA pode sobrescrever nem mover essa coleta!
+                # Mudança de data só é permitida explicitamente via /api/move_delivery quando o usuário confirma no pop-up.
+                if deliv_raw:
+                    try:
+                        url_chk = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?delivery=eq.{deliv_raw}&select=id,data,cliente,motorista"
+                        res_chk = requests.get(url_chk, headers=get_headers(), timeout=5)
+                        if res_chk.status_code in [200, 206]:
+                            existing_match = res_chk.json()
+                            if existing_match:
+                                match_item = existing_match[0]
+                                if match_item.get("data") and match_item.get("data") != data_operacao:
+                                    print(f"[BLOQUEIO DE SEGURANÇA] Tentativa de inserir/mover delivery {deliv_raw} de {match_item.get('data')} para {data_operacao} via rota comum. Operação bloqueada para proteger os dados!")
+                                    continue
+                                else:
+                                    matched_id = match_item.get("id")
+                                    if matched_id:
+                                        res = db_update_by_id(int(matched_id), registro_final)
+                                        saved_items.extend(res if isinstance(res, list) else [res])
+                                        continue
+                    except Exception as e_chk:
+                        print(f"Erro ao verificar duplicidade de delivery: {e_chk}")
+
                 res = db_insert_new(registro_final)
 
             saved_items.extend(res if isinstance(res, list) else [res])
