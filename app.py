@@ -1644,7 +1644,8 @@ DEFAULT_DRIVERS = [
     {"id": "leandro_de_andrade", "name": "LEANDRO DE ANDRADE", "cpf": "017.793.835.84", "cavalo": "NZP7012", "carreta": "-"},
     {"id": "luis_carlos", "name": "LUIS CARLOS", "cpf": "830.317.905-53", "cavalo": "KLB5018", "carreta": "NKZ6545"},
     {"id": "romilson_damasceno", "name": "ROMILSON DAMASCENO", "cpf": "615.715.635-04", "cavalo": "KJY3204", "carreta": "KGG1152"},
-    {"id": "valdemir_de_jesus", "name": "VALDEMIR DE JESUS", "cpf": "044.327.095-37", "cavalo": "HWB9F22", "carreta": "-"}
+    {"id": "valdemir_de_jesus", "name": "VALDEMIR DE JESUS", "cpf": "044.327.095-37", "cavalo": "HWB9F22", "carreta": "-"},
+    {"id": "marcio_souza", "name": "MARCIO SOUZA", "cpf": "822.008.155-49", "cavalo": "JNZ8068", "carreta": "-"}
 ]
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

@@ -387,7 +387,7 @@ async function startWhatsApp() {
     // 1. MENSAGEM NO PRIVADO
     // =========================================================
     const senderNameUpper = senderName.toUpperCase();
-    const isTerceiro = senderNameUpper.includes("ARIEL") || senderNameUpper.includes("LEANDRO") || senderNameUpper.includes("LEO");
+    const isTerceiro = senderNameUpper.includes("ARIEL") || senderNameUpper.includes("LEANDRO") || senderNameUpper.includes("LEO") || senderNameUpper.includes("MARCIO");
 
     if (!isFromGroup) {
         if (!isAdmin && !isTerceiro) return; 
@@ -435,6 +435,7 @@ async function startWhatsApp() {
         if (s.includes("FABIO")) return "FABIO";
         if (s.includes("ARIEL")) return "ARIEL";
         if (s.includes("LEANDRO") || s.includes("LEO")) return "LEANDRO";
+        if (s.includes("MARCIO")) return "MARCIO";
         
         // Fallback: primeira palavra sem caracteres especiais
         const primeira = s.split(/\s+/)[0].replace(/[^A-Z]/g, '');
@@ -630,7 +631,7 @@ async function startWhatsApp() {
         const srMatch = txtMsg.match(/\b\d{8}\b/);
         if (srMatch) {
             const numeroSR = srMatch[0];
-            const motoristasConhecidos = ["GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIS", "FABIO", "ARIEL", "LEANDRO", "ROMILSON"];
+            const motoristasConhecidos = ["GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIS", "FABIO", "ARIEL", "LEANDRO", "ROMILSON", "MARCIO"];
             let motoristaAlvo = motoristasConhecidos.find(m => txtMsg.toUpperCase().includes(m));
             
             // Se o motorista não estiver explícito no texto, tenta extrair da legenda da mensagem citada (se houver)
@@ -793,7 +794,7 @@ async function startWhatsApp() {
     // LÓGICA DE MARCAÇÃO MANUAL H_LOCAL (ADMIN)
     // ==========================================
     if (isAdmin && txtMsg) {
-        const motoristasConhecidos = ["GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIZ", "LUIS", "FABIO", "ARIEL", "LEANDRO", "ROMILSON"];
+        const motoristasConhecidos = ["GABRIEL", "ARGEMIRO", "VALDEMIR", "JONES", "LUIZ", "LUIS", "FABIO", "ARIEL", "LEANDRO", "ROMILSON", "MARCIO"];
         const palavrasMsg = txtMsg.trim().split(/\s+/);
         const firstWord = palavrasMsg[0].toUpperCase();
         
@@ -1623,7 +1624,8 @@ async function handleMotorista(json, senderName) {
             "ARIEL": "ARIEL NASCIMENTO",
             "LEANDRO": "LEANDRO DE ANDRADE",
             "ROMILSON": "ROMILSON DAMASCENO",
-            "ROMILDO": "ROMILSON DAMASCENO"
+            "ROMILDO": "ROMILSON DAMASCENO",
+            "MARCIO": "MARCIO SOUZA"
         };
         for (const key of Object.keys(mapNomes)) {
             if (motoristaFormatado.includes(key)) {
