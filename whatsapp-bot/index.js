@@ -1417,8 +1417,7 @@ Responda APENAS com o JSON.`;
         }
         const fallbackKeys = [
             Buffer.from("QVEuQWI4Uk42TEx3SmpfblNsTmRETVppY0JBYms4X3laNkZneGhTZkIweG5BMXZSa09NdHc=", "base64").toString(),
-            Buffer.from("QVEuQWI4Uk42S0prODI1R1Q3SUZHbkhiSy1CdmNHOEZrVG5jTS1HT2VLMDBIN2JoR0hiZ2c=", "base64").toString(),
-            Buffer.from("QVEuQWI4Uk42SlF0MmNFbUVsSWtHYVlkaHEyTE5JRGh0czRrNHNhajVQV2UxUWlHSTdzU0E=", "base64").toString()
+            Buffer.from("QVEuQWI4Uk42STlpV093S1JLYzBCT0NnUTJBMTZvSEEzZ2hRVlYwSk5iZ0NrZDhGakE4OWc=", "base64").toString()
         ];
         const keysToTry = [
             process.env.GEMINI_API_KEY,
@@ -1428,9 +1427,9 @@ Responda APENAS com o JSON.`;
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-8b"
+            "gemini-flash-lite-latest",
+            "gemini-3.5-flash-lite",
+            "gemini-3.8-flash"
         ];
 
         let responseText = null;
@@ -1512,8 +1511,7 @@ Regras:
 
         const fallbackKeys = [
             Buffer.from("QVEuQWI4Uk42TEx3SmpfblNsTmRETVppY0JBYms4X3laNkZneGhTZkIweG5BMXZSa09NdHc=", "base64").toString(),
-            Buffer.from("QVEuQWI4Uk42S0prODI1R1Q3SUZHbkhiSy1CdmNHOEZrVG5jTS1HT2VLMDBIN2JoR0hiZ2c=", "base64").toString(),
-            Buffer.from("QVEuQWI4Uk42SlF0MmNFbUVsSWtHYVlkaHEyTE5JRGh0czRrNHNhajVQV2UxUWlHSTdzU0E=", "base64").toString()
+            Buffer.from("QVEuQWI4Uk42STlpV093S1JLYzBCT0NnUTJBMTZvSEEzZ2hRVlYwSk5iZ0NrZDhGakE4OWc=", "base64").toString()
         ];
         const keysToTry = [
             process.env.GEMINI_API_KEY,
@@ -1523,9 +1521,9 @@ Regras:
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-8b"
+            "gemini-flash-lite-latest",
+            "gemini-3.5-flash-lite",
+            "gemini-3.8-flash"
         ];
 
         let responseText = null;
