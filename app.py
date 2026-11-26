@@ -1,14 +1,47 @@
 import os
 import json
 import time
+import smtplib
+from email.message import EmailMessage
 from flask import Flask, render_template, request, jsonify, send_file
 import requests
 import pandas as pd
 from io import BytesIO
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+try:
+    from zoneinfo import ZoneInfo
+    BRT_TZ = ZoneInfo("America/Sao_Paulo")
+except Exception:
+    BRT_TZ = timezone(timedelta(hours=-3))
+
+def now_brt():
+    return datetime.now(BRT_TZ).replace(tzinfo=None)
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Carrega variáveis do .env se existir (sem depender de python-dotenv)
+_env_path = os.path.join(BASE_DIR, ".env")
+if os.path.exists(_env_path):
+    try:
+        with open(_env_path, "r", encoding="utf-8") as _ef:
+            for _line in _ef:
+                _line = _line.strip()
+                if _line and not _line.startswith("#") and "=" in _line:
+                    _k, _v = _line.split("=", 1)
+                    os.environ.setdefault(_k.strip(), _v.strip())
+    except Exception:
+        pass
+
+from sqlite_mirror import (
+    mirror_sync_all,
+    mirror_upsert_rows,
+    mirror_delete_row,
+    mirror_get_all,
+    mirror_get_by_dates,
+    mirror_pending_count,
+    flush_pending_to_supabase,
+)
 
 import gzip
 
@@ -287,19 +320,35 @@ def get_real_table_columns():
     return KNOWN_DELIVERIES_COLS
 
 def db_select_all():
-    """Busca todos os registros do Supabase sem filtro de data (para pesquisa global)."""
+    """Busca todos os registros do Supabase com paginação completa (sem limite de 1000 linhas) e fallback SQLite."""
     try:
-        headers = get_headers()
-        headers["Range"] = "0-9999"
-        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=*&delivery=neq.SYS_WPP_SESSION&order=id.desc"
-        res = requests.get(url, headers=headers, timeout=12)
-        if res.status_code in [200, 201, 206]:
-            return res.json()
-        print(f"Erro em db_select_all: HTTP {res.status_code} - {res.text}")
-        return []
+        all_rows = []
+        offset = 0
+        batch_size = 1000
+        while True:
+            headers = get_headers()
+            headers["Range"] = f"{offset}-{offset + batch_size - 1}"
+            url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/deliveries?select=*&delivery=neq.SYS_WPP_SESSION&order=id.desc"
+            res = requests.get(url, headers=headers, timeout=12)
+            if res.status_code not in [200, 201, 206]:
+                if all_rows:
+                    break
+                print(f"Erro em db_select_all: HTTP {res.status_code} - {res.text}")
+                return mirror_get_all()
+            chunk = res.json()
+            if not chunk:
+                break
+            all_rows.extend(chunk)
+            if len(chunk) < batch_size:
+                break
+            offset += batch_size
+
+        if all_rows:
+            mirror_sync_all(all_rows)
+        return all_rows
     except Exception as e:
-        print(f"Erro em db_select_all: {e}")
-        return []
+        print(f"Erro em db_select_all (usando espelho SQLite local): {e}")
+        return mirror_get_all()
 
 # ===== CACHE INTELIGENTE EM MEMÓRIA RAM (TTL = 60s) =====
 _DATA_CACHE = {
@@ -642,8 +691,8 @@ _last_snapshot_time = 0
 def create_coletas_snapshot(trigger="auto"):
     global _last_snapshot_time
     now = time.time()
-    # Throttling de snapshot automático a cada 60s
-    if trigger == "auto" and (now - _last_snapshot_time < 60):
+    # Throttling de snapshot automático a cada 120s
+    if trigger == "auto" and (now - _last_snapshot_time < 120):
         return None
     _last_snapshot_time = now
 
@@ -652,54 +701,73 @@ def create_coletas_snapshot(trigger="auto"):
         if not all_data:
             return None
 
-        timestamp_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        brt_now = now_brt()
+        timestamp_str = brt_now.strftime("%Y-%m-%d_%H-%M-%S")
+        day_str = brt_now.strftime("%Y-%m-%d")
         json_file = os.path.join(BACKUP_DIR, f"snapshot_{timestamp_str}.json")
         xlsx_file = os.path.join(BACKUP_DIR, f"snapshot_{timestamp_str}.xlsx")
 
+        payload_json = {
+            "timestamp": timestamp_str,
+            "data_formatada": brt_now.strftime("%d/%m/%Y %H:%M:%S"),
+            "total": len(all_data),
+            "coletas": all_data
+        }
+
         # 1. Salva JSON completo com todos os campos
         with open(json_file, "w", encoding="utf-8") as f:
-            json.dump({
-                "timestamp": timestamp_str,
-                "data_formatada": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-                "total": len(all_data),
-                "coletas": all_data
-            }, f, ensure_ascii=False, indent=2)
+            json.dump(payload_json, f, ensure_ascii=False, indent=2)
 
-        # 2. Salva Planilha Excel organizada
-        try:
-            df_rows = []
-            for item in all_data:
-                df_rows.append({
-                    "ID": item.get("id"),
-                    "Data": item.get("data"),
-                    "Delivery": item.get("delivery"),
-                    "Cliente": item.get("cliente"),
-                    "Motorista": item.get("motorista"),
-                    "Paletes Agendados": item.get("paletes"),
-                    "Paletes Coletados (PC)": item.get("pc"),
-                    "Valor Frete": item.get("valor_frete"),
-                    "Valor Final": item.get("valor_final"),
-                    "H_Local": item.get("l_horario"),
-                    "H_Coletado": item.get("c_horario"),
-                    "H_Finalizado": item.get("f_horario"),
-                    "DF": item.get("data_finalizacao") or item.get("df"),
-                    "SR": item.get("sr"),
-                    "Observações/Motivo": item.get("observacoes") or item.get("motivo"),
-                    "Cavalo": item.get("cavalo"),
-                    "Carreta": item.get("carreta"),
-                    "Status": item.get("status")
-                })
-            df = pd.DataFrame(df_rows)
-            with pd.ExcelWriter(xlsx_file, engine="openpyxl") as writer:
-                df.to_excel(writer, index=False, sheet_name="Coletas")
-                ws = writer.sheets["Coletas"]
-                for idx, col in enumerate(df.columns):
-                    col_letter = chr(65 + idx) if idx < 26 else f"A{chr(65 + idx - 26)}"
-                    ws.column_dimensions[col_letter].width = 20
-        except Exception as e_xlsx:
-            print("Aviso ao salvar Excel do snapshot:", e_xlsx)
+        # 2. Gera planilha Excel sob demanda (manual, email, daily ou move) para poupar RAM no auto-save
+        should_build_xlsx = trigger in ["manual", "email", "daily", "move", "pre_restore"]
+        daily_dir = os.path.join(BACKUP_DIR, "daily")
+        os.makedirs(daily_dir, exist_ok=True)
+        daily_json = os.path.join(daily_dir, f"daily_{day_str}.json")
+        daily_xlsx = os.path.join(daily_dir, f"daily_{day_str}.xlsx")
 
-        # 3. Limpeza automática (mantém os últimos 20 snapshots)
+        if not os.path.exists(daily_json):
+            should_build_xlsx = True
+            with open(daily_json, "w", encoding="utf-8") as dfp:
+                json.dump(payload_json, dfp, ensure_ascii=False, indent=2)
+
+        if should_build_xlsx:
+            try:
+                df_rows = []
+                for item in all_data:
+                    df_rows.append({
+                        "ID": item.get("id"),
+                        "Data": item.get("data"),
+                        "Delivery": item.get("delivery"),
+                        "Cliente": item.get("cliente"),
+                        "Motorista": item.get("motorista"),
+                        "Paletes Agendados": item.get("paletes"),
+                        "Paletes Coletados (PC)": item.get("pc"),
+                        "Valor Frete": item.get("valor_frete"),
+                        "Valor Final": item.get("valor_final"),
+                        "H_Local": item.get("l_horario"),
+                        "H_Coletado": item.get("c_horario"),
+                        "H_Finalizado": item.get("f_horario"),
+                        "DF": item.get("data_finalizacao") or item.get("df"),
+                        "SR": item.get("sr"),
+                        "Observações/Motivo": item.get("observacoes") or item.get("motivo"),
+                        "Cavalo": item.get("cavalo"),
+                        "Carreta": item.get("carreta"),
+                        "Status": item.get("status")
+                    })
+                df = pd.DataFrame(df_rows)
+                with pd.ExcelWriter(xlsx_file, engine="openpyxl") as writer:
+                    df.to_excel(writer, index=False, sheet_name="Coletas")
+                    ws = writer.sheets["Coletas"]
+                    for idx, col in enumerate(df.columns):
+                        col_letter = chr(65 + idx) if idx < 26 else f"A{chr(65 + idx - 26)}"
+                        ws.column_dimensions[col_letter].width = 20
+                if not os.path.exists(daily_xlsx) or trigger in ["daily", "email"]:
+                    import shutil
+                    shutil.copy2(xlsx_file, daily_xlsx)
+            except Exception as e_xlsx:
+                print("Aviso ao salvar Excel do snapshot:", e_xlsx)
+
+        # 3. Limpeza automática: mantém os últimos 20 snapshots intraday + 30 dias de backups diários
         try:
             json_files = sorted([f for f in os.listdir(BACKUP_DIR) if f.startswith("snapshot_") and f.endswith(".json")])
             if len(json_files) > 20:
@@ -711,6 +779,16 @@ def create_coletas_snapshot(trigger="auto"):
                             os.remove(xlsx_old)
                     except Exception:
                         pass
+            daily_files = sorted([f for f in os.listdir(daily_dir) if f.startswith("daily_") and f.endswith(".json")])
+            if len(daily_files) > 30:
+                for old_df in daily_files[:-30]:
+                    try:
+                        os.remove(os.path.join(daily_dir, old_df))
+                        dx = os.path.join(daily_dir, old_df.replace(".json", ".xlsx"))
+                        if os.path.exists(dx):
+                            os.remove(dx)
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -718,6 +796,53 @@ def create_coletas_snapshot(trigger="auto"):
     except Exception as e:
         print("Erro ao gerar snapshot de coletas:", e)
         return None
+
+
+def send_backup_email(trigger="daily"):
+    """Envia backup completo (Excel + JSON) para o e-mail configurado no .env."""
+    email_user = os.environ.get("EMAIL_USER", "").strip()
+    email_pass = os.environ.get("EMAIL_PASS", "").strip()
+    email_to = os.environ.get("EMAIL_TO", email_user).strip()
+    if not email_user or not email_pass or not email_to:
+        raise Exception("Credenciais EMAIL_USER/EMAIL_PASS não configuradas no .env")
+
+    ts = create_coletas_snapshot(trigger="email")
+    if not ts:
+        raise Exception("Não foi possível gerar snapshot para envio")
+
+    json_file = os.path.join(BACKUP_DIR, f"snapshot_{ts}.json")
+    xlsx_file = os.path.join(BACKUP_DIR, f"snapshot_{ts}.xlsx")
+    brt_str = now_brt().strftime("%d/%m/%Y %H:%M")
+
+    msg = EmailMessage()
+    msg["Subject"] = f"[Controle Operacional] Backup Completo - {brt_str}"
+    msg["From"] = email_user
+    msg["To"] = email_to
+    msg.set_content(
+        f"Segue em anexo o backup automático completo do Controle Operacional gerado em {brt_str} (Horário de Brasília).\n\n"
+        f"Arquivos anexados:\n"
+        f"- Planilha Excel (.xlsx) com todas as coletas\n"
+        f"- Arquivo JSON completo para restauração imediata\n"
+    )
+
+    for fpath, mime_sub in [(xlsx_file, "vnd.openxmlformats-officedocument.spreadsheetml.sheet"), (json_file, "json")]:
+        if os.path.exists(fpath):
+            with open(fpath, "rb") as fp:
+                msg.add_attachment(fp.read(), maintype="application", subtype=mime_sub, filename=os.path.basename(fpath))
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as smtp:
+        smtp.login(email_user, email_pass)
+        smtp.send_message(msg)
+    return ts
+
+
+@app.route("/api/backups/enviar-email", methods=["POST"])
+def api_enviar_backup_email():
+    try:
+        ts = send_backup_email("manual")
+        return jsonify({"status": "success", "message": f"Backup {ts} enviado com sucesso para o seu e-mail!"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/backups", methods=["GET"])
 def list_backups():
@@ -879,11 +1004,21 @@ def get_coletas():
                 res = requests.get(url, headers=headers, timeout=8)
                 if res.status_code in [200, 206]:
                     items = res.json()
+                    try:
+                        mirror_upsert_rows(items, pending=0)
+                        flush_pending_to_supabase(SUPABASE_URL, get_headers())
+                    except Exception:
+                        pass
                     for item in items:
                         item["valor_final"] = extract_valor_final(item)
                     return jsonify({"status": "success", "data": items})
             except Exception as e_direct:
-                print(f"Fallback para db_select_all: {e_direct}")
+                print(f"Fallback para espelho/db_select_all: {e_direct}")
+                mirror_items = mirror_get_by_dates(variants)
+                if mirror_items:
+                    for item in mirror_items:
+                        item["valor_final"] = extract_valor_final(item)
+                    return jsonify({"status": "success", "data": mirror_items, "offline_mirror": True})
 
             all_data = db_select_all()
             var_set = set(variants)
@@ -912,8 +1047,9 @@ def save_coletas():
         # A sincronizacao de exclusoes automatica foi removida para seguranca.
 
         # Busca cirúrgica ultra-rápida apenas das coletas envolvidas no salvamento (elimina o peso de baixar o banco todo)
-        ids_to_check = [str(item.get("id")) for item in coletas if item.get("id") and str(item.get("id")).isdigit()]
+        ids_to_check = [str(item.get("id")) for item in coletas if item.get("id") and str(item.get("id")).lstrip("-").isdigit() and int(item.get("id")) > 0]
         existing_items = {}
+        supabase_online = True
         if ids_to_check:
             try:
                 quoted_ids = ",".join(ids_to_check)
@@ -924,10 +1060,26 @@ def save_coletas():
                     for r in res.json():
                         existing_items[str(r.get("id"))] = r
                 else:
-                    return jsonify({"status": "error", "message": f"Erro de comunicação com o Supabase (HTTP {res.status_code}). Salvamento cancelado para proteger os dados."}), 502
+                    supabase_online = False
             except Exception as e_ids:
-                print(f"Erro na busca de IDs: {e_ids}")
-                return jsonify({"status": "error", "message": f"Falha de conexão com o Supabase: {str(e_ids)}. Salvamento cancelado."}), 502
+                print(f"Supabase offline na busca de IDs (ativando espelho SQLite): {e_ids}")
+                supabase_online = False
+
+        if not supabase_online:
+            offline_rows = []
+            for item in coletas:
+                deliv_raw = str(item.get("delivery") or "").strip()
+                if not item.get("id") and not deliv_raw:
+                    continue
+                offline_rows.append({**item, "data": item.get("data") or data_operacao})
+            saved_offline = mirror_upsert_rows(offline_rows, pending=1)
+            invalidate_data_cache()
+            return jsonify({
+                "status": "success",
+                "offline_mirror": True,
+                "message": "Supabase indisponível! Salvo no Banco Espelho Local (será sincronizado automaticamente quando voltar).",
+                "saved": saved_offline
+            })
         
         saved_items = []
         for item in coletas:
@@ -1053,7 +1205,7 @@ def save_coletas():
                 if "c_horario" in modified_fields:
                     modified_fields.add("f_horario")
 
-                critical_fields = ["c_horario", "pc", "sr", "f_horario", "l_horario", "data_finalizacao", "df"]
+                critical_fields = ["c_horario", "pc", "sr", "f_horario", "l_horario", "data_finalizacao", "df", "motorista"]
                 for cf in critical_fields:
                     if cf in modified_fields or (cf in ["data_finalizacao", "df"] and "df" in modified_fields):
                         continue
@@ -1102,6 +1254,8 @@ def save_coletas():
             saved_items.extend(res if isinstance(res, list) else [res])
 
         try:
+            if saved_items:
+                mirror_upsert_rows(saved_items, pending=0)
             create_coletas_snapshot("auto")
         except Exception:
             pass
@@ -1110,8 +1264,19 @@ def save_coletas():
 
         return jsonify({"status": "success", "message": "Coletas salvas com sucesso no Supabase!", "saved": saved_items})
     except Exception as e:
-        print(f"Erro em POST /api/coletas: {e}")
-        return jsonify({"status": "error", "message": f"Erro no Supabase: {str(e)}"}), 500
+        print(f"Erro em POST /api/coletas (salvando no espelho SQLite de emergência): {e}")
+        try:
+            fallback_rows = [{**it, "data": it.get("data") or data_operacao} for it in coletas if it.get("id") or str(it.get("delivery") or "").strip()]
+            saved_offline = mirror_upsert_rows(fallback_rows, pending=1)
+            invalidate_data_cache()
+            return jsonify({
+                "status": "success",
+                "offline_mirror": True,
+                "message": f"Supabase instável ({str(e)}). Dados protegidos no Banco Espelho Local!",
+                "saved": saved_offline
+            })
+        except Exception as e2:
+            return jsonify({"status": "error", "message": f"Erro no Supabase e no espelho: {str(e2)}"}), 500
 
 @app.route("/api/coletas/<id_coleta>", methods=["DELETE"])
 def delete_coleta(id_coleta):
@@ -1146,7 +1311,7 @@ def export_excel():
         data = all_data
         sheet_name = "Coletas"
         filename = "Relatorio_Coletas.xlsx"
-        now = datetime.now()
+        now = now_brt()
 
         if all_str:
             data = all_data
@@ -1741,5 +1906,10 @@ def api_motoristas():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    import sys
+    if "--send-email" in sys.argv:
+        ts = send_backup_email("cron")
+        print(f"Backup enviado por e-mail com sucesso: {ts}")
+    else:
+        port = int(os.environ.get("PORT", 5000))
+        app.run(host="0.0.0.0", port=port, debug=True)

@@ -18,3 +18,5 @@ fix_*.py
 check_*.js
 check_*.py
 backups_coletas/
+*.db
+coletas_mirror.db

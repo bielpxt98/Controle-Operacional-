@@ -1051,7 +1051,8 @@
             <div class="report-header">
                 <h2 id="reportTitle"><i class="fa-regular fa-calendar-check" style="color: var(--accent-blue)"></i> Relatório de Coletas: <span id="currentDateText">03/08/2026</span></h2>
                 <div style="display: flex; gap: 15px; align-items: center;">
-                    <span class="excel-hint"><i class="fa-solid fa-lock" style="color: #a78bfa"></i> Protegido por Senha com Resposta Ultra-Rápida</span>
+                    <span id="draftStatusBadge" class="excel-hint"><i class="fa-solid fa-lock" style="color: #a78bfa"></i> Protegido por Senha • Rascunho local de 1h</span>
+                    <button type="button" id="btnDescartarRascunho" onclick="descartarRascunhoAtual()" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; color: #fca5a5; border-radius: 6px; padding: 4px 10px; font-size: 0.75rem; font-weight: 600; cursor: pointer;" title="Descarta alterações não salvas no Supabase e recarrega o original"><i class="fa-solid fa-rotate-left"></i> Descartar Rascunho</button>
                     <div class="report-actions">
                         <button class="btn btn-add" onclick="addNewRow()"><i class="fa-solid fa-plus"></i> Adicionar Coleta</button>
                         <button class="btn btn-save" onclick="saveCurrentDayColetasWithAuth()"><i class="fa-solid fa-floppy-disk"></i> Salvar no Supabase</button>
@@ -1068,7 +1069,8 @@
                         <a href="#" onclick="exportExcel('week')" style="color: #f8fafc; padding: 12px 16px; text-decoration: none; display: block; border-bottom: 1px solid #334155; font-size: 0.9rem;"><i class="fa-solid fa-calendar-week" style="width:20px;"></i> Semanal (Seg a Sáb)</a>
                         <a href="#" onclick="exportExcel('month')" style="color: #f8fafc; padding: 12px 16px; text-decoration: none; display: block; border-bottom: 1px solid #334155; font-size: 0.9rem;"><i class="fa-regular fa-calendar-days" style="width:20px;"></i> Mensal (Este Mês)</a>
                         <a href="#" onclick="exportExcel('all')" style="color: #f8fafc; padding: 12px 16px; text-decoration: none; display: block; border-bottom: 1px solid #334155; font-size: 0.9rem;"><i class="fa-solid fa-database" style="width:20px;"></i> Projeto Todo</a>
-                        <a href="#" onclick="openRelatoriosModal()" style="color: #38bdf8; padding: 12px 16px; text-decoration: none; display: block; font-size: 0.9rem; font-weight: 600;"><i class="fa-solid fa-filter" style="width:20px;"></i> Por Motorista / Período</a>
+                        <a href="#" onclick="openRelatoriosModal()" style="color: #38bdf8; padding: 12px 16px; text-decoration: none; display: block; border-bottom: 1px solid #334155; font-size: 0.9rem; font-weight: 600;"><i class="fa-solid fa-filter" style="width:20px;"></i> Por Motorista / Período</a>
+                        <a href="#" onclick="exportOfflineCSV()" style="color: #34d399; padding: 12px 16px; text-decoration: none; display: block; font-size: 0.9rem; font-weight: 600;"><i class="fa-solid fa-shield-halved" style="width:20px;"></i> Exportar Tela (Offline)</a>
                     </div>
                 </div>
                     </div>
@@ -1278,7 +1280,7 @@
             } catch (e) {}
         }
 
-        const DRAFT_EXPIRATION_MS = 60 * 60 * 1000; // Validade de 1 hora para rascunhos
+        const DRAFT_EXPIRATION_MS = 60 * 60 * 1000; // Validade de 1 hora para rascunhos não salvos no Supabase
 
         function saveLocalBackupForDay(dateStr, coletas) {
             if (!dateStr) return;
@@ -1287,15 +1289,26 @@
                 timestamp: Date.now(),
                 coletas: coletas
             };
-            // Limita a retenção a no máximo 3 dias para evitar crescimento ilimitado do localStorage
+            // Mantém até 10 dias de rascunhos ativos dentro da janela de 1h
             const keys = Object.keys(store);
-            if (keys.length > 3) {
+            if (keys.length > 10) {
                 keys.sort((a, b) => (store[a]?.timestamp || 0) - (store[b]?.timestamp || 0));
-                while (keys.length > 3) {
+                while (keys.length > 10) {
                     delete store[keys.shift()];
                 }
             }
             setLocalStore(store);
+            updateDraftBadge(dateStr);
+        }
+
+        function clearLocalBackupForDay(dateStr) {
+            if (!dateStr) return;
+            const store = getLocalStore();
+            if (store[dateStr]) {
+                delete store[dateStr];
+                setLocalStore(store);
+            }
+            updateDraftBadge(dateStr);
         }
 
         function getLocalBackupForDay(dateStr) {
@@ -1318,6 +1331,67 @@
 
             // Garante que só retorna itens que pertencem a este dia e que não foram registrados com data diferente
             return list.filter(item => !item.data || item.data === dateStr);
+        }
+
+        function hasLocalDraftForDay(dateStr) {
+            return getLocalBackupForDay(dateStr).length > 0;
+        }
+
+        function updateDraftBadge(dateStr) {
+            const badge = document.getElementById('draftStatusBadge');
+            const btnDescartar = document.getElementById('btnDescartarRascunho');
+            if (!badge) return;
+            const hasDraft = hasLocalDraftForDay(dateStr || activeDateStr);
+            if (hasDraft) {
+                badge.innerHTML = '<i class="fa-solid fa-pen-to-square" style="color: #fbbf24"></i> <strong style="color: #fbbf24;">Rascunho pendente (segurado por 1h)</strong> — clique em <strong>Salvar no Supabase</strong> para gravar';
+                if (btnDescartar) btnDescartar.style.display = 'inline-flex';
+            } else {
+                badge.innerHTML = '<i class="fa-solid fa-lock" style="color: #a78bfa"></i> Protegido por Senha • Rascunho local de 1h';
+                if (btnDescartar) btnDescartar.style.display = 'none';
+            }
+        }
+
+        function descartarRascunhoAtual() {
+            if (!confirm(`Deseja descartar as alterações em rascunho do dia ${activeDateStr} e recarregar os dados originais salvos no Supabase?`)) return;
+            clearLocalBackupForDay(activeDateStr);
+            if (window.daysCache) delete window.daysCache[activeDateStr];
+            fetchDayDataFromSupabase(activeDateStr);
+        }
+
+        function mergeServerWithDraft(serverRecords, draftRows) {
+            if (!Array.isArray(draftRows) || draftRows.length === 0) return serverRecords;
+            const merged = JSON.parse(JSON.stringify(serverRecords || []));
+            const serverById = new Map();
+            merged.forEach(r => { if (r && r.id) serverById.set(String(r.id), r); });
+
+            draftRows.forEach(dr => {
+                if (dr.id && serverById.has(String(dr.id))) {
+                    const srv = serverById.get(String(dr.id));
+                    const modFields = Array.isArray(dr._modified_fields) ? dr._modified_fields : [];
+                    if (modFields.length > 0) {
+                        modFields.forEach(f => {
+                            if (f === 'observacao') { srv.observacao = dr.observacao; srv.observacoes = dr.observacao; }
+                            else if (f === 'df') { srv.df = dr.df; srv.data_finalizacao = dr.df; }
+                            else if (f in dr) { srv[f] = dr[f]; }
+                        });
+                        srv._modified_fields = modFields;
+                    } else {
+                        // Sem lista granular, aplica os campos do rascunho preservando horários do robô se estiverem vazios no rascunho
+                        ['motorista', 'delivery', 'cliente', 'paletes', 'pc', 'valor', 'valor_final', 'l_horario', 'c_horario', 'f_horario', 'df', 'sr', 'observacao', 'cavalo', 'carreta', 'cpf'].forEach(k => {
+                            if (dr[k] !== undefined && dr[k] !== '' && dr[k] !== '-') {
+                                srv[k] = dr[k];
+                            }
+                        });
+                    }
+                } else if (!dr.id) {
+                    const drDeliv = String(dr.delivery || '').trim();
+                    const alreadyInServer = drDeliv && merged.some(s => String(s.delivery || '').trim() === drDeliv);
+                    if (!alreadyInServer) {
+                        merged.push(dr);
+                    }
+                }
+            });
+            return merged;
         }
 
         function formatDateInput(input) {
@@ -2353,10 +2427,10 @@
         }
 
         async function filterColetasEmAberto() {
-            window.isEmAbertoActive = true;
-            if (typeof saveCurrentDayColetasDirectAsync === 'function') {
-                saveCurrentDayColetasDirectAsync(activeDateStr);
+            if (typeof saveCurrentDayColetasSilent === 'function') {
+                saveCurrentDayColetasSilent();
             }
+            window.isEmAbertoActive = true;
             
             const tbody = document.getElementById('tableBody');
             const mobileCards = document.getElementById('mobileCards');
@@ -2459,20 +2533,26 @@
             const mobileCards = document.getElementById('mobileCards');
 
             // 1. CHECAGEM DE CACHE EM MEMÓRIA: Renderização Instantânea (0ms)
+            const localDraft = getLocalBackupForDay(dateStr);
+            const hasDraft = localDraft && localDraft.length > 0;
             const hasCache = Array.isArray(window.daysCache[dateStr]);
             if (hasCache && !isSilentRevalidate) {
                 window.isLoadingDayData = false;
-                renderDayRecords(window.daysCache[dateStr], dateStr);
+                const toRender = hasDraft ? mergeServerWithDraft(window.daysCache[dateStr], localDraft) : window.daysCache[dateStr];
+                renderDayRecords(toRender, dateStr);
+                updateDraftBadge(dateStr);
 
                 // Dispara pré-carregamento dos dias vizinhos
                 schedulePrefetchWindow(dateStr);
 
-                // Revalidação em segundo plano sem travar a interface
-                setTimeout(() => {
-                    if (activeDateStr === dateStr) {
-                        fetchDayDataFromSupabase(dateStr, true);
-                    }
-                }, 150);
+                // Revalidação em segundo plano apenas se NÃO houver rascunho pendente
+                if (!hasDraft) {
+                    setTimeout(() => {
+                        if (activeDateStr === dateStr && !hasLocalDraftForDay(dateStr)) {
+                            fetchDayDataFromSupabase(dateStr, true);
+                        }
+                    }, 150);
+                }
                 return;
             }
 
@@ -2490,16 +2570,21 @@
                 window.daysCache[dateStr] = records;
                 window.daysCacheTimestamps[dateStr] = Date.now();
 
+                const activeDraft = getLocalBackupForDay(dateStr);
+                const mergedRecords = (activeDraft && activeDraft.length > 0) ? mergeServerWithDraft(records, activeDraft) : records;
+
                 if (activeDateStr === dateStr) {
                     if (isSilentRevalidate) {
-                        // Não atrapalha o usuário se ele estiver ativamente digitando
+                        // Nunca sobrescreve se houver rascunho ativo, salvamento em voo, ou usuário digitando
                         const isTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT');
-                        if (!isTyping) {
-                            renderDayRecords(records, dateStr);
+                        const recentActivity = (Date.now() - (window._lastUserActivityTime || 0)) < 5000;
+                        if (!isTyping && !recentActivity && !_isSaveInFlight && !hasLocalDraftForDay(dateStr)) {
+                            renderDayRecords(mergedRecords, dateStr);
                         }
                     } else {
-                        renderDayRecords(records, dateStr);
+                        renderDayRecords(mergedRecords, dateStr);
                     }
+                    updateDraftBadge(dateStr);
                 }
 
                 // Inicia pré-carregamento dos dias vizinhos
@@ -2659,6 +2744,10 @@
 
             for (const cls of inputClasses) {
                 if (targetInput.classList.contains(cls)) {
+                    if (container._modifiedFields && container._modifiedFields.size > 0) {
+                        if (!twin._modifiedFields) twin._modifiedFields = new Set();
+                        container._modifiedFields.forEach(f => twin._modifiedFields.add(f));
+                    }
                     const twinInput = twin.querySelector('.' + cls);
                     if (twinInput && twinInput !== document.activeElement && twinInput.value !== targetInput.value) {
                         twinInput.value = targetInput.value;
@@ -2693,6 +2782,9 @@
 
             const tr = document.createElement('tr');
             if (rec.id) tr.setAttribute('data-id', rec.id);
+            if (Array.isArray(rec._modified_fields) && rec._modified_fields.length > 0) {
+                tr._modifiedFields = new Set(rec._modified_fields);
+            }
             tr.setAttribute('data-temp-id', tempId);
             const rowDateVal = rec.data || activeDateStr;
             tr.setAttribute('data-original-date', rowDateVal);
@@ -3066,6 +3158,9 @@
                         const tempId = card.getAttribute('data-temp-id');
                         if (id) item.id = id;
                         if (tempId) item._tempId = tempId;
+                        if (card._modifiedFields && card._modifiedFields.size > 0) {
+                            item._modified_fields = Array.from(card._modifiedFields);
+                        }
                         coletas.push(item);
                     });
                     if (coletas.length > 0) return coletas;
@@ -3141,16 +3236,11 @@
         let _pendingSaveDate = null;
 
         function saveCurrentDayColetasSilent() {
-            if (isSearchActive() || window.isLoadingDayData || window._isCheckingDelivery) return;
+            if (isSearchActive() || window.isEmAbertoActive || window.isLoadingDayData || window._isCheckingDelivery) return;
             const coletas = collectRowsFromUI();
             if (window.daysCache) window.daysCache[activeDateStr] = coletas;
+            // Segura apenas no rascunho local por até 1 hora (NÃO envia ao Supabase sem o usuário clicar Salvar)
             saveLocalBackupForDay(activeDateStr, coletas);
-            
-            // Auto-salva no Supabase em segundo plano com debounce de 400ms
-            if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
-            _autoSaveTimer = setTimeout(() => {
-                saveCurrentDayColetasDirectAsync(activeDateStr);
-            }, 400);
         }
 
         function saveCurrentDayColetasDirectAsync(dateForSave) {
@@ -3287,6 +3377,14 @@
                         });
                     }
 
+                    // Limpa marcações de rascunho e campos modificados após salvar no Supabase com sucesso
+                    document.querySelectorAll('#tableBody tr, #mobileCards .coleta-card').forEach(el => {
+                        if (el._modifiedFields) el._modifiedFields.clear();
+                        el.removeAttribute('data-row-edited');
+                    });
+                    clearLocalBackupForDay(activeDateStr);
+                    if (window.daysCache) window.daysCache[activeDateStr] = collectRowsFromUI();
+
                     // Botão fica verde com check sem atrapalhar o que o usuário está digitando
                     if (saveBtn) {
                         saveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Salvo com Sucesso!';
@@ -3375,6 +3473,14 @@
         }
 
         function changeToDate(dateObj) {
+            // Preserva eventuais edições da tela atual no rascunho de 1h antes de trocar de dia
+            if (!isSearchActive() && !window.isEmAbertoActive && !window.isLoadingDayData) {
+                const curColetas = collectRowsFromUI();
+                const hasModified = Array.from(document.querySelectorAll('#tableBody tr, #mobileCards .coleta-card')).some(el => el._modifiedFields && el._modifiedFields.size > 0);
+                if (hasModified || hasLocalDraftForDay(activeDateStr)) {
+                    saveLocalBackupForDay(activeDateStr, curColetas);
+                }
+            }
             window.isEmAbertoActive = false;
             if (_autoSaveTimer) { clearTimeout(_autoSaveTimer); _autoSaveTimer = null; }
             if (document.activeElement) document.activeElement.blur();
@@ -3647,6 +3753,49 @@
             } else if (type === 'all') {
                 window.location.href = `/api/export-excel?all=true`;
             }
+        }
+
+        function exportOfflineCSV() {
+            const dropdown = document.getElementById('exportDropdown');
+            if (dropdown) dropdown.style.display = 'none';
+            const rows = collectRowsFromUI();
+            if (!rows || rows.length === 0) {
+                alert("Nenhuma coleta na tela para exportar.");
+                return;
+            }
+            const headers = ["DATA", "MOTORISTA", "DELIVERY", "CLIENTES", "PALETES", "PALETES COLETADO", "VALOR", "VALOR FINAL", "H_LOCAL", "H_COLETADO", "H_FINALIZADO", "DF", "SR", "MOTIVO", "CPF", "CAVALO", "CARRETA"];
+            const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+            const csvLines = [headers.join(";")];
+            rows.forEach(r => {
+                csvLines.push([
+                    esc(r.data || activeDateStr),
+                    esc(r.motorista),
+                    esc(r.delivery),
+                    esc(r.cliente),
+                    esc(r.paletes),
+                    esc(r.pc),
+                    esc(r.valor),
+                    esc(r.valor_final),
+                    esc(r.l_horario),
+                    esc(r.c_horario),
+                    esc(r.f_horario),
+                    esc(r.df || r.data_finalizacao),
+                    esc(r.sr),
+                    esc(r.observacao),
+                    esc(r.cpf),
+                    esc(r.cavalo),
+                    esc(r.carreta)
+                ].join(";"));
+            });
+            const blob = new Blob(["\uFEFF" + csvLines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `Backup_Tela_${(activeDateStr || 'coletas').replace(/\//g, '_')}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
         }
 
         async function checkDuplicateDelivery(inputElement) {
@@ -3948,10 +4097,13 @@
                 const rows = document.querySelectorAll('#tableBody tr[data-id]');
                 const cards = document.querySelectorAll('.coleta-card[data-id]');
 
-                // Helper de atualização de campo com imunidade a edições recentes
-                const safeUpdateField = (container, selector, serverVal) => {
+                // Helper de atualização de campo com imunidade a edições recentes e rascunhos
+                const safeUpdateField = (container, selector, serverVal, fieldKey) => {
                     const input = container.querySelector(selector);
                     if (!input || input === activeEl) return;
+
+                    // IMUNIDADE 0: Se o campo faz parte do rascunho não salvo desta linha, NUNCA sobrescreve
+                    if (fieldKey && container._modifiedFields && container._modifiedFields.has(fieldKey)) return;
 
                     // IMUNIDADE 1: Se o usuário editou este campo específico nos últimos 30s, NUNCA sobrescreve
                     const lastEdited = parseInt(input.dataset.lastEdited || "0", 10);
@@ -3988,13 +4140,28 @@
                     const id = row.getAttribute('data-id');
                     const rec = records.find(r => String(r.id) === id);
                     if (rec) {
-                        safeUpdateField(row, '.input-lhorario', rec.l_horario || rec.h_local || '');
-                        safeUpdateField(row, '.input-chorario', rec.c_horario || rec.h_coletado || '');
-                        safeUpdateField(row, '.input-fhorario', rec.f_horario || rec.h_finalizado || '');
-                        safeUpdateField(row, '.input-df', rec.df || rec.data_finalizacao || '');
-                        safeUpdateField(row, '.input-pc', rec.pc ?? rec.coletados ?? '');
-                        safeUpdateField(row, '.input-sr', rec.sr || '');
-                        safeUpdateField(row, '.input-observacao', rec.observacao || rec.motivo || rec.observacoes || '');
+                        safeUpdateField(row, '.input-lhorario', rec.l_horario || rec.h_local || '', 'l_horario');
+                        safeUpdateField(row, '.input-chorario', rec.c_horario || rec.h_coletado || '', 'c_horario');
+                        safeUpdateField(row, '.input-fhorario', rec.f_horario || rec.h_finalizado || '', 'f_horario');
+                        safeUpdateField(row, '.input-df', rec.df || rec.data_finalizacao || '', 'df');
+                        safeUpdateField(row, '.input-pc', rec.pc ?? rec.coletados ?? '', 'pc');
+                        safeUpdateField(row, '.input-sr', rec.sr || '', 'sr');
+                        safeUpdateField(row, '.input-observacao', rec.observacao || rec.motivo || rec.observacoes || '', 'observacao');
+                        safeUpdateField(row, '.input-cliente', rec.cliente || '', 'cliente');
+                        safeUpdateField(row, '.input-cavalo', rec.cavalo || '', 'cavalo');
+                        safeUpdateField(row, '.input-carreta', rec.carreta || '', 'carreta');
+                        
+                        // Atualiza motorista se foi vinculado pelo robô e não foi editado localmente
+                        const drvSel = row.querySelector('.driver-select');
+                        const recDrv = (rec.motorista || '').trim();
+                        if (drvSel && recDrv && recDrv !== '-' && drvSel !== activeEl && (!row._modifiedFields || !row._modifiedFields.has('motorista'))) {
+                            const recKey = recDrv.toLowerCase().replace(/\s+/g, '_');
+                            if (drvSel.value !== recKey && driverDatabase[recKey]) {
+                                drvSel.value = recKey;
+                                updateDriverData(drvSel);
+                                updateWppMessage(row);
+                            }
+                        }
                         
                         updateRowStatus(row);
                     }
@@ -4005,13 +4172,16 @@
                     const id = card.getAttribute('data-id');
                     const rec = records.find(r => String(r.id) === id);
                     if (rec) {
-                        safeUpdateField(card, '.input-lhorario', rec.l_horario || rec.h_local || '');
-                        safeUpdateField(card, '.input-chorario', rec.c_horario || rec.h_coletado || '');
-                        safeUpdateField(card, '.input-fhorario', rec.f_horario || rec.h_finalizado || '');
-                        safeUpdateField(card, '.input-df', rec.df || rec.data_finalizacao || '');
-                        safeUpdateField(card, '.input-pc', rec.pc ?? rec.coletados ?? '');
-                        safeUpdateField(card, '.input-sr', rec.sr || '');
-                        safeUpdateField(card, '.input-observacao', rec.observacao || rec.motivo || rec.observacoes || '');
+                        safeUpdateField(card, '.input-lhorario', rec.l_horario || rec.h_local || '', 'l_horario');
+                        safeUpdateField(card, '.input-chorario', rec.c_horario || rec.h_coletado || '', 'c_horario');
+                        safeUpdateField(card, '.input-fhorario', rec.f_horario || rec.h_finalizado || '', 'f_horario');
+                        safeUpdateField(card, '.input-df', rec.df || rec.data_finalizacao || '', 'df');
+                        safeUpdateField(card, '.input-pc', rec.pc ?? rec.coletados ?? '', 'pc');
+                        safeUpdateField(card, '.input-sr', rec.sr || '', 'sr');
+                        safeUpdateField(card, '.input-observacao', rec.observacao || rec.motivo || rec.observacoes || '', 'observacao');
+                        safeUpdateField(card, '.input-cliente', rec.cliente || '', 'cliente');
+                        safeUpdateField(card, '.input-cavalo', rec.cavalo || '', 'cavalo');
+                        safeUpdateField(card, '.input-carreta', rec.carreta || '', 'carreta');
                         
                         updateRowStatus(card);
                     }

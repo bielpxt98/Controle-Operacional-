@@ -444,8 +444,8 @@ async function startWhatsApp() {
 
     let motoristaPrimeiroNome = identificarMotorista(senderName, remetenteNum);
     
-    const hojeObj = new Date();
-    const dataHojeCurta = hojeObj.getDate().toString().padStart(2, '0') + '/' + (hojeObj.getMonth() + 1).toString().padStart(2, '0');
+    const dataHojeCompletaBrt = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date());
+    const dataHojeCurta = dataHojeCompletaBrt.slice(0, 5);
     const formatterHora = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false });
     const horaAtual = formatterHora.format(new Date());
 
@@ -1244,7 +1244,7 @@ async function startWhatsApp() {
                     }
                 }
                 if (finalizavelId) {
-                    const dataHojeCompleta = dataHojeCurta + '/' + hojeObj.getFullYear();
+                    const dataHojeCompleta = dataHojeCompletaBrt;
                     const isRemessa = String(finalizavelDelivery || '').startsWith('340');
 
                     if (isRemessa && !json.tem_carimbo) {
