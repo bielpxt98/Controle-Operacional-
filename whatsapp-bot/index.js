@@ -1428,10 +1428,9 @@ Responda APENAS com o JSON.`;
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
-            "gemini-3.1-flash-lite",
-            "gemini-3.6-flash"
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-8b"
         ];
 
         let responseText = null;
@@ -1524,10 +1523,9 @@ Regras:
         ].filter(k => k && k.length > 10);
         
         const modelsToTry = [
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
-            "gemini-3.1-flash-lite",
-            "gemini-3.6-flash"
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-8b"
         ];
 
         let responseText = null;

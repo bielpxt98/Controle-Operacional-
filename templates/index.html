@@ -4948,7 +4948,7 @@
                 </div>
                 <div>
                     <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #cbd5e1; margin-bottom: 4px;">6. DESTINO (F)</label>
-                    <input type="text" id="srModalDestino" oninput="atualizarPreviewSR()" value="CS SALVADOR" style="width: 100%; padding: 8px 10px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #f8fafc; font-size: 0.85rem;">
+                    <input type="text" id="srModalDestino" oninput="atualizarPreviewSR()" value="SIMOES FILHO" style="width: 100%; padding: 8px 10px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #f8fafc; font-size: 0.85rem;">
                 </div>
                 <div>
                     <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #cbd5e1; margin-bottom: 4px;">7. QUANTIDADE (G)</label>
@@ -5036,7 +5036,7 @@
             document.getElementById('srModalBol').value = '-';
             document.getElementById('srModalCliente').value = clienteVal;
             document.getElementById('srModalOrigem').value = '-';
-            document.getElementById('srModalDestino').value = 'CS SALVADOR';
+            document.getElementById('srModalDestino').value = 'SIMOES FILHO';
             document.getElementById('srModalQtd').value = qtdSugerida;
             document.getElementById('srModalValor').value = valorStr;
             document.getElementById('srModalNumero').value = srVal;
@@ -5194,7 +5194,7 @@
                     valorStr = vInput.value.replace('R$', '').trim();
                 }
 
-                lines.push(montarLinhaTSV_SR(dataVal, delivVal, '-', cliVal, '-', 'CS SALVADOR', qtdSugerida, valorStr, srVal));
+                lines.push(montarLinhaTSV_SR(dataVal, delivVal, '-', cliVal, '-', 'SIMOES FILHO', qtdSugerida, valorStr, srVal));
             });
 
             if (lines.length === 0) {
